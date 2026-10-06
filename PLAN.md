@@ -453,8 +453,7 @@ Goal: Porter replaces WinSCP on the Mac, plus built-in Windows RDP with copy/pas
   small files (10 000) go as one tar stream where both ends allow it instead of per-file scp; `du`/find/listing work is
   cancellable; idle app ≈ 0 % CPU; command log and transfer history bounded in memory.
 - **WinSCP parity candidates** (decided by the Fable gap review, implemented only if worth it, smallest form): Synchronize
-  directories (compare, preview, mirror either way, delete option), Keep remote directory up to date (FSEvents → upload),
-  Compare directories highlight, resumable large transfers (sftp `reget`/`reput` instead of restart), bookmarks/favourite
+  directories (compare, preview, mirror either way, delete option), Compare directories highlight, resumable large transfers (sftp `reget`/`reput` instead of restart), bookmarks/favourite
   folders per host, transfer include/exclude masks, speed limit (`-l`), preserve timestamps, remote find by name, Windows
   OpenSSH servers (non-POSIX shell → sftp-only mode, path quirks; testable on the Windows VM).
 - **Regression cycle** after build + reviews: parallel break-it testers (transfers/perf incl. large and many files;
@@ -1060,8 +1059,6 @@ Worth doing, not cheap enough for v1: one line each (feature — why — smalles
 - Editor warns before Save overwrites a file changed on the server since it was opened — today the other change is
   silently lost — remember size and modification time at open and compare them in `RemoteEditor.save`, asking
   Overwrite or Cancel.
-- Show names with a line break in server listings — they are left out of panes, and on sftp-only servers an upload can
-  still replace one unasked — GNU `ls --quoting-style=escape` in `lsFunction`, with unescaping in the parser.
 - Dark-mode Blue tag — in Night Harbor a Blue tag looks the same as an untagged host — draw untagged chips neutral in
   dark (as Paper does), or give tagged chips a stronger fill.
 - Workspace header route line — middle-truncated while the pulse strip takes the room — put the route on its own line,
@@ -1079,3 +1076,6 @@ Worth doing, not cheap enough for v1: one line each (feature — why — smalles
 - Test infrastructure — in in-process tests, ticking an NSAlert checkbox through the agent and then pressing OK ends the
   test process's run loop: `swift test` exits 0 mid-test, so a failure goes unseen (the real app is fine) — find out
   why; meanwhile tests tick such checkboxes directly.
+
+Dropped (owner, 2026-10-06): Keep remote directory up to date (watch a Mac folder and upload changes), synchronized
+browsing, Remote Desktop Gateway, showing names with a line break in server listings, and the Cline MCP Marketplace listing.
