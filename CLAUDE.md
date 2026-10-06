@@ -65,7 +65,7 @@ sections win). User docs: `docs/` (published at https://kleash.github.io/airscp/
 | `…/Session.swift` | One master `ssh` per host (ControlMaster), capability probe, reconnect, tunnels |
 | `…/Runner.swift` | Process and pty runner, socketpair pipes, the pump for tar streams, cancellation |
 | `…/RemoteFS.swift`, `RemoteOps.swift` | Listing (`ls -lan` parser, sftp fallback), remote file operations, Find |
-| `…/Transfer.swift` | The transfer queue: scp, tar streams, `.airscp-<id>.part` files, resume, relays |
+| `…/Transfer.swift` | The transfer queue: scp, tar streams, `.airscp-<id>.part` files, resume, pause, SHA-256 checks, relays |
 | `…/Askpass.swift`, `ProxyConnect.swift` | The app binary as `SSH_ASKPASS` and as `ProxyCommand` (private socket + token) |
 | `…/Keychain.swift`, `Keys.swift`, `PuTTYKey.swift` | Saved passwords (one Keychain item), key pairs, PuTTY .ppk |
 | `…/Monitor.swift`, `RDP.swift`, `Models.swift`, `ErrorMapping.swift` | Linux monitor parser, the RDP session, `airscp.json` models (append-only fields), plain-language errors |
