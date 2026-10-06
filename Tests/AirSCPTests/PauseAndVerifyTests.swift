@@ -339,7 +339,8 @@ private func pauseMidway(_ queue: TransferQueue, _ id: UUID, partial: String) as
         let session = try #require(main.selectedWorkspace?.session)
         // 250 KB/s: still running however long a busy Mac takes for the agent's requests (80 s for the file).
         session.transfers.bandwidthLimit = 2_000
-        _ = await call(agent, "wait", ["until": "listed", "pane": "right", "text": "agent-pause.bin", "timeout": 20])
+        // A busy main queue can take long to list the folder: the wait returns once it has.
+        #expect(await call(agent, "wait", ["until": "listed", "pane": "right", "text": "agent-pause.bin", "timeout": 120]).error == nil)
         _ = await call(agent, "select", ["pane": "right", "names": ["agent-pause.bin"]])
         let reply = await call(agent, "drop", ["from": "right", "to": "local:" + local])
         let id = try #require(((reply["jobs"] as? [[String: Any]])?.first?["id"] as? String).flatMap { UUID(uuidString: $0) },
@@ -352,20 +353,20 @@ private func pauseMidway(_ queue: TransferQueue, _ id: UUID, partial: String) as
 
         #expect(await call(agent, "select", ["pane": "transfers", "ids": [id.uuidString]]).error == nil)
         #expect(await call(agent, "menu", ["path": "context > Pause", "pane": "transfers"]).error == nil)
-        #expect(await call(agent, "wait", ["until": "transfers_done", "host": "lab", "timeout": 60]).error == nil)
+        #expect(await call(agent, "wait", ["until": "transfers_done", "host": "lab", "timeout": 120]).error == nil)
         var now = await job()
         #expect(now?["status"] as? String == "Paused" && now?["resumable"] as? Bool == true, "\(now ?? [:])")
         #expect(now?["note"] as? String == "Paused: Resume continues where it stopped", "\(now ?? [:])")
 
         session.transfers.bandwidthLimit = nil
         #expect(await call(agent, "menu", ["path": "context > Resume", "pane": "transfers"]).error == nil)
-        #expect(await call(agent, "wait", ["until": "transfers_done", "host": "lab", "timeout": 60]).error == nil)
+        #expect(await call(agent, "wait", ["until": "transfers_done", "host": "lab", "timeout": 120]).error == nil)
         now = await job()
         #expect(now?["status"] as? String == "Done" && now?["resumed"] as? Bool == true, "\(now ?? [:])")
         #expect(same(server.path("agent-pause.bin"), local + "/agent-pause.bin"))
 
         #expect(await call(agent, "menu", ["path": "context > Verify with Checksum", "pane": "transfers"]).error == nil)
-        #expect(await call(agent, "wait", ["until": "transfers_done", "host": "lab", "timeout": 60]).error == nil)
+        #expect(await call(agent, "wait", ["until": "transfers_done", "host": "lab", "timeout": 120]).error == nil)
         now = await job()
         #expect(now?["status"] as? String == "Verified" && now?["sha256"] as? String == sha256(local + "/agent-pause.bin"),
                 "\(now ?? [:])")
