@@ -1969,6 +1969,8 @@ questions, and AirSCP's own screenshots. AirSCP is an MCP server for them. It is
 
 - The agent gets AirSCP's guide when it connects, and a `guide` tool for the details. **Help ▸ Agent Guide** shows the
   same text.
+- Agents go to a folder by its path and open a file or folder by its name (the `go` and `open` tools). You see the
+  panes move as they work, and they never need to click in the file list.
 - From a shell: `AirSCP --agent snapshot`, `AirSCP --agent menu path='Host > Connect'`,
   `AirSCP --agent screenshot --out shot.png`.
 - All of this help as plain text for agents: [llms.txt](https://kleash.github.io/airscp/llms.txt) and
@@ -2158,6 +2160,8 @@ Source: https://kleash.github.io/airscp/whats-new.html
 - **Tunnels say where they lead**: **Add Tunnel…** reads as a sentence (open port 8080 on this Mac, through your
   server, to the server itself, port 80), and the whole route shows as you type and in the list. The second port is
   the same as the first until you change it.
+- **AI agents go through folders without clicking**: they go to a folder by its path and open a file or folder by its
+  name, and get the folder's list back at once. You still see each step in the window.
 
 ## AirSCP 1.0
 
@@ -2201,7 +2205,7 @@ tools, hosts, proxies, transfers, files, monitor, tunnels, keys, settings, rdp, 
 
 ## overview
 How to work with AirSCP:
-- Loop: `snapshot` → one action (`menu`, `press`, `set`, `select`, `drop`, `key`, …) → `wait` for its effect →
+- Loop: `snapshot` → one action (`menu`, `press`, `set`, `select`, `go`, `drop`, …) → `wait` for its effect →
   `snapshot` again. Never sleep: `wait` polls (until connected, disconnected, sheet, no_sheet, listed, transfers_done,
   rdp_connected, rdp_drawn, text, monitor, found, compared) and stops early, with the question, when a sheet appears.
 - Every action returns `{ok, sheet, banner}`: a sheet in the reply is a question AirSCP is asking. Answer it before
@@ -2210,8 +2214,9 @@ How to work with AirSCP:
 - Menus: `menu path="Host > Connect"`, `menu path="File > New Folder…"` (… may be left out). A disabled item is
   refused with the reason (e.g. "This account allows file transfers (sftp) only."). `snapshot include=["menus"]`
   lists every item, enabled or not, with its shortcut and reason.
-- File commands act on the focused pane's selected rows: `select pane=right names=["a.txt"]` (selects and focuses),
-  then `menu path="File > Rename…"`, or a context-menu entry: `menu path="context > Rename…"`.
+- Files: `go path=/var/log` shows a server folder (`pane=left`: this Mac) and answers with its rows once listed; `open
+  name=logs` opens a row as a double-click does (`..` goes up). File commands act on the focused pane's selected rows:
+  `select pane=right names=["a.txt"]`, then `menu path="File > Rename…"` or `menu path="context > Rename…"`.
 - Controls are found by accessibility id (e.g. `hostEditor.hostname`, `right.filter`, `prompt.answer`), by their
   label or title ("Address", "Password", "Remember in Keychain"), or by placeholder. `snapshot include=["sheets"]`
   shows a sheet's fields and buttons; `include=["elements"]` lists every control of the window, the rows of short lists
@@ -2219,16 +2224,15 @@ How to work with AirSCP:
 - Other windows (Settings, Keys, Snippets, file editors): add `in="window:<title>"` to `press`, `set`, `select`,
   `menu`, `key`, `type`, `click` and `snapshot` (its elements). Without it, menus and keys act on the main window.
 - Hosts and desktops are chosen in the sidebar: `select pane=sidebar names=["web"]`, then `menu path="Host > Connect"`.
-- `screenshot` only to check how something looks (it is large); the snapshot has the facts. Click coordinates are
-  the screenshot's points at scale 1, from the top left of the window.
+- Never click in the file panes or the sidebar: `go`, `open`, `select`, `menu` take folders, rows and hosts by name;
+  `click` is for the Windows desktop. `screenshot` only to check how something looks: the snapshot has the facts.
 - Secrets never come back: password fields read as "•••(n)", and no tool reads the Keychain. From a shell, give a
   password with `value=-` and the password on standard input: a command line can be read by every process.
 - Open and Save panels (Upload…, Download To…, Import Hosts…, Export Hosts…, Choose a Key File…, Other Key File…,
-  Choose…, Send Files…, Paste Items to Mac…) can't be driven: give the command that opens one `file=<path>` (or `files=[…]`) and that is chosen instead,
-  e.g. `menu path="File > Export Hosts…" file=/tmp/hosts.json`; the reply's `panelFolder` is where the panel would
-  have opened. A panel that opened anyway: `press title=Cancel`.
-  Quick Look is refused. Commands that hand over to another app (Terminal, Finder, the default app, the clipboard)
-  run, but you can't see their result.
+  Choose…, Send Files…, Paste Items to Mac…) can't be driven: give the command that opens one `file=<path>` (or
+  `files=[…]`) and that is chosen instead, e.g. `menu path="File > Export Hosts…" file=/tmp/hosts.json`; the reply's
+  `panelFolder` is where the panel would have opened. A panel that opened anyway: `press title=Cancel`. Quick Look is
+  refused. Commands that hand over to another app (Terminal, Finder, the default app, the clipboard) run, unseen.
 - Agent control is off unless the user turned it on: AirSCP ▸ Settings ▸ "Allow AI agents to control AirSCP (MCP)".
   The sidebar then shows "Agent control on": its dot pulses while you act and the footer names you (your MCP client's
   name) and your last action; the user can see your recent actions there and turn agent control off. `snapshot` →
@@ -2274,12 +2278,24 @@ AirSCP was installed with `./install.sh`).
 - `type {text, target?, in?}` — text into the focused field, or the Windows desktop with target "rdp" (key by key,
   there at a person's pace, about ten keys a second, which Windows 11's apps keep up with; more than 1 000 characters
   key by key are refused outside a text field: use `set`). Example: `type {"text": "notepad", "target": "rdp"}`.
-- `click {x, y, button?, count?, modifiers?, wheel?, in?}` — a click at window points (count 2: double-click), the
-  last resort after `press` and `set`. Right-clicks only on the Windows desktop (elsewhere use `menu context > …`).
+- `click {x, y, button?, count?, modifiers?, wheel?, in?}` — a click at window points (a scale-1 screenshot's points,
+  from the window's top left; count 2: double-click), for the Windows desktop. Refused in the file panes and the
+  sidebar (`go`, `open`, `select` and `menu` take folders, rows and hosts by name); elsewhere only the last resort
+  after `press` and `set`. Right-clicks only on the Windows desktop (elsewhere use `menu context > …`).
   On the Windows desktop the pointer rests there a moment first (for controls that react to it), and `wheel` turns
   the mouse wheel there instead (notches; up when positive). Example: `click {"x": 600, "y": 400, "count": 2}`.
 - `focus {pane | target}` — pane "left"/"right" (menu commands then act on it), or target "sidebar", "filter",
   "path" (the Go to Folder field), "desktop". Example: `focus {"target": "filter", "pane": "right"}` then `type`.
+- `go {path, pane?}` — shows a folder in a file pane, as Go to Folder (⇧⌘G) does: an absolute path, `~` or `~/…` (the
+  pane's home), or relative to the folder shown (`..` goes up). pane "right" (default: the host's server) or "left"
+  (this Mac, or the server its source menu shows). It waits until the folder is listed, gives the pane the focus (File
+  menu commands then act on it) and answers with the pane: dir, total, rows (name, kind, size, modified, perm, owner,
+  group; hidden files only while View > Show Hidden Files is on) — the first 100, `more` counts the others (`snapshot
+  rows=…` lists them). A folder it can't show is an error: "No such folder: …", "Permission denied: …", "… isn't
+  connected". Example: `go {"path": "/var/log"}`, `go {"pane": "left", "path": "~/Downloads"}`.
+- `open {name, pane?}` — opens a file pane's row by its name, as a double-click (or Return) does: a folder, or a link to
+  one, is shown in the pane and answered as `go` answers; ".." is the enclosing folder; a file opens in its app on this
+  Mac (outside AirSCP: you can't see it; download a file to read it). Example: `open {"name": "reports"}`.
 - `select {pane | in, names | ids | all | none}` — rows: pane "left"/"right" (file names, byte for byte: "café" in
   its two Unicode forms are two names), "sidebar" (names: one host or desktop), "processes" (a process name, PID or part
   of its command, among those the Monitor lists with its search), "transfers" (a job's name, or `ids` from snapshot);
@@ -2407,9 +2423,11 @@ AirSCP was installed with `./install.sh`).
 ## files
 - The Files tab (`press title=Files`) has two panes: left = this Mac (or another connected server), right = the host.
   `snapshot` → panes.left/right: dir, rows, selected, status ("12 items, 2 selected — 30 GB available").
-- Go somewhere: `focus target=path pane=right` → `type text="/var/log"` → `key combo=return` → `wait until=listed
-  pane=right path=/var/log`. Also `menu path="Go > Enclosing Folder"`, `"Go > Back"`, `"Go > Home"`, and opening a
-  folder row: `select` it → `menu path="Go > Open Selection"`.
+- Through folders without a click: connect (`select pane=sidebar names=["web"]` → `menu path="Host > Connect"` → `wait
+  until=connected`) → `go path=/var/www` (the reply lists the folder; `open name=site` opens a row, `open name=..` goes
+  up) → `select pane=right names=["index.html"]` → its command: `menu path="File > Download To…" file=/Users/me/Downloads`,
+  `menu path="File > Upload…" files=["/Users/me/a.txt"]`, `menu path="File > Rename…"`, `menu path="context > Delete…"`.
+- Also `menu path="Go > Back"`, `"Go > Enclosing Folder"`, `"Go > Home"`; this Mac's side: `go pane=left path=~/Downloads`.
 - Favourites (a server's folders, kept per host): `focus pane=right` → `menu path="Go > Add to Favourites"` keeps the
   folder shown; `menu path='Go > Favourites > /var/log'` goes back to it, `menu path='Go > Favourites > Remove >
   /var/log'` drops it. `snapshot` → the pane's favourites (and `include=["menus"]` lists them).
@@ -2595,8 +2613,8 @@ AirSCP was installed with `./install.sh`).
 - Typing goes to the focused field: `focus` it, or use `set`, which focuses and replaces the text.
 - Every tool works with AirSCP behind other windows: AirSCP isn't brought to the front (keys and clicks go to its
   windows directly). A click on a list row may not select it then (AppKit takes it as the click that activates the
-  window): use `select`, `menu path="Go > Open Selection"` (a double-click on a file row), and `focus target=sidebar`
-  + `key combo=return` (a double-click on a host: it connects and shows its files).
+  window): never click rows. Use `select`, `open` (a double-click on a file row), `go` (a folder by its path), and
+  `focus target=sidebar` + `key combo=return` (a double-click on a host: it connects and shows its files).
 - While the Mac's screen is locked, full screen, window tiling (Move & Resize) and animated toggles (Hide Sidebar)
   wait until it is unlocked, though the reply says ok; the Monitor refreshes only while you are at work (a `wait`).
 - Screenshots draw AirSCP's own windows: a table's header can show the rows scrolled under it, the toolbar and the

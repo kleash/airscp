@@ -27,8 +27,10 @@ by the `guide` tool, and shown in Help ▸ Agent Guide).
 3. **Events** for keys, typing and clicks (`NSApp.sendEvent` to the window), and for the Windows desktop (`target: rdp`,
    typed at 15 ms per character, the desktop given the focus only for that request).
 4. **Purpose-built verbs** where no control fits: `drop` (what a drag does, including file promises to a Finder
-   folder), `select`, `sort`, `focus`, and `wait` (polling conditions: connected, sheet, listed, transfers_done,
-   rdp_drawn, found, compared…), which stops early when a sheet appears.
+   folder), `select`, `sort`, `focus`, `go` and `open` (a folder by its path, a row by its name: `FilePane.open` and
+   `openItems`, so the pane moves where the user sees it, and the reply carries the listing or a plain error instead
+   of an error sheet), and `wait` (polling conditions: connected, sheet, listed, transfers_done, rdp_drawn, found,
+   compared…), which stops early when a sheet appears. Agents never need coordinates outside the Windows desktop.
 
 Open and Save panels are drawn by another process and can't be driven: a request that opens one carries `file=` /
 `files=`, which `Panels.run` uses instead of showing it (the reply's `panelFolder` says where it would have opened).

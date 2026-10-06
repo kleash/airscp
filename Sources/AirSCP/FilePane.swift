@@ -187,9 +187,11 @@ final class FilePane: NSViewController, NSTableViewDataSource, NSTableViewDelega
     }
 
     /// Lists `path` and shows it (a failed listing keeps the folder shown). `select`: names to select;
-    /// `record`: add the folder left to the Back list. Returns whether it worked.
+    /// `record`: add the folder left to the Back list; `quiet`: no error sheet; `failed`: gets the error (an agent's
+    /// go answers with it). Returns whether it worked.
     @discardableResult
-    func open(_ path: String, select: [String] = [], record: Bool = true, quiet: Bool = false) async -> Bool {
+    func open(_ path: String, select: [String] = [], record: Bool = true, quiet: Bool = false,
+              failed: ((Error) -> Void)? = nil) async -> Bool {
         listGeneration += 1
         let generation = listGeneration
         let source = self.source
@@ -216,6 +218,7 @@ final class FilePane: NSViewController, NSTableViewDataSource, NSTableViewDelega
         do {
             listed = try await task.value
         } catch {
+            if generation == listGeneration { failed?(error) }
             if generation == listGeneration && !quiet {
                 // Not "Refresh the list": a folder typed or chosen that isn't there.
                 var shown = error as? AirSCPError

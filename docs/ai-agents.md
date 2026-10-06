@@ -47,6 +47,8 @@ questions, and AirSCP's own screenshots. AirSCP is an MCP server for them. It is
 
 - The agent gets AirSCP's guide when it connects, and a `guide` tool for the details. **Help ▸ Agent Guide** shows the
   same text.
+- Agents go to a folder by its path and open a file or folder by its name (the `go` and `open` tools). You see the
+  panes move as they work, and they never need to click in the file list.
 - From a shell: `AirSCP --agent snapshot`, `AirSCP --agent menu path='Host > Connect'`,
   `AirSCP --agent screenshot --out shot.png`.
 - All of this help as plain text for agents: [llms.txt](https://kleash.github.io/airscp/llms.txt) and

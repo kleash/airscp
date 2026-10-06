@@ -10,6 +10,8 @@ nav_order: 18
 - **Tunnels say where they lead**: **Add Tunnel…** reads as a sentence (open port 8080 on this Mac, through your
   server, to the server itself, port 80), and the whole route shows as you type and in the list. The second port is
   the same as the first until you change it.
+- **AI agents go through folders without clicking**: they go to a folder by its path and open a file or folder by its
+  name, and get the folder's list back at once. You still see each step in the window.
 
 ## AirSCP 1.0
 

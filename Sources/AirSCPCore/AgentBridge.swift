@@ -55,14 +55,27 @@ public enum AgentBridge {
         tool("type", "Type text into the focused field (or the Windows desktop with target rdp).",
              ["text": string("Text"), "target": string("window | rdp"), "in": string("window:<title> | sheet")], required: ["text"]),
         tool("click", "Click at x, y: points from the top left of the main window (or the window named by in), as in a "
-             + "screenshot of it at scale 1. On the Windows desktop the pointer rests there first; wheel turns the mouse "
-             + "wheel there instead of clicking (notches, up when positive).",
+             + "screenshot of it at scale 1. For the Windows desktop; refused on file rows and in the sidebar (go, open, "
+             + "select and menu take folders, rows and hosts by name), elsewhere only a last resort after press and set. "
+             + "On the Windows desktop the pointer rests there first; wheel turns the mouse wheel there instead of clicking "
+             + "(notches, up when positive).",
              ["x": number("X"), "y": number("Y"), "button": string("left | right"), "count": integer("2 for a double-click"),
               "modifiers": string("e.g. cmd+shift"), "wheel": integer("Wheel notches on the Windows desktop (up > 0)"),
               "in": string("window:<title>")], required: ["x", "y"]),
         tool("focus", "Give the keyboard focus to a file pane (pane: left|right, so that menu commands act on it) or to "
              + "target: sidebar | filter | path | desktop.", ["pane": string("left | right"),
                                                              "target": string("sidebar | filter | path | desktop")]),
+        tool("go", "Show a folder in a file pane, as Go to Folder does: path absolute, ~ or ~/…, or relative to the folder "
+             + "shown (.. goes up). pane: right (default: the host's server) or left (this Mac, or the server its source "
+             + "menu shows). Waits until it is listed and answers with the pane: dir, total and rows (name, kind, size, "
+             + "modified, perm; the first 100, more = how many others), or why not (no such folder, permission denied, "
+             + "not connected). The pane then has the focus for File menu commands.",
+             ["pane": string("right (default) | left"), "path": string("Folder")], required: ["path"]),
+        tool("open", "Open a file pane's row by its name, as a double-click does: a folder (or a link to one) is shown in "
+             + "the pane, answered as go answers; \"..\" is the enclosing folder; a file opens in its app on this Mac "
+             + "(outside AirSCP: download a file to read it).",
+             ["pane": string("right (default) | left"), "name": string("The row's name, exactly, or ..")],
+             required: ["name"]),
         tool("select", "Select rows: pane left|right (file names, exactly; also focuses the pane), sidebar (a host or "
              + "Remote Desktop name), processes (a process name, PID or part of its command, among those the Monitor "
              + "lists with its search), transfers (a job's name, or ids from snapshot); or, with in, a list in that window "

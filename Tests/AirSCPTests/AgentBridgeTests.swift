@@ -106,7 +106,8 @@ private func agent(_ arguments: [String], support: String) async -> CommandResul
     // The tool list comes from the bridge itself, so a client that starts before AirSCP sees the tools.
     let tools = try #require((replies.byID[2]?["result"] as? [String: Any])?["tools"] as? [[String: Any]])
     #expect(tools.compactMap { $0["name"] as? String } == ["snapshot", "screenshot", "menu", "press", "set", "key", "type",
-                                                            "click", "focus", "select", "sort", "drop", "wait", "guide"])
+                                                            "click", "focus", "go", "open", "select", "sort", "drop", "wait",
+                                                            "guide"])
     #expect(tools.allSatisfy { ($0["inputSchema"] as? [String: Any])?["type"] as? String == "object" && $0["description"] is String })
     let call = try #require(replies.byID[3]?["result"] as? [String: Any])
     #expect(call["isError"] as? Bool == true)
@@ -240,6 +241,8 @@ private func agent(_ arguments: [String], support: String) async -> CommandResul
     ], support: support)
     let instructions = try #require((replies.byID[1]?["result"] as? [String: Any])?["instructions"] as? String)
     #expect(instructions.contains("snapshot") && instructions.contains("Never sleep") && instructions.contains("guide topic="))
+    // Folders and rows by path and name, not by coordinates (owner's report, 1.0.0: an agent clicked through folders).
+    #expect(instructions.contains("Never click in the file panes or the sidebar") && instructions.contains("`go path="))
     #expect(instructions.split(separator: "\n").count <= 40)
     func text(_ id: Int) -> String? { ((replies.byID[id]?["result"] as? [String: Any])?["content"] as? [[String: Any]])?.first?["text"] as? String }
     #expect(text(2)?.hasPrefix(instructions) == true && text(2)?.contains("troubleshooting") == true)
@@ -476,6 +479,72 @@ struct AgentLabTests {
         try await app.call("wait", ["until": "no_sheet"])
         let after = try await app.call("snapshot", ["include": ["sidebar"]])
         #expect(((after["sidebar"] as? [String: Any])?["sections"] as? [[String: Any]])?.allSatisfy { $0["group"] is NSNull } == true)
+    }
+
+    /// go and open through the bridge against the lab's Debian server (owner's report, 1.0.0: an agent clicked its way
+    /// through a server's folders): a folder by its path (absolute, ~, missing, unreadable, not connected), rows by
+    /// name (a folder, ..), the listing's cap, and a download from the folder opened, without a click.
+    @Test func anAgentGoesThroughFoldersByPathAndName() async throws {
+        try await withLab { lab in
+            // A folder of this test's own on the shared server (withLab removes it).
+            let session = try await lab.connected(Lab.target())
+            let dir = try await lab.folder(on: session, in: "/home/dev")
+            let made = try await session.run("mkdir -p \(Quote.shell(dir))/reports \(Quote.shell(dir))/many && cd \(Quote.shell(dir)) "
+                                             + "&& seq 1 3000 > reports/q3.csv && for i in $(seq 1 120); do : > many/f$i; done")
+            #expect(made.status == 0, "\(made.stderr)")
+            let app = try LaunchedAirSCP { _ in
+                var host = Lab.target()
+                host.label = "lab"
+                var data = AirSCPData(hosts: [host])
+                data.settings.agentControl = true
+                return data
+            }
+            defer { app.stop() }
+            #expect(await app.ready())
+            func failure(_ tool: String, _ arguments: [String: Any]) async -> String {
+                do {
+                    let reply = try await app.call(tool, arguments)
+                    return "no error: \(reply)"
+                } catch {
+                    return (error as? AirSCPError)?.message ?? "\(error)"
+                }
+            }
+            func listed(_ reply: [String: Any]) -> (dir: String?, names: [String]) {
+                let pane = reply["pane"] as? [String: Any]
+                return (pane?["dir"] as? String, (pane?["rows"] as? [[String: Any]] ?? []).compactMap { $0["name"] as? String })
+            }
+
+            try await app.call("select", ["pane": "sidebar", "names": ["lab"]])
+            var text = await failure("go", ["path": dir])
+            #expect(text.contains("“lab” isn't connected"), "\(text)")
+            try await app.call("menu", ["path": "Host > Connect"])
+            try await app.call("wait", ["until": "connected", "host": "lab", "timeout": 60])
+            var reply = try await app.call("go", ["path": dir])
+            #expect(listed(reply).dir == dir && Set(listed(reply).names) == ["reports", "many"], "\(reply)")
+            #expect(listed(try await app.call("go", ["path": "~"])).dir == "/home/dev")
+            text = await failure("go", ["path": dir + "/missing"])
+            #expect(text.contains("No such folder: \(dir)/missing (the pane stays in /home/dev)"), "\(text)")
+            text = await failure("go", ["path": "/root"])
+            #expect(text.contains("Permission denied: this account may not list /root"), "\(text)")
+            try await app.call("go", ["path": dir])
+            reply = try await app.call("open", ["name": "reports"])
+            #expect(listed(reply).dir == dir + "/reports" && listed(reply).names == ["q3.csv"], "\(reply)")
+            // The file opened's download: select it, then drop it into a folder of this Mac.
+            try await app.call("select", ["pane": "right", "names": ["q3.csv"]])
+            let downloads = app.root + "/Downloads"
+            try FileManager.default.createDirectory(atPath: downloads, withIntermediateDirectories: true)
+            try await app.call("drop", ["from": "right", "to": "local:" + downloads])
+            try await app.call("wait", ["until": "transfers_done", "timeout": 60])
+            #expect(read(downloads + "/q3.csv")?.hasPrefix("1\n2\n3\n") == true)
+            reply = try await app.call("open", ["name": ".."])
+            #expect(listed(reply).dir == dir && (reply["pane"] as? [String: Any])?["selected"] as? [String] == ["reports"], "\(reply)")
+            reply = try await app.call("open", ["name": "many"])
+            let pane = reply["pane"] as? [String: Any]
+            #expect((pane?["rows"] as? [Any])?.count == 100 && pane?["more"] as? Int == 20 && pane?["total"] as? Int == 120,
+                    "\(pane?["more"] ?? "") \(pane?["total"] ?? "")")
+            try await app.call("menu", ["path": "Host > Disconnect"])
+            try await app.call("wait", ["until": "disconnected", "host": "lab"])
+        }
     }
 
     /// PLAN.md T's session: a host made in the editor, connected through openproxy → bastion → target (its key

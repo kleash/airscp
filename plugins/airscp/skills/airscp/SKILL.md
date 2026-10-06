@@ -20,7 +20,8 @@ watch it, and agents never see saved passwords.
 ## The loop
 
 1. `snapshot` to see the state: hosts in the sidebar, both file panes, transfers, open questions.
-2. One action: `menu` (a menu-bar path such as `Host > Connect`), `press`, `set`, `select`, `drop`, `key`.
+2. One action: `menu` (a menu-bar path such as `Host > Connect`), `press`, `set`, `select`, `go`, `open`, `drop`,
+   `key`. Never click in the file panes or the sidebar: folders, rows and hosts are taken by name.
 3. `wait` for its effect (`connected`, `listed`, `transfers_done`, `found`, `compared`, `sheet`, `no_sheet`). Never
    sleep: `wait` polls and stops early when AirSCP asks something.
 4. A reply with a `sheet` is AirSCP asking a question (trust a new server, a password, Replace or Keep Both, Delete).
@@ -32,8 +33,8 @@ watch it, and agents never see saved passwords.
   key: show the user the fingerprint question if you are unsure), `wait until=connected`.
 - Upload: `drop files=["/Users/me/site"] pane=right`; a folder asks first (press Upload); `wait until=transfers_done`.
 - Download: `select pane=right names=["app.log"]`, then `drop from=right to="local:/Users/me/Downloads"`.
-- Go to a server folder: `focus target=path pane=right`, `type text="/var/www"`, `key combo=return`,
-  `wait until=listed pane=right path=/var/www`.
+- Go to a server folder: `go path=/var/www` (it answers once listed, with the folder's rows); a row by name:
+  `open name=site` (a folder: its rows; `open name=..` goes up). This Mac's side: `go pane=left path=~/Downloads`.
 - Synchronize: show the Mac folder in the left pane and the server folder in the right pane, `focus pane=right`,
   `menu path="File > Synchronize…"`, `wait until=compared`, read the plan in the reply, then press Synchronize only if
   the plan is what the user wants.
