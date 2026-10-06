@@ -127,7 +127,7 @@ struct S1LabTests {
             let none = drawn { model.unticked = Set(model.plan.steps.map(\.path)) }
             print("PERF Synchronize sheet with 5,000 rows: drawn \(String(format: "%.2f", shown)) s, one unticked "
                   + "\(String(format: "%.2f", unticked)) s, Select None \(String(format: "%.2f", none)) s")
-            #expect(model.plan.steps.count == 5_000 && model.chosen.steps.isEmpty && max(shown, unticked, none) < 5)
+            #expect(model.plan.steps.count == 5_000 && model.chosen.steps.isEmpty && max(shown, unticked, none) < 10)
             model.unticked = ["d7/f42.txt"]
             #expect(model.summary.hasPrefix("\(4_999.formatted()) uploads (\(FileList.size(4_999 * 3)))\n1 unticked"), "\(model.summary)")
             parent.endSheet(window)

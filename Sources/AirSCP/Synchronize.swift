@@ -293,9 +293,9 @@ final class SyncModel: ObservableObject {
     /// unticked, left as it is and left out.
     var summary: String {
         guard let comparison else { return "" }
-        let chosen = chosen.steps
+        let ticked = chosen.steps
         func count(_ action: Sync.Step.Action, _ one: String, _ many: String) -> String? {
-            let steps = chosen.filter { $0.action == action }
+            let steps = ticked.filter { $0.action == action }
             guard !steps.isEmpty else { return nil }
             let files = steps.filter { !$0.item.isFolder }, folders = steps.count - files.count
             let total = [files.isEmpty ? nil : FileList.size(files.reduce(0) { $0 + $1.item.size }),
@@ -311,7 +311,7 @@ final class SyncModel: ObservableObject {
                      : plan.steps.isEmpty ? "Nothing to copy this way." : "Nothing ticked."]
         }
         var text = parts.joined(separator: ", ")
-        let skipped = plan.steps.count - chosen.count
+        let skipped = plan.steps.count - ticked.count
         if skipped > 0 { text += "\n\(skipped.formatted()) unticked: left as \(skipped == 1 ? "it is" : "they are")." }
         if plan.leftAsIs > 0 {
             text += "\n\(plan.leftAsIs.formatted()) left as \(plan.leftAsIs == 1 ? "it is" : "they are"): "
