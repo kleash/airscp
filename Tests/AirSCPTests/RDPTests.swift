@@ -456,11 +456,12 @@ struct WindowsRunner {
     let session = RDPSession(target: RDPSession.Target(host: host, port: 3389, username: "porter", password: password),
                              options: options)
     let states = Recorder<RDPSession.State>(), sizes = Recorder<CGSize>(), paints = Recorder<CGRect>()
-    let shared = Recorder<Bool>()
+    let shared = Recorder<Bool>(), clipboard = Recorder<Bool>()
     session.onStateChange = { states.append($0) }
     session.onResize = { sizes.append(CGSize(width: $0, height: $1)) }
     session.onPaint = { paints.append($0) }
     session.onSharedFolder = { shared.append($0) }
+    session.onClipboardReady = { clipboard.append(true) }
     session.onCertificate = { $1(.always) }
     session.connect()
     defer { session.disconnect() }
@@ -476,6 +477,8 @@ struct WindowsRunner {
         }
     })
     #expect(await eventually { shared.all.contains(true) }, "Windows accepted \\\\tsclient\\AirSCP")
+    // Windows allows the clipboard: the bar can offer copy and paste when a policy blocks the shared folder.
+    #expect(await eventually { !clipboard.all.isEmpty }, "Windows' clipboard channel came up")
     // Always: the certificate is in FreeRDP's store, so the next connection asks nothing.
     #expect(!((try? FileManager.default.contentsOfDirectory(atPath: folder + "/freerdp/server")) ?? []).isEmpty)
 

@@ -1354,7 +1354,11 @@ final class AgentServer {
                 guard let desktop = selectedDesktop, desktop.state == .connected else {
                     throw Failure("No Remote Desktop is connected and shown.")
                 }
-                guard desktop.desktop.acceptsDrops else { throw Failure("This Remote Desktop shares no Mac folder (its settings).") }
+                guard desktop.desktop.acceptsDrops else {
+                    throw Failure(desktop.bar.sharedFolderRefused
+                                  ? "Windows' policy blocks the shared folder on this computer: copy and paste the files instead."
+                                  : "This Remote Desktop shares no Mac folder (its settings).")
+                }
                 return await perform { desktop.upload(urls) }
             }
             if target == "keys" {  // the Keys window's list, as a .ppk dragged there: Import Key opens for the first file
@@ -1615,6 +1619,10 @@ final class AgentServer {
             image = frame
         } else {
             var window = try mainWindow, crop: NSRect?
+            // While the Windows desktop fills the screen, that is what the user sees (with its hint over it).
+            if target == "main", let desktop = selectedDesktop, desktop.isFullScreen, let screen = desktop.desktop.window {
+                window = screen
+            }
             if target == "sheet" {
                 guard let sheet = openSheets().last else { throw Failure("No sheet is open.") }
                 window = sheet
@@ -1700,8 +1708,8 @@ final class AgentServer {
             NSRect(origin: .zero, size: size).fill()
         }
         Self.draw(window, at: .zero)
-        if let desktop = selectedDesktop, desktop.desktop.window === window, !desktop.desktop.isInFullScreenMode,
-           let session = desktop.session, let frame = Self.frameImage(session) {
+        if let desktop = selectedDesktop, desktop.desktop.window === window, let session = desktop.session,
+           let frame = Self.frameImage(session) {
             context.cgContext.draw(frame, in: desktop.desktop.convert(desktop.desktop.imageRect, to: nil))
         }
         for other in overlays {

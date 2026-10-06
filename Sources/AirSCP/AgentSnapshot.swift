@@ -489,8 +489,9 @@ extension AgentServer {
     func rdpJSON(_ desktop: RDPWorkspaceController) -> [String: Any] {
         let bar = desktop.bar
         var json: [String: Any] = ["entry": model.rdpEntry(desktop.entryID)?.displayName ?? "", "state": name(desktop.state),
-                                   "size": bar.size, "fullScreen": desktop.desktop.isInFullScreenMode, "sharing": bar.sharing,
-                                   "sharedFolderReady": bar.sharedFolderReady, "message": bar.message,
+                                   "size": bar.size, "fullScreen": desktop.isFullScreen, "sharing": bar.sharing,
+                                   "sharedFolderReady": bar.sharedFolderReady, "sharedFolderRefused": bar.sharedFolderRefused,
+                                   "message": bar.message,
                                    "remoteFiles": ["count": bar.remoteFiles.count, "bytes": bar.remoteFiles.bytes]]
         if let progress = bar.progress { json["progress"] = progress }
         if case .disconnected(let error) = desktop.state { json["error"] = error.message }

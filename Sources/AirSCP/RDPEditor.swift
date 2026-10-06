@@ -164,7 +164,7 @@ struct RDPEditorView: View {
                 Toggle("Share the clipboard (text and files)", isOn: $draft.clipboard).accessibilityIdentifier("rdpEditor.clipboard")
                     .help("On by default: copy and paste text and files between the Mac and Windows")
                 Toggle("Share a Mac folder with Windows", isOn: $draft.shareFolder).accessibilityIdentifier("rdpEditor.shareFolder")
-                    .help("On by default: Windows sees a Mac folder as \\\\tsclient\\AirSCP; dropped files land there")
+                    .help("On by default: Windows sees a Mac folder as " + RDPBarView.sharedPath + "; dropped files land there")
                 if draft.shareFolder {
                     caption("Windows sees it as \\\\tsclient\\AirSCP. Files you drop on the desktop land there; files "
                             + "copied in Windows come back to the Mac.")
@@ -175,7 +175,7 @@ struct RDPEditorView: View {
                                 .accessibilityIdentifier("rdpEditor.folder")
                                 .help("The Mac folder to share; ~/Downloads/AirSCP RDP when empty")
                             Button("Choose…", action: chooseFolder)
-                                .help("Choose the Mac folder Windows sees as \\\\tsclient\\AirSCP")
+                                .help("Choose the Mac folder Windows sees as " + RDPBarView.sharedPath)
                         }
                     }
                 }

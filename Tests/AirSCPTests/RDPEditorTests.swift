@@ -230,3 +230,157 @@ import Testing
         window.orderOut(nil)
     }
 }
+
+// MARK: Full screen and the shared folder (1.0.1: the owner's findings against real Windows)
+
+/// ⌃⌘F leaves (and enters) full screen also while the desktop takes the keyboard: it never goes to Windows. Other ⌘
+/// and Ctrl combinations still go to Windows, not to AirSCP's menus.
+@MainActor
+@Test func rdpDesktopKeepsControlCommandFForFullScreen() throws {
+    _ = NSApplication.shared
+    let view = RDPDesktopView(frame: NSRect(x: 0, y: 0, width: 400, height: 300))
+    let window = NSWindow(contentRect: NSRect(x: -20000, y: -20000, width: 400, height: 300), styleMask: [.titled],
+                          backing: .buffered, defer: true)
+    window.isReleasedWhenClosed = false
+    window.contentView = view
+    view.session = RDPSession(target: RDPSession.Target(host: "127.0.0.1", port: 1, username: "me", password: ""))
+    var toggled = 0
+    view.onToggleFullScreen = { toggled += 1 }
+    #expect(window.makeFirstResponder(view))
+    func keyDown(_ key: String, _ code: UInt16, _ modifiers: NSEvent.ModifierFlags) -> NSEvent {
+        NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: modifiers, timestamp: 0,
+                         windowNumber: window.windowNumber, context: nil, characters: key, charactersIgnoringModifiers: key,
+                         isARepeat: false, keyCode: code)!
+    }
+    #expect(view.performKeyEquivalent(with: keyDown("f", 3, [.command, .control])))
+    #expect(toggled == 1)
+    #expect(view.performKeyEquivalent(with: keyDown("f", 3, [.command, .control, .capsLock])))
+    #expect(toggled == 2)
+    #expect(view.performKeyEquivalent(with: keyDown("f", 3, .command)))  // ⌘F: Ctrl+F in Windows
+    #expect(view.performKeyEquivalent(with: keyDown("c", 8, [.command, .control])))
+    #expect(toggled == 2)
+}
+
+/// Full screen keeps a way out in sight: View ▸ Enter Full Screen (⌃⌘F) is in the menu bar, which comes down over the
+/// desktop when the pointer goes to the top (in 1.0.0 the menu bar was hidden for good, and ⌃⌘F was the only way out),
+/// and its target is fixed, as AirSCP's window isn't in the responder chain then.
+@MainActor
+@Test func fullScreenCanBeLeftFromTheMenuBar() throws {
+    _ = NSApplication.shared
+    let delegate = AppDelegate()
+    let item = try #require(delegate.mainMenu().item(withTitle: "View")?.submenu?.items.last)
+    #expect(item.title == "Enter Full Screen" && item.keyEquivalent == "f")
+    #expect(item.keyEquivalentModifierMask == [.command, .control])
+    #expect(item.action == #selector(AppDelegate.toggleFullScreen(_:)) && item.target === delegate)
+    let options = RDPWorkspaceController.fullScreenOptions
+    let presentation = NSApplication.PresentationOptions(
+        rawValue: try #require(options[.fullScreenModeApplicationPresentationOptions] as? UInt))
+    #expect(presentation.contains(.autoHideMenuBar) && !presentation.contains(.hideMenuBar))
+    #expect(try #require(options[.fullScreenModeWindowLevel] as? Int) < NSWindow.Level.mainMenu.rawValue)
+}
+
+/// Entering full screen says how to leave it, at the top of the screen, for a few seconds; clicks go through to Windows.
+@MainActor
+@Test func rdpFullScreenSaysHowToLeaveForAFewSeconds() async throws {
+    _ = NSApplication.shared
+    let model = AppModel(data: AirSCPData(), store: { _ in })
+    let desktop = RDPWorkspaceController(entryID: UUID(), model: model) { _ in throw AirSCPError(.other, "no") }
+    let window = NSWindow(contentRect: NSRect(x: -20000, y: -20000, width: 1280, height: 800), styleMask: [.borderless],
+                          backing: .buffered, defer: true)
+    window.isReleasedWhenClosed = false
+    window.orderFrontRegardless()  // (off screen)
+    defer { window.orderOut(nil) }
+    desktop.showFullScreenHint(over: window)
+    let hint = try #require(desktop.fullScreenHint)
+    #expect(window.childWindows?.contains(hint) == true && hint.ignoresMouseEvents && !hint.canBecomeKey)
+    func texts(_ view: NSView?) -> [String] {
+        guard let view else { return [] }
+        return ((view as? NSTextField).map { [$0.stringValue] } ?? []) + view.subviews.flatMap(texts)
+    }
+    #expect(texts(hint.contentView) == ["Press ⌃⌘F to leave full screen"])
+    #expect(abs(hint.frame.midX - window.frame.midX) <= 1 && hint.frame.maxY < window.frame.maxY)
+    #expect(await eventually { desktop.fullScreenHint == nil && window.childWindows?.isEmpty != false })
+}
+
+/// The bar says how to open the shared folder in Windows (\\tsclient\AirSCP, with a copy button) once Windows took it.
+/// When Windows' settings turn drive redirection off (Explorer then shows "tsclient" under Network, empty), the bar
+/// says that Windows' policy blocks it, and to copy and paste files instead when Windows allows the clipboard; Send
+/// Files… and drops, which would put files where Windows can't see them, are gone.
+@MainActor
+@Test func rdpBarSaysHowToOpenTheSharedFolderOrThatWindowsBlocksIt() async throws {
+    _ = NSApplication.shared
+    let model = AppModel(data: AirSCPData(), store: { _ in })
+    let desktop = RDPWorkspaceController(entryID: UUID(), model: model) { _ in throw AirSCPError(.other, "no") }
+    // SwiftUI makes accessibility elements while agent control is on.
+    let askpass = try AskpassServer(helperPath: TestEnvironment.airscpBinary)
+    defer { askpass.close() }
+    let (main, agent, _) = try agentWindow(model, askpass)
+    defer {
+        agent.close()
+        main.window?.orderOut(nil)
+    }
+    let window = NSWindow(contentRect: NSRect(x: -20000, y: -20000, width: 1100, height: 400), styleMask: [.titled],
+                          backing: .buffered, defer: true)
+    window.isReleasedWhenClosed = false
+    window.contentView = desktop.view
+    window.orderFrontRegardless()  // (off screen) SwiftUI makes accessibility elements for a window that is shown
+    defer { window.orderOut(nil) }
+    let clipboard = NSPasteboard.general.string(forType: .string)
+    defer {
+        NSPasteboard.general.clearContents()
+        if let clipboard { NSPasteboard.general.setString(clipboard, forType: .string) }
+    }
+    let bar = desktop.bar
+    bar.state = .connected
+    bar.size = "1280 × 800"
+    bar.sharing = true
+    desktop.desktop.acceptsDrops = true
+    func shown() -> [AXNode] { AXNode.flatten(window) }
+    func texts() -> String { shown().map { ($0.value as? String) ?? $0.title }.joined(separator: " | ") }
+    #expect(await eventually { texts().contains("Shared folder: waiting for Windows") }, "\(texts())")
+
+    desktop.sharedFolderAnswered(true)
+    #expect(await eventually { texts().contains("1280 × 800 · In Windows, open \\\\tsclient\\AirSCP") }, "\(texts())")
+    #expect(await eventually { shown().contains { $0.title == "Send Files…" } }, "\(texts())")
+    let copy = try #require(shown().first { $0.id == "rdp.copySharedFolder" }, "\(texts())")
+    // (A SwiftUI text literal reads backslashes as Markdown: the tooltips said \tsclient\AirSCP.)
+    #expect(copy.help == #"Copy \\tsclient\AirSCP, to paste into Explorer's address bar or Run (Win+R) in Windows"#)
+    #expect(shown().first { $0.title == "Send Files…" }?.help?.hasSuffix(#"Windows sees them as \\tsclient\AirSCP"#) == true)
+    #expect(copy.press())
+    #expect(await eventually { NSPasteboard.general.string(forType: .string) == "\\\\tsclient\\AirSCP" })
+    #expect(bar.message.hasPrefix("Copied \\\\tsclient\\AirSCP"))
+    #expect(desktop.desktop.acceptsDrops)
+
+    bar.message = ""
+    desktop.sharedFolderAnswered(false)
+    #expect(await eventually { texts().contains("Windows' policy blocks the shared folder") }, "\(texts())")
+    #expect(!texts().contains("copy and paste"))
+    #expect(!shown().contains { $0.title == "Send Files…" || $0.title == "Shared Folder" || $0.id == "rdp.copySharedFolder" },
+            "\(texts())")
+    #expect(!desktop.desktop.acceptsDrops)
+    bar.clipboardReady = true
+    #expect(await eventually { texts().contains("Windows' policy blocks the shared folder: copy and paste files instead") },
+            "\(texts())")
+}
+
+/// The editor's tooltips name the shared folder as Windows does, \\tsclient\AirSCP (as SwiftUI text literals, the
+/// backslashes were read as Markdown: they said \tsclient\AirSCP).
+@MainActor
+@Test func rdpEditorNamesTheSharedFolderAsWindowsDoes() async throws {
+    _ = NSApplication.shared
+    let model = testModel([])
+    let askpass = try AskpassServer(helperPath: TestEnvironment.airscpBinary)
+    defer { askpass.close() }
+    let (main, agent, _) = try agentWindow(model, askpass)
+    defer {
+        agent.close()
+        main.window?.orderOut(nil)
+    }
+    let window = try #require(main.window)
+    main.newRemoteDesktop()
+    let sheet = try #require(window.attachedSheet)
+    defer { window.endSheet(sheet) }
+    #expect(await eventually {
+        AXNode.flatten(sheet).first { $0.id == "rdpEditor.shareFolder" }?.help?.contains(#"as \\tsclient\AirSCP;"#) == true
+    }, "\(AXNode.flatten(sheet).filter { $0.id.hasPrefix("rdpEditor.") }.map { "\($0.id): \($0.help ?? "")" })")
+}

@@ -1478,6 +1478,12 @@ Source: https://kleash.github.io/airscp/remote-desktop/copy-files.html
 
 A Mac folder is shared with Windows, where it is `\\tsclient\AirSCP`. Files go both ways through it.
 
+## Open the shared folder in Windows
+
+- The bar says “In Windows, open `\\tsclient\AirSCP`”. Click the copy button next to it. Then paste the path into
+  Explorer's address bar in Windows (or into **Run**: <kbd>Win</kbd>+<kbd>R</kbd>) and press Enter.
+- Or in Explorer: **This PC ▸ Redirected drives and folders ▸ AirSCP on** *your Mac's name*.
+
 ## Steps
 
 **Mac to Windows**
@@ -1493,6 +1499,16 @@ A Mac folder is shared with Windows, where it is `\\tsclient\AirSCP`. Files go b
 - Or copy files in Explorer and use **Paste Items to Mac…** in the bar.
 
 (Picture: Explorer in Windows on \\tsclient\AirSCP, and the bar: In Windows: \\tsclient\AirSCP\…)
+
+## Windows shows tsclient, but no AirSCP folder
+
+Some Windows computers don't allow shared folders: a company setting (the Group Policy **Do not allow drive
+redirection**) turns them off. Explorer then shows **tsclient** under **Network**, but it is empty, and the bar says
+“Windows' policy blocks the shared folder”.
+
+- Copy and paste the files instead (see [Copy and paste](https://kleash.github.io/airscp/remote-desktop/clipboard.html)). The bar says so when Windows allows the
+  clipboard.
+- Or ask the computer's administrator to allow drive redirection.
 
 ## Tips
 
@@ -1545,8 +1561,16 @@ Source: https://kleash.github.io/airscp/remote-desktop/keyboard-and-screen.html
 ## Screen size
 
 - **Fit the window** (default): the Windows desktop follows the size of AirSCP's window.
-- A fixed size, or **Full screen**. **Full Screen** in the bar (or <kbd>⌃⌘F</kbd>) switches at any time.
+- A fixed size, or **Full screen** (below).
 - On a Retina screen, Windows gets the full resolution and scales to 200 %, so text is sharp.
+
+## Full screen
+
+- **Full Screen** in the bar, **View ▸ Enter Full Screen** or <kbd>⌃⌘F</kbd> shows the Windows desktop on the whole
+  screen. For a few seconds, a note at the top says how to leave.
+- To leave, press <kbd>⌃⌘F</kbd>. Or move the pointer to the top of the screen: the menu bar comes down. Choose
+  **View ▸ Exit Full Screen**.
+- The desktop's **Full screen** setting (under **Advanced**) opens it full screen each time.
 
 (Picture: Advanced settings: display, Retina resolution and ⌘ acts as Ctrl)
 
@@ -2105,6 +2129,8 @@ common ones.
 | **The user name or password is incorrect** | A company account needs its domain (the Domain field, or `DOMAIN\user`). |
 | **AirSCP couldn't reach the server** | Check the address, that Remote Desktop is on in Windows, and your VPN. Allow AirSCP on the local network if macOS asks. |
 | **The certificate of … has changed** | Trust it only if you know why it changed. |
+| **Windows' policy blocks the shared folder** | The Windows computer doesn't allow drive redirection (Group Policy **Do not allow drive redirection**): `\\tsclient` is empty there. Copy and paste files instead, or ask its administrator. See [Copy files](https://kleash.github.io/airscp/remote-desktop/copy-files.html). |
+| **Press ⌃⌘F to leave full screen** | The Windows desktop fills the screen. Press <kbd>⌃⌘F</kbd>, or move the pointer to the top of the screen and choose **View ▸ Exit Full Screen**. |
 
 ## Turn on debug logs
 
@@ -2266,6 +2292,11 @@ Source: https://kleash.github.io/airscp/whats-new.html
 - The horizontal scroll bar no longer covers the last file in a long folder.
 - **Debug logging on**, at the bottom of the sidebar, has a **Turn Off** button. **Help ▸ Turn On Debug Logging**
   (**Turn Off Debug Logging** while it is on) switches it too.
+- **Remote Desktop full screen shows the way out**: a note says <kbd>⌃⌘F</kbd> leaves it, and the menu bar comes
+  down at the top of the screen with **View ▸ Exit Full Screen**.
+- **The shared folder explains itself**: the bar says how to open `\\tsclient\AirSCP` in Windows, with a button that
+  copies the path. When Windows' policy blocks shared folders (Explorer shows an empty **tsclient**), the bar says so,
+  and to copy and paste files instead.
 
 ## AirSCP 1.0
 
@@ -2688,19 +2719,27 @@ AirSCP was installed with `./install.sh`).
   certificate the chosen company authority signed; "The certificate of … has changed" always asks) → login sheet (`rdpLogin.username`, `rdpLogin.password`,
   `rdpLogin.remember`; press "Log In") → `wait until=rdp_connected` → `wait until=rdp_drawn` (Windows draws a blank
   frame first, for up to a minute at logon). Questions for a desktop that isn't shown come on the window too. `snapshot`
-  → rdp: state, size, sharing, sharedFolderReady, remoteFiles, message.
+  → rdp: state, size, fullScreen, sharing, sharedFolderReady, sharedFolderRefused, remoteFiles, message.
 - See it: `screenshot target=rdp` (the desktop's pixels: read Windows' text there). Act: `click` on the desktop
   (window points; right-clicks allowed here; `wheel=-3` scrolls down three notches), `type target=rdp`, `key
   target=rdp` (⌘ acts as Ctrl: "cmd+c", "cmd+v"; "cmd+r" is Win+R only when ⌘ is the Windows key; "capslock"
   lasts until the next desktop action, which gives Windows the Mac's own Caps Lock again), Ctrl+Alt+Del: `press
   title=Ctrl+Alt+Del`.
+- Full screen: `press title="Full Screen"`, `menu path="View > Enter Full Screen"` or `key combo=ctrl+cmd+f
+  target=rdp`; each leaves it again (the menu item and the bar's button are titled Exit Full Screen then). `snapshot` →
+  rdp.fullScreen; `screenshot` then draws the full screen, with the note at its top for the first seconds ("Press ⌃⌘F
+  to leave full screen").
 - Files to Windows: `drop files=[…] target=desktop` copies them into the shared folder, \\tsclient\AirSCP in
   Windows (`wait until=text text="In Windows:"`). Files from Windows: copy them into \\tsclient\AirSCP in Windows; they
   appear in the Mac folder (~/Downloads/AirSCP RDP unless the entry names another). The bar's "Send Files…" copies Mac
   files there too (`press title="Send Files…" files=[…]`). "Paste N Items to Mac…" copies
   what Explorer copied into a Mac folder: `press id=rdp.pasteItems file=/Users/me/Downloads` (its title counts the
   items: see snapshot.rdp.remoteFiles). "Shared Folder" opens Finder. Disconnect asks first while Windows
-  copies into the shared folder (the cut-off files are removed).
+  copies into the shared folder (the cut-off files are removed). `press id=rdp.copySharedFolder` puts
+  \\tsclient\AirSCP on the clipboard (for Explorer's address bar).
+- Windows' settings can turn drive redirection off (Group Policy): `sharedFolderRefused` is true, \\tsclient is empty
+  there, and drops and Send Files… are refused. Copy and paste files instead (below) when Windows allows the
+  clipboard: the bar then says so.
 - Clipboard: the desktop has the keyboard focus only while a `key`, `type` or `focus target=desktop` runs, as if
   clicked and then left: the Mac's clipboard goes to Windows then (text, or files), and what Windows copied comes to
   the Mac when it ends. Files Mac → Windows: select them in the left pane (this Mac) → `menu path="Edit > Copy"` →

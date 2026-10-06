@@ -146,8 +146,10 @@ public final class RDPSession {
     /// What Windows copied: text (line ends as on the Mac), or files and folders (count and total bytes; 0: none).
     public var onClipboardText: ((String) -> Void)?
     public var onClipboardFiles: ((_ count: Int, _ bytes: UInt64) -> Void)?
-    /// Windows accepted the shared folder (true) or refused it.
+    /// Windows accepted the shared folder (true) or refused it (its settings turn drive redirection off).
     public var onSharedFolder: ((Bool) -> Void)?
+    /// Windows allows the clipboard: text and files can be copied and pasted both ways.
+    public var onClipboardReady: (() -> Void)?
 
     /// The C session; nil once it ended. Held while it is used, so it isn't freed meanwhile.
     private var handle: OpaquePointer?
@@ -424,8 +426,16 @@ public final class RDPSession {
             let (count, bytes) = (Int(event.code), event.size)
             DispatchQueue.main.async { [self] in onClipboardFiles?(count, bytes) }
         case RDP_EVENT_SHARED_FOLDER:
-            let accepted = event.code == 0
-            DispatchQueue.main.async { [self] in onSharedFolder?(accepted) }
+            let status = event.code
+            DispatchQueue.main.async { [self] in
+                if status != 0 {
+                    DebugLog.write("Remote Desktop: Windows refused the shared folder (status 0x" + String(status, radix: 16, uppercase: true)
+                        + "): its settings turn drive redirection off", host: target.host)
+                }
+                onSharedFolder?(status == 0)
+            }
+        case RDP_EVENT_CLIPBOARD_READY:
+            DispatchQueue.main.async { [self] in onClipboardReady?() }
         default:
             break
         }

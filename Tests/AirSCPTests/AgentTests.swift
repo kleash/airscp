@@ -13,11 +13,21 @@ import Testing
 /// still animates away makes AppKit crash later.
 @MainActor var keptWindows: [MainWindowController] = []
 
+/// The app's menu bar, made once (its File ▸ New… items need the app delegate, which tests don't have: they call the
+/// window). View ▸ Enter Full Screen has the delegate as its target, which a menu item holds weakly: it is kept.
+@MainActor func useAppMenuBar() {
+    guard NSApp.mainMenu == nil else { return }
+    let delegate = AppDelegate()
+    keptDelegates.append(delegate)
+    NSApp.mainMenu = delegate.mainMenu()
+}
+
+@MainActor var keptDelegates: [AppDelegate] = []
+
 /// An off-screen main window under agent control, with its server's folder in the test's scratch space.
 @MainActor
 func agentWindow(_ model: AppModel, _ askpass: AskpassServer) throws -> (main: MainWindowController, server: AgentServer, dir: String) {
-    // The app's menu bar (its File ▸ New… items need the app delegate, which tests don't have: they call the window).
-    if NSApp.mainMenu == nil { NSApp.mainMenu = AppDelegate().mainMenu() }
+    useAppMenuBar()
     let main = MainWindowController(model: model, askpass: askpass)
     keptWindows.append(main)
     main.window?.setFrame(NSRect(x: -20000, y: -20000, width: 1000, height: 640), display: false)
@@ -329,7 +339,7 @@ func field(_ sheet: [String: Any]?, _ id: String) -> [String: Any]? {
 /// and in sheets are selected and their rows read, and Quick Look (a panel an agent can't close) is refused.
 @MainActor @Test func agentWorksInOtherWindowsAndTheirLists() async throws {
     _ = NSApplication.shared
-    if NSApp.mainMenu == nil { NSApp.mainMenu = AppDelegate().mainMenu() }
+    useAppMenuBar()
     let local = try scratch()
     try write("hello\n", to: local + "/a.txt")
     var web = SSHHost(label: "web", hostname: "web")
