@@ -219,7 +219,8 @@ enum HelpPage: String, CaseIterable {
     /// The site: GitHub Pages, built from docs/.
     static let site = URL(string: "https://kleash.github.io/airscp/")!
 
-    var url: URL { URL(string: rawValue, relativeTo: Self.site)!.absoluteURL }
+    /// `URL(string: "")` is nil, so the home page ("") is the site itself.
+    var url: URL { URL(string: rawValue, relativeTo: Self.site)?.absoluteURL ?? Self.site }
 
     /// Help ▸ Report a Problem: the repository's bug report form, with AirSCP's and macOS's versions filled in.
     static var reportProblem: URL {

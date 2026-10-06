@@ -59,6 +59,7 @@ private func matches(_ pattern: String, in text: String) -> [String] {
         let parts = page.rawValue.components(separatedBy: "#")
         var file = parts[0].isEmpty || parts[0].hasSuffix("/") ? parts[0] + "index.md" : parts[0]
         if file.hasSuffix(".html") { file = String(file.dropLast(5)) + ".md" }
+        #expect(page.url.absoluteString == HelpPage.site.absoluteString + page.rawValue, "\(page) opens \(page.url)")
         #expect(all[file] != nil, "\(page) opens \(page.url), but docs/\(file) doesn't exist")
         if parts.count > 1, let text = all[file] { #expect(anchors(text).contains(parts[1]), "\(page): no heading #\(parts[1])") }
     }
