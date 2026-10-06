@@ -53,7 +53,8 @@ titled "Add AirSCP". The list's format (language emoji left out: the legend has 
 ```
 
 (Use the badge URL Glama shows on the listing's page if it differs.) Agent-made PRs are accepted when the title ends
-with 🤖🤖🤖 (their CONTRIBUTING.md).
+with 🤖🤖🤖 (their CONTRIBUTING.md). List on Glama first (step 2): the list's bot labels a PR without the Glama badge
+`missing-glama`, and such PRs are rarely merged.
 
 ## 4. mcp.so
 
@@ -80,8 +81,8 @@ schemas).
 |---|---|---|
 | mcpservers.org | https://mcpservers.org/submit: name, category (Development or File System), short description, repository URL, registry name `io.github.kleash/airscp`, contact email | Free plan: review within 2 weeks; skip the paid option |
 | MCP Market (mcpmarket.com) | the site's **Submit** form | Thin details; repository URL and description |
-| Cline MCP Marketplace (github.com/cline/mcp-marketplace) | New issue ▸ **mcp-server-submission** template: repository URL, a 400×400 PNG logo, why it helps Cline users, and that Cline set it up from the README | Reviewed by people within days; adoption counts |
-| LobeHub MCP (lobehub.com/mcp) | Nothing to submit: it listed AirSCP by itself, https://lobehub.com/mcp/kleash-airscp (Unvalidated) | Claim it there (GitHub login) to manage it |
+| Cline MCP Marketplace | Don't submit: dropped by the owner (2026-10-06, PLAN.md) | |
+| LobeHub MCP (lobehub.com/mcp) | Nothing to submit: it listed AirSCP by itself, https://lobehub.com/mcp/kleash-airscp (Unvalidated) | Claim it there (GitHub login) to manage it. It keeps its own copy of the README: after a README change, a person clicks **Refresh Metadata** there (a Cloudflare human check) |
 
 ## 7. Claude Code plugins and skills
 
