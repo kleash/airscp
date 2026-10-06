@@ -49,7 +49,16 @@ selections and tabs). Things the window server draws, not the views, need care:
   vibrant, so they come out as the screen shows them;
 - the Remote Desktop is drawn from its frame buffer (an IOSurface layer that views can't render);
 - Open/Save panels are a labelled placeholder; menus never appear.
-Click coordinates are the screenshot's points at scale 1 from the window's top left.
+Click coordinates are the screenshot's points at scale 1 from the window's top left. The Windows desktop has a
+space of its own: `screenshot target=rdp` is its frame buffer at Windows' own pixel size, and `click target=rdp` (its
+`wheel` too) sends those pixels to Windows as they are, without the view (Retina, a desktop scaled to fit with bars,
+full screen in a window of its own). Window points that land on the desktop go through `desktopPoint(atWindowPoint:)`.
+Every desktop click replies with a picture: 200 × 120 pixels around the point, zoomed 2×, a red cross on it, taken
+after the pointer has rested there and before the button goes down (`clickPicture`). In 1.0.0 the rdp picture's
+pixels were taken for window points: off by the sidebar, the bar and the Retina scale, most clicks missed the desktop
+(measured on the test VM for 1.0.1).
+Keys for the desktop go as AppKit key events to `RDPDesktopView`, except the Windows key ("win", "windows", "⊞",
+"super" in a combo), which has no Mac key: its scancode (0x15B) is held around the rest of the combo.
 
 ## Security
 

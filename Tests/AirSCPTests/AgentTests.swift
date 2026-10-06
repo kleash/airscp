@@ -1158,12 +1158,12 @@ func clickTheMagentaTarget(_ server: AgentServer, _ runner: WindowsRunner, share
         exists(shared + "/shown-\(marker).txt")
     }, "\(read(shared + "/airscp.log") ?? "")")
     // Where the picture shows it (Windows may still be drawing it: until it is all there).
-    var box = CGRect.null, size = CGSize.zero
+    var box = CGRect.null, size = CGSize.zero, coordinates = ""
     #expect(await eventually(timeout: 20) {
         let shot = await call(server, "screenshot", ["target": "rdp"])
         guard let picture = shot.image, let data = picture.bitmapData else { return false }
         size = CGSize(width: picture.pixelsWide, height: picture.pixelsHigh)
-        #expect((shot["coordinates"] as? String)?.contains("\(picture.pixelsWide) × \(picture.pixelsHigh)") == true)
+        coordinates = shot["coordinates"] as? String ?? ""
         box = .null
         let step = picture.bitsPerPixel / 8  // RGB(A), as a PNG decodes
         for y in 0..<min(picture.pixelsHigh, 600) {
@@ -1175,6 +1175,8 @@ func clickTheMagentaTarget(_ server: AgentServer, _ runner: WindowsRunner, share
         return abs(box.width - 120) <= 2 && abs(box.height - 80) <= 2
     }, "the target in the desktop's picture: \(box) (\(size))")
     #expect(abs(box.minX - 340) <= 1 && abs(box.minY - 220) <= 1, "\(box)")
+    // The reply says which space its pixels are.
+    #expect(coordinates.contains("\(Int(size.width)) × \(Int(size.height))") && coordinates.contains("target rdp"))
     // Any pixel of it, off its middle: the click lands on that one.
     let pixel = CGPoint(x: box.minX + 77, y: box.minY + 31)
     let reply = await call(server, "click", ["target": "rdp", "x": pixel.x, "y": pixel.y])

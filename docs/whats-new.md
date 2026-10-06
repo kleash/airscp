@@ -7,6 +7,9 @@ nav_order: 18
 
 ## AirSCP 1.1.0
 
+- **AI agents click the right spot on a Windows desktop**: they click in the pixels of the desktop picture AirSCP
+  gives them, see a close-up of each click, and can press the Windows key (<kbd>⊞</kbd> <kbd>E</kbd>,
+  <kbd>⊞</kbd> <kbd>R</kbd>). Their guide tells them to use the keyboard first.
 - **Tunnels say where they lead**: **Add Tunnel…** reads as a sentence (open port 8080 on this Mac, through your
   server, to the server itself, port 80), and the whole route shows as you type and in the list. The second port is
   the same as the first until you change it.

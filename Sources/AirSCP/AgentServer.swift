@@ -1038,7 +1038,7 @@ final class AgentServer {
         }
         let what = right ? "Right-clicked" : count == 2 ? "Double-clicked" : count == 3 ? "Triple-clicked" : "Clicked"
         var reply = await acted(["desktop": "\(what) \(at)."
-            + (picture == nil ? "" : " The picture shows what was there: \(Self.clickArea) pixels around it, zoomed 2×, "
+            + (picture == nil ? "" : " The picture shows what was there: 200 × 120 pixels around it, zoomed 2×, "
                + "the red cross where it clicked.")])
         reply["picture"] = picture.flatMap(Self.png)
         return reply
@@ -1057,8 +1057,6 @@ final class AgentServer {
         }
         return CGPoint(x: x.rounded(.down), y: y.rounded(.down))
     }
-
-    static let clickArea = "200 × 120"
 
     /// The desktop around `point` (200 × 120 pixels, less at its edges), zoomed 2× (nothing smoothed) with a red cross
     /// on `point`, which is left uncovered: what a click there hits.

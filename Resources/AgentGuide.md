@@ -27,23 +27,21 @@ How to work with AirSCP:
   `menu`, `key`, `type`, `click` and `snapshot` (its elements). Without it, menus and keys act on the main window.
 - Hosts and desktops are chosen in the sidebar: `select pane=sidebar names=["web"]`, then `menu path="Host > Connect"`.
 - Never click in the file panes or the sidebar: `go`, `open`, `select`, `menu` take folders, rows and hosts by name;
-  `click` is for the Windows desktop. `screenshot` only to check how something looks: the snapshot has the facts.
-- A Windows desktop (Remote Desktop) is driven as a person does at its keyboard: keys first, a click only where no key
-  does it. `key {"combo": "win+e", "target": "rdp"}` opens File Explorer, `"alt+d"` its address bar, then
-  `type {"text": "C:\\Users", "target": "rdp"}` and `key {"combo": "return", "target": "rdp"}`. See it with
-  `screenshot {"target": "rdp"}`; `click {"target": "rdp", "x": …, "y": …}` takes that picture's pixels as they are.
-  More: `guide topic=rdp`.
+  `click` is for the Windows desktop. `screenshot` only to see how something looks (it is large; the snapshot has the
+  facts).
+- A Windows desktop (Remote Desktop) is driven by keys first: `key target=rdp` "win+e" (File Explorer), "alt+d" (its
+  address bar: `type target=rdp` a path such as D:\Data, then "return"), "win+r" (Run). Click only where no key does
+  it: `click target=rdp` takes pixels of `screenshot target=rdp` as they are. More: `guide topic=rdp`.
 - Secrets never come back: password fields read as "•••(n)", and no tool reads the Keychain. From a shell, give a
   password with `value=-` and the password on standard input: a command line can be read by every process.
 - Open and Save panels (Upload…, Download To…, Import Hosts…, Export Hosts…, Choose a Key File…, Other Key File…,
   Choose…, Send Files…, Paste Items to Mac…) can't be driven: give the command that opens one `file=<path>` (or
-  `files=[…]`) and that is chosen instead, e.g. `menu path="File > Export Hosts…" file=/tmp/hosts.json`; the reply's
-  `panelFolder` is where the panel would have opened. A panel that opened anyway: `press title=Cancel`. Quick Look is
+  `files=[…]`), which is chosen instead, e.g. `menu path="File > Export Hosts…" file=/tmp/hosts.json`; the reply's
+  `panelFolder` is where the panel would have opened (one that opened anyway: `press title=Cancel`). Quick Look is
   refused. Commands that hand over to another app (Terminal, Finder, the default app, the clipboard) run, unseen.
 - Agent control is off unless the user turned it on: AirSCP ▸ Settings ▸ "Allow AI agents to control AirSCP (MCP)".
-  The sidebar then shows "Agent control on": its dot pulses while you act and the footer names you (your MCP client's
-  name) and your last action; the user can see your recent actions there and turn agent control off. `snapshot` →
-  agent: client, actions (how many).
+  The sidebar's "Agent control on" then shows the user your name (your MCP client's), your actions as you act and a
+  way to turn it off. `snapshot` → agent: client, actions (how many).
 - A first run with no hosts greets with the "Welcome to AirSCP" sheet: press Start (or one of its buttons) first.
   Help ▸ Welcome to AirSCP… shows it again; Help ▸ AirSCP Tips and Help ▸ Agent Guide open windows with short texts;
   the Help menu's other items and a sheet's "?" button (id `help`) open AirSCP Help in the browser, outside AirSCP.
@@ -407,7 +405,9 @@ AirSCP was installed with `./install.sh`).
   too ("cmd+c" copies) unless the desktop's ⌘ is the Windows key; "capslock" lasts until the next desktop action,
   which gives Windows the Mac's own Caps Lock again. Ctrl+Alt+Del: `press title=Ctrl+Alt+Del`.
 - See it: `screenshot target=rdp`, the desktop alone at its own pixel size (the reply gives it): read Windows' text
-  there, and look again after each step.
+  there, and look again after each step. Windows opens a window a moment after its key: keys sent before it shows go
+  elsewhere (typed on the bare desktop, then "return", they open whatever icon the letters chose), so after "win+e"
+  or "win+r" take screenshots until it is there, then type.
 - Click only what no key reaches: `click {"target": "rdp", "x": …, "y": …}` in pixels of that picture, from its top
   left; `"count": 2` double-clicks, `"button": "right"` right-clicks, `"wheel": -3` scrolls down three notches there.
   The reply's picture shows what was there, zoomed, with a red cross where it clicked: when the cross isn't on what
