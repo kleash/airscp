@@ -19,7 +19,8 @@ func unexplained(_ window: NSWindow, sheetsOnly: Bool = false, checked: inout In
     let interactive: Set<String> = ["button", "checkbox", "radiobutton", "popupbutton", "menubutton", "textfield", "textarea",
                                     "combobox", "slider", "link", "disclosuretriangle", "searchfield"]
     // AppKit's own parts, which say nothing of AirSCP: the window's buttons and the scroll bars' arrows and pages. SwiftUI
-    // table headers have no API for a tooltip (their rows say what they hold). An editor's text is the document itself.
+    // table headers have no API for a tooltip (their rows say what they hold). An editor's text is the document itself,
+    // as is the server's version shown beside it.
     let exempt: Set<String> = ["closebutton", "minimizebutton", "zoombutton", "fullscreenbutton", "sortbutton",
                                "incrementarrow", "decrementarrow", "incrementpage", "decrementpage"]
     var windows = sheetsOnly ? [] : [window], sheet = window.attachedSheet
@@ -28,7 +29,8 @@ func unexplained(_ window: NSWindow, sheetsOnly: Bool = false, checked: inout In
         sheet = current.attachedSheet
     }
     let controls = windows.flatMap { root in
-        AXNode.flatten(root).filter { interactive.contains($0.role) && !exempt.contains($0.subrole) && $0.id != "editor.text" }
+        AXNode.flatten(root).filter { interactive.contains($0.role) && !exempt.contains($0.subrole)
+            && !["editor.text", "editor.serverText"].contains($0.id) }
             .map { (root, $0) }
     }
     checked += controls.count

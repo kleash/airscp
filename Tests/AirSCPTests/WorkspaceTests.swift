@@ -50,6 +50,21 @@ private func filesTab(_ session: Session) -> BrowserContentController {
             == ["b", "Z", "file 10.txt", "File 2.txt", "a.zip", "link"])
 }
 
+/// Owner and Group sort by the names shown (a number, for an account the server has no name for, in number order before
+/// the names), folders first, ties by name.
+@Test func rowsSortByOwnerAndGroupNames() {
+    func owned(_ name: String, _ owner: String, _ group: String, _ kind: RemoteEntry.Kind = .file) -> FileItem {
+        FileItem(RemoteEntry(name: name, path: "/srv/" + name, kind: kind, size: 0, modified: nil, permissions: "rw-r--r--",
+                             mode: 0o644, owner: owner, group: group))
+    }
+    let items = [owned("a", "www-data", "www-data"), owned("b", "root", "wheel"), owned("c", "1001", "1001"),
+                 owned("d", "dev", "staff"), owned("e", "10", "10"), owned("f", "root", "admin", .directory),
+                 owned("g", "dev", "staff")]
+    #expect(FileList.sorted(items, by: "owner", ascending: true, folderSizes: [:]).map(\.name) == ["f", "e", "c", "d", "g", "b", "a"])
+    #expect(FileList.sorted(items, by: "owner", ascending: false, folderSizes: [:]).map(\.name) == ["f", "a", "b", "d", "g", "c", "e"])
+    #expect(FileList.sorted(items, by: "group", ascending: true, folderSizes: [:]).map(\.name) == ["f", "e", "c", "d", "g", "b", "a"])
+}
+
 /// Files over six months old list with a day only: they show that day, not an invented time (its midnight in UTC, shown
 /// in this Mac's time zone: 8:00 AM east of UTC, the day before west of it). The conflict sheet's line too.
 @MainActor @Test func dateOnlyEntriesShowTheirDay() {
@@ -476,6 +491,103 @@ private func filesTab(_ session: Session) -> BrowserContentController {
         var info = stat()
         #expect(lstat(server.path("app.conf"), &info) == 0 && info.st_mode & 0o777 == 0o600)
         editor.close()
+    }
+}
+
+/// Save reads the file again first: what someone else saved on the server since the editor read it is never overwritten
+/// unasked (it was, silently). The sheet offers Overwrite, Show Server Version (the server's text in a read-only window
+/// beside the editor; saving again then overwrites it) and Cancel. A file that is gone is made again; one that is no
+/// longer text can only be overwritten; the editor's own text never counts as a change, however long its lines.
+@MainActor @Test func editorAsksBeforeOverwritingAChangeOnTheServer() async throws {
+    _ = NSApplication.shared
+    try await withServer { @MainActor server in
+        let session = try await server.connectedSession()
+        let file = server.path("settings.ini")
+        try write("port=80\n", to: file)
+        let editor = RemoteEditor(session: session, path: file, text: try await session.readText(file))
+        let window = try #require(editor.window)
+        window.setFrameOrigin(NSPoint(x: -30000, y: -30000))
+        var saved = 0
+        editor.onSaved = { saved += 1 }
+        let text = try #require(window.initialFirstResponder as? NSTextView)
+        @MainActor func buttons(_ sheet: NSWindow) -> [String] { AXNode.flatten(sheet).filter { $0.role == "button" }.map { $0.title } }
+        /// Saves; the sheet that asks, if any (nil once the save is done).
+        @MainActor func save(_ typed: String) async throws -> NSWindow? {
+            text.string = typed
+            let before = saved
+            editor.save(nil)
+            #expect(await eventually { window.attachedSheet != nil || saved > before })
+            return window.attachedSheet
+        }
+
+        // Someone saves the file meanwhile: the editor asks, and Cancel keeps both texts as they are.
+        try write("port=81\n", to: file)
+        var sheet = try #require(try await save("port=8080\n"))
+        #expect(Set(buttons(sheet)) == ["Overwrite", "Show Server Version", "Cancel"])
+        var checked = 0
+        #expect(unexplained(window, sheetsOnly: true, checked: &checked).isEmpty && checked == 3)
+        window.endSheet(sheet, returnCode: .alertThirdButtonReturn)
+        #expect(read(file) == "port=81\n" && saved == 0 && text.string == "port=8080\n")
+
+        // Show Server Version: the server's text beside the editor; Save then overwrites it without asking again.
+        sheet = try #require(try await save("port=8080\n"))
+        window.endSheet(sheet, returnCode: .alertSecondButtonReturn)
+        let theirs = try #require(NSApp.windows.first { $0.isVisible && $0.title == "settings.ini on the server — \(session.host.displayName)" })
+        #expect((theirs.contentView as? NSScrollView)?.documentView.map { ($0 as? NSTextView)?.string } == "port=81\n")
+        #expect((theirs.contentView as? NSScrollView)?.documentView.map { ($0 as? NSTextView)?.isEditable } == false)
+        #expect(unexplained(theirs, checked: &checked).isEmpty)
+        #expect(try await save("port=8080\n") == nil && read(file) == "port=8080\n" && saved == 1)
+
+        // Overwrite.
+        try write("port=82\n", to: file)
+        sheet = try #require(try await save("port=9090\n"))
+        window.endSheet(sheet, returnCode: .alertFirstButtonReturn)
+        #expect(await eventually { saved == 2 } && read(file) == "port=9090\n")
+        // Nothing changed there: no question, and the editor's own long line is no change either.
+        let long = "x=" + String(repeating: "y", count: 300_000) + "\n"
+        #expect(try await save(long) == nil && saved == 3)
+        #expect(try await save(long + "z=1\n") == nil && saved == 4 && read(file) == long + "z=1\n")
+
+        // Gone: saved again.
+        try FileManager.default.removeItem(atPath: file)
+        #expect(try await save("port=1\n") == nil && read(file) == "port=1\n")
+        // No longer text: Overwrite or Cancel.
+        try Data([0xFF, 0xFE, 0x00, 0x01]).write(to: URL(fileURLWithPath: file))
+        sheet = try #require(try await save("port=2\n"))
+        #expect(Set(buttons(sheet)) == ["Overwrite", "Cancel"])
+        window.endSheet(sheet, returnCode: .alertFirstButtonReturn)
+        #expect(await eventually { read(file) == "port=2\n" })
+
+        // Closing the editor closes the server's version too.
+        window.isDocumentEdited = false
+        editor.close()
+        #expect(!theirs.isVisible)
+    }
+}
+
+/// The Owner and Group columns show names; pointing at one shows it with its number (the number alone when the server
+/// has no name for it).
+@MainActor @Test func ownerAndGroupCellsShowNamesWithTheirNumbers() async throws {
+    _ = NSApplication.shared
+    try await withServer { @MainActor server in
+        var host = server.host()
+        let local = try server.scratch()
+        host.lastLocalDir = local
+        try write("x", to: local + "/b.txt")
+        try write("x", to: server.path("a.txt"))
+        let browser = filesTab(try await server.connectedSession(host))
+        #expect(await eventually { browser.right.rows.map(\.name) == ["a.txt"] && browser.left.rows.map(\.name) == ["b.txt"] })
+        for pane: FilePane in [browser.right, browser.left] {
+            let row = 0, item = pane.rows[row]
+            for (column, name, number) in [("owner", item.owner, "\(item.owner) (user ID \(getuid()))"),
+                                           ("group", item.group, "\(item.group) (group ID \(item.groupID ?? -1))")] {
+                let cell = pane.tableView(pane.table, viewFor: pane.table.tableColumns.first { $0.identifier.rawValue == column }, row: row)
+                    as? NSTableCellView
+                #expect(cell?.textField?.stringValue == name && cell?.toolTip == number, "\(column): \(String(describing: cell?.toolTip))")
+            }
+            #expect(item.owner == NSUserName() && item.groupID != nil)
+        }
+        #expect(FilePane.idTip("1001", 1001, "user") == "User ID 1001" && FilePane.idTip("dev", nil, "user") == nil)
     }
 }
 

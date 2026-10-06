@@ -225,7 +225,8 @@ AirSCP was installed with `./install.sh`).
 
 ## files
 - The Files tab (`press title=Files`) has two panes: left = this Mac (or another connected server), right = the host.
-  `snapshot` → panes.left/right: dir, rows, selected, status ("12 items, 2 selected — 30 GB available").
+  `snapshot` → panes.left/right: dir, rows, selected, status ("12 items, 2 selected — 30 GB available"). A row's owner
+  and group are names, as Get Info shows them; ownerID and groupID are their numbers where the server tells them.
 - Through folders without a click: connect (`select pane=sidebar names=["web"]` → `menu path="Host > Connect"` → `wait
   until=connected`) → `go path=/var/www` (the reply lists the folder; `open name=site` opens a row, `open name=..` goes
   up) → `select pane=right names=["index.html"]` → its command: `menu path="File > Download To…" file=/Users/me/Downloads`,
@@ -245,8 +246,11 @@ AirSCP was installed with `./install.sh`).
   (`set id=compress.format value=zip` or `tar.gz`, press Compress), Extract Here / Extract to New Folder, Get Info
   (sheet with kind, size, dates, owner; press Done), Edit in AirSCP (an editor window titled "<file name> — <host>":
   `set id=editor.text value=… in="window:<file name>"` (a byte order mark the file starts with stays: JSON can't
-  carry one), `press title=Save in="window:<file name>"`; read it with
-  `snapshot include=["elements"] in="window:<file name>"`; close it with `menu path="File > Close"
+  carry one), `press title=Save in="window:<file name>"` (when someone saved the file on the server after it was
+  opened, Save asks first, a sheet on the editor: press Overwrite, Cancel, or Show Server Version, which opens their
+  text read-only in a window titled "<file name> on the server — <host>": read it with
+  `snapshot include=["elements"] in="window:<file name> on the server"`, then press Save again to overwrite it); read
+  it with `snapshot include=["elements"] in="window:<file name>"`; close it with `menu path="File > Close"
   in="window:<file name>"`, which asks first when it has unsaved changes).
 - Handed to other apps, so their result isn't visible here: Open (the default app), Show in Finder, Open Terminal
   Here, Run in Terminal, Copy Path (the clipboard). Quick Look is refused: download the file and read it instead.

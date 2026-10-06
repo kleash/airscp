@@ -14,6 +14,9 @@ nav_order: 18
   name, and get the folder's list back at once. You still see each step in the window.
 - **Synchronize** leaves out what matches the server's **Leave out** patterns (the same list as for folder
   transfers, shown and changed in the sheet), and you can untick items in the list before you click **Synchronize**.
+- **The editor never overwrites someone else's changes unasked**: when a file changed on the server after you opened
+  it, **Save** asks first and can show you the server's version.
+- **Owner and Group show names** on servers, as **Get Info** does. Point at one to see its number.
 
 ## AirSCP 1.0
 

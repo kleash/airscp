@@ -198,7 +198,7 @@ private func cancelledTask<T>(_ body: @escaping () async throws -> T) async -> E
         #expect(entries.count == 50_000)
         // One shell command (sftp would need 500 round trips).
         let commands = (await server.logEntries()).dropFirst(before).map(\.command)
-        #expect(commands.count == 1 && commands.allSatisfy { $0.contains("TZ=UTC0 ls -lan") })
+        #expect(commands.count == 1 && commands.allSatisfy { $0.contains("TZ=UTC0 ls -la") })
         #expect(elapsed < 15, "listing 50 000 entries took \(elapsed) s")
     }
 }

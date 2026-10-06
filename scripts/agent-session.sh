@@ -2,7 +2,7 @@
 # A scripted agent-control session, the one CI runs after ./build.sh (.github/workflows/ci.yml). A throwaway AirSCP
 # (its own settings and ssh folders, agent control on) connects to a throwaway sshd on this Mac, trusts its key,
 # uploads a folder through its sheet, renames and deletes a file through their questions, previews Synchronize,
-# answers MCP and quits. Each step leaves its snapshot (JSON) and screenshots (light and dark) in the output folder;
+# answers MCP, edits a file that changes on the server meanwhile, and quits. Each step leaves its snapshot (JSON) and screenshots (light and dark) in the output folder;
 # a failed step leaves what AirSCP showed instead (failed.png, failed.json) and stops the script.
 #
 #   scripts/agent-session.sh [output folder]     default: build/agent-session
@@ -184,6 +184,26 @@ if ! grep -q '"name":"snapshot"' "$out/06-mcp.jsonl" || ! grep -q 'test-server' 
 fi
 
 snapshot 07-log include='["log"]' log=50
+
+# Edit a file that someone else saves on the server meanwhile: Save asks first, and shows their version beside it.
+a select pane=right names='["site.css"]'
+a menu path='File > Edit in AirSCP'
+a wait until=text text='site.css — test-server' timeout=30
+printf 'body { color: teal; }\n' > "$T/server/home/site/site.css"
+a set id=editor.text value='body { color: navy; }' in=window:site.css
+a press title=Save in=window:site.css
+a wait until=sheet text='changed on the server' timeout=30
+shot 08-changed-on-the-server target=window:site.css
+a press title='Show Server Version' in=window:site.css
+a wait until=text text='site.css on the server' timeout=30
+snapshot 09-server-version include='["elements"]' in='window:site.css on the server'
+shot 09-server-version target='window:site.css on the server'
+grep -q 'color: teal' "$out/09-server-version.json" || { echo "The server's version isn't shown: $out/09-server-version.json" >&2; exit 1; }
+a press title=Save in=window:site.css
+for _ in $(seq 1 60); do grep -q navy "$T/server/home/site/site.css" && break; sleep 0.5; done
+grep -q navy "$T/server/home/site/site.css" || { echo "Save didn't replace the server's version." >&2; exit 1; }
+a menu path='File > Close' in=window:site.css
+
 a menu path='Host > Disconnect'
 a wait until=disconnected host=test-server timeout=30
 a menu path='AirSCP > Quit AirSCP'

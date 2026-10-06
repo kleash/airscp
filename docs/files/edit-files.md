@@ -24,6 +24,9 @@ Open a server file in its Mac app, preview it, or edit a text file right in AirS
 - Saving is safe: the new text is written next to the file and then renamed over it, so a full disk can't leave it half
   written. The file keeps its permissions.
 - Closing an editor with unsaved changes asks first.
+- If someone saved the file on the server after you opened it, **Save** asks first. **Overwrite** replaces their
+  changes with your text. **Show Server Version** opens their text in another window, so you can copy what you need;
+  then save again. **Cancel** lets you keep editing.
 
 ## If something goes wrong
 
