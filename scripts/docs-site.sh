@@ -76,6 +76,10 @@ for path, page in sorted(pages.items()):
             problems.append(f"{base}: {link} leads nowhere")
         elif url.fragment and file in pages and url.fragment not in pages[file].ids:
             problems.append(f"{base}: no #{url.fragment} in {url.path}")
+    # HTML shown as text: an include indented inside a list step became a code block.
+    with open(path, encoding="utf-8") as file:
+        if any(tag in file.read() for tag in ("&lt;/figure", "&lt;/picture", "&lt;img ")):
+            problems.append(f"{base}: shows HTML tags as text")
 if problems:
     print("\n".join(problems))
     sys.exit(f"{len(problems)} broken links in AirSCP Help")

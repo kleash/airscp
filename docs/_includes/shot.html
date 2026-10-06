@@ -6,9 +6,5 @@ on Retina screens). A click opens it at full size.
 {%- endcomment -%}
 {%- assign light = "/assets/shots/" | append: include.name | append: "-light.png" | relative_url -%}
 {%- assign dark = "/assets/shots/" | append: include.name | append: "-dark.png" | relative_url -%}
-<figure class="shot">
-  <a href="{{ light }}"><picture>
-    <source srcset="{{ dark }} 2x" media="(prefers-color-scheme: dark)">
-    <img src="{{ light }}" srcset="{{ light }} 2x" alt="{{ include.alt }}" loading="lazy">
-  </picture></a>
-</figure>
+{%- comment -%} One line: inside an indented list step, more lines would turn into a code block and show as text. {%- endcomment -%}
+<figure class="shot"><a href="{{ light }}"><picture><source srcset="{{ dark }} 2x" media="(prefers-color-scheme: dark)"><img src="{{ light }}" srcset="{{ light }} 2x" alt="{{ include.alt }}" loading="lazy"></picture></a></figure>
