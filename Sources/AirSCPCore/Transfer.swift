@@ -1,4 +1,5 @@
 import Combine
+import CryptoKit
 import Foundation
 
 /// Names in a folder: conflicts and "name 2".
@@ -131,6 +132,8 @@ public struct TransferJob: Identifiable, Equatable {
 
     public enum Status: Equatable {
         case queued, running, done
+        /// Stopped by Pause until Resume, through a lost connection and its reconnect too (`TransferQueue.pause`).
+        case paused
         /// scp or tar gave up on some files (an unreadable file, a broken link) but copied the rest; the text is its
         /// error output.
         case completedWithErrors(String)
@@ -139,10 +142,27 @@ public struct TransferJob: Identifiable, Equatable {
 
         public var isFinished: Bool {
             switch self {
-            case .queued, .running: return false
+            case .queued, .running, .paused: return false
             default: return true
             }
         }
+
+        /// Queued or running: the host's queue is at it, or will be (a paused job waits for Resume).
+        public var isActive: Bool { self == .queued || self == .running }
+    }
+
+    /// A single file's copy checked against the original (Verify with Checksum, or Settings ▸ Verify transfers with
+    /// SHA-256): `TransferQueue.verify`.
+    public enum Checksum: Equatable {
+        /// Asked for: checked once the file has arrived, or (a finished job) when its host's queue gets to it.
+        case wanted
+        case checking
+        /// The copy and the original have this SHA-256.
+        case verified(String)
+        /// They differ: the copy was damaged, or one of them changed since. Retry copies the file again.
+        case mismatch(original: String, copy: String)
+        /// It couldn't be checked: why.
+        case unchecked(String)
     }
 
     public let id: UUID
@@ -162,8 +182,9 @@ public struct TransferJob: Identifiable, Equatable {
     public let names: [String]
     /// A folder transfer. For a download as archive: extract it after downloading (the items land next to it).
     public let isFolder: Bool
-    /// Replace what is at `destination` (once the new copy is complete).
-    public let replacing: Bool
+    /// Replace what is at `destination` (once the new copy is complete). A retry after a checksum mismatch replaces the
+    /// copy that didn't match.
+    public internal(set) var replacing: Bool
     /// scp -p.
     public let preserveTimes: Bool
     public var status = Status.queued
@@ -174,9 +195,17 @@ public struct TransferJob: Identifiable, Equatable {
     public var resumed = false
     /// Leave-out patterns (`TransferQueue.patterns`): what matches is left out of this job's tar stream, at any depth.
     public var excluding: [String] = []
+    /// The SHA-256 check of a single file's copy; nil: not checked.
+    public var checksum: Checksum?
 
     /// The name at the destination.
     public var name: String { RemotePath.name(destination) }
+
+    /// A single file, not a folder or a job of several items: it continues where it stopped, and its copy can be checked.
+    public var isSingleFile: Bool { !isFolder && names.isEmpty }
+
+    /// A finished single file whose copy can be checked now (none is due or under way).
+    public var canVerify: Bool { status == .done && isSingleFile && checksum != .wanted && checksum != .checking }
 }
 
 /// A host's transfers, run one at a time (another host's run at the same time): files with scp on a pseudo-terminal
@@ -185,7 +214,8 @@ public struct TransferJob: Identifiable, Equatable {
 /// downloads, uploads that replace something, folders and the items of a compressed upload or a relay arrive there and
 /// take their places once complete, so an item being replaced stays as it was until then. A cancelled or failed job
 /// leaves nothing behind (a new file uploaded under its own name is removed). Check for conflicts (`Names.existing`)
-/// before adding.
+/// before adding. Jobs can be paused and resumed (`pause`), and a single file's copy checked against the original
+/// (`verify`): the checks take their turns in the queue too.
 public final class TransferQueue {
     weak var session: Session?
     let hostID: UUID
@@ -196,9 +226,11 @@ public final class TransferQueue {
     public var jobs: [TransferJob] { lock.locked { _jobs } }
     /// Test seam: scp -l (Kbit/s), so that a transfer lasts long enough to be cancelled half-way.
     var bandwidthLimit: Int?
+    /// Test seam: Settings ▸ Verify transfers with SHA-256 for this queue alone (the setting is every host's).
+    var verifiesTransfers: Bool?
     /// scp's and sftp's -l (Kbit/s) for a job starting now: the test seam, else the Transfers panel's speed limit.
     private var limit: Int? { bandwidthLimit ?? TransferCenter.shared.speedLimit.map { max(1, $0 * 8 / 1024) } }
-    /// A job is queued or running (confirm before quitting or disconnecting).
+    /// A job is queued, running or paused (confirm before quitting or disconnecting).
     public var isBusy: Bool { lock.locked { _jobs.contains { !$0.status.isFinished } } }
 
     /// Folders with at least this many entries go as one tar stream (when the server has a shell and tar) instead of
@@ -215,8 +247,11 @@ public final class TransferQueue {
     private var parsers: [UUID: ProgressParser] = [:]
     private var meters: [UUID: Meter] = [:]
     private var lastProgressReport = Date.distantPast
-    /// Single-file jobs whose last try a lost connection cut off: their partial copy is kept, and the retry continues it.
+    /// Single-file jobs whose last try a lost connection or Pause cut off: their partial copy is kept, and the retry (or
+    /// Resume) continues it.
     private var resumable: Set<UUID> = []
+    /// Running jobs that Pause is stopping: they end as paused, a single file keeping what it has copied.
+    private var pausing: Set<UUID> = []
 
     /// A stream's speed: bytes at the start of the current sample, and the rate over the previous one.
     private struct Meter {
@@ -308,11 +343,12 @@ public final class TransferQueue {
         startWorking()
     }
 
-    /// Cancels a queued job, or stops a running one (its partial files are then cleaned up).
+    /// Cancels a queued or paused job (a paused one's kept partial copy goes), or stops a running one (its partial files
+    /// are then cleaned up).
     public func cancel(_ id: UUID) {
         let (running, dropped): (Cancellation?, [TransferJob]) = lock.locked {
             var dropped: [TransferJob] = []
-            if let index = _jobs.firstIndex(where: { $0.id == id }), _jobs[index].status == .queued {
+            if let index = _jobs.firstIndex(where: { $0.id == id }), [.queued, .paused].contains(_jobs[index].status) {
                 _jobs[index].status = .cancelled
                 dropped.append(_jobs[index])
             }
@@ -324,14 +360,81 @@ public final class TransferQueue {
     }
 
     /// Queues a finished job again. A single file that a lost connection cut off continues where it stopped (sftp
-    /// reget / reput); anything else starts afresh.
+    /// reget / reput); anything else starts afresh. After a checksum mismatch the new copy replaces the one that didn't
+    /// match, and is checked again.
     public func retry(_ id: UUID) {
         lock.locked {
             if let index = _jobs.firstIndex(where: { $0.id == id }), _jobs[index].status.isFinished {
+                switch _jobs[index].checksum {
+                case .mismatch?:
+                    _jobs[index].replacing = true
+                    _jobs[index].checksum = .wanted
+                case .wanted?:
+                    break  // the check of a retry that failed: still due
+                default:
+                    _jobs[index].checksum = nil
+                }
                 _jobs[index].status = .queued
                 _jobs[index].progress = TransferProgress()
             }
         }
+        publish()
+        startWorking()
+    }
+
+    /// Pauses the queued and running jobs among `ids`, all at once (the host's next job doesn't start in between). A
+    /// running one stops its scp, sftp or tar: a single file keeps what it has copied, and Resume continues it as after
+    /// a lost connection (sftp reget / reput); a folder, archive or server-to-server copy is cleaned up and starts again.
+    /// Paused jobs wait for `resume`, through a lost connection and its reconnect too.
+    public func pause(_ ids: Set<UUID>) {
+        let (running, changed): ([Cancellation], Bool) = lock.locked {
+            var running: [Cancellation] = [], changed = false
+            for index in _jobs.indices where ids.contains(_jobs[index].id) {
+                switch _jobs[index].status {
+                case .queued:
+                    _jobs[index].status = .paused
+                    changed = true
+                case .running:
+                    pausing.insert(_jobs[index].id)
+                    if let cancellation = cancellations[_jobs[index].id] { running.append(cancellation) }
+                default:
+                    break
+                }
+            }
+            return (running, changed)
+        }
+        running.forEach { $0.cancel() }
+        if changed { publish() }
+    }
+
+    /// Queues the paused jobs among `ids` again: a single file continues where it stopped.
+    public func resume(_ ids: Set<UUID>) {
+        let changed: Bool = lock.locked {
+            var changed = false
+            for index in _jobs.indices where ids.contains(_jobs[index].id) && _jobs[index].status == .paused {
+                _jobs[index].status = .queued
+                _jobs[index].progress = TransferProgress()
+                changed = true
+            }
+            return changed
+        }
+        guard changed else { return }
+        publish()
+        startWorking()
+    }
+
+    /// Checks the copies of the finished single files among `ids` against their originals (SHA-256: `checksum`), each
+    /// in its turn after the host's queued transfers.
+    public func verify(_ ids: Set<UUID>) {
+        let changed: Bool = lock.locked {
+            var changed = false
+            for index in _jobs.indices where ids.contains(_jobs[index].id) && _jobs[index].canVerify {
+                _jobs[index].checksum = .wanted
+                changed = true
+            }
+            return changed
+        }
+        guard changed else { return }
         publish()
         startWorking()
     }
@@ -353,23 +456,31 @@ public final class TransferQueue {
         publish()
     }
 
-    /// Cancels everything and returns once the running job has cleaned up (before disconnecting or quitting). Partial
-    /// copies kept for a retry go too.
+    /// Cancels everything, paused jobs too, and returns once the running job has cleaned up (before disconnecting or
+    /// quitting). Partial copies kept for a retry or Resume go too; copies waiting for their check aren't checked.
     public func cancelAll() async {
         let running: [Cancellation] = lock.locked {
-            for index in _jobs.indices where _jobs[index].status == .queued { _jobs[index].status = .cancelled }
+            for index in _jobs.indices {
+                if [.queued, .paused].contains(_jobs[index].status) { _jobs[index].status = .cancelled }
+                if _jobs[index].status == .done && _jobs[index].checksum == .wanted { _jobs[index].checksum = nil }
+            }
             return Array(cancellations.values)
         }
         running.forEach { $0.cancel() }
         publish()
         await waitUntilIdle()
+        // A job that Pause was stopping meanwhile ended as paused: it is cancelled as well.
+        lock.locked {
+            for index in _jobs.indices where _jobs[index].status == .paused { _jobs[index].status = .cancelled }
+        }
+        publish()
         // Awaited: Disconnect and Quit close the connection next.
         let lines = removals(jobs)
         if let session, !lines.isEmpty, session.state == .connected { _ = try? await session.sftp(lines, slot: .transfer) }
     }
 
-    /// Whether the job's partial copy is kept for its retry (a single file that a lost connection cut off): Retry, or the
-    /// automatic retry after reconnecting, continues it.
+    /// Whether the job's partial copy is kept for its retry (a single file that a lost connection or Pause cut off): Retry,
+    /// Resume, or the automatic retry after reconnecting, continues it.
     public func isResumable(_ id: UUID) -> Bool { lock.locked { resumable.contains(id) } }
 
     /// The jobs won't be retried: a partial copy kept for that goes, a download's part file here and an upload's
@@ -430,19 +541,25 @@ public final class TransferQueue {
         }
     }
 
-    /// The next queued job, marked running; nil (and the worker stops) when there is none.
+    /// The next queued job, marked running; else a finished file whose copy is to be checked (`verify`), marked checking;
+    /// nil (and the worker stops) when there is neither.
     private func next() -> TransferJob? {
         let job: TransferJob? = lock.locked {
-            guard let index = _jobs.firstIndex(where: { $0.status == .queued }) else {
-                working = false
-                return nil
+            if let index = _jobs.firstIndex(where: { $0.status == .queued }) {
+                _jobs[index].status = .running
+                _jobs[index].started = Date()
+                _jobs[index].resumed = false
+                cancellations[_jobs[index].id] = Cancellation()
+                parsers[_jobs[index].id] = ProgressParser()
+                return _jobs[index]
             }
-            _jobs[index].status = .running
-            _jobs[index].started = Date()
-            _jobs[index].resumed = false
-            cancellations[_jobs[index].id] = Cancellation()
-            parsers[_jobs[index].id] = ProgressParser()
-            return _jobs[index]
+            if let index = _jobs.firstIndex(where: { $0.status == .done && $0.checksum == .wanted }) {
+                _jobs[index].checksum = .checking
+                cancellations[_jobs[index].id] = Cancellation()
+                return _jobs[index]
+            }
+            working = false
+            return nil
         }
         if job != nil { publish() }
         return job
@@ -450,6 +567,13 @@ public final class TransferQueue {
 
     private func run(_ job: TransferJob) async {
         let cancellation = lock.locked { cancellations[job.id] } ?? Cancellation()
+        if job.status == .done {  // only its copy to check (`verify`)
+            var checksum: TransferJob.Checksum? = .unchecked(AirSCPError.disconnected.message)
+            if let session { checksum = await self.checksum(job, session: session, cancellation: cancellation) }
+            lock.locked { cancellations[job.id] = nil }
+            setChecksum(job.id, checksum)
+            return
+        }
         let what = (job.direction == .relay ? "server-to-server copy" : "\(job.direction)") + " \(job.source) → \(job.destination)"
             + (job.names.isEmpty ? "" : " (\(job.names.count) items)")
         DebugLog.write("Transfer started: " + what, host: DebugLog.name(for: hostID))
@@ -476,6 +600,12 @@ public final class TransferQueue {
         } else {
             status = .failed(AirSCPError.disconnected)
         }
+        // Pause stopped it (or a lost connection did, after Pause): it waits for Resume, a single file with what it had
+        // copied (`keepsPartial`).
+        if lock.locked({ pausing.contains(job.id) }) {
+            if status == .cancelled { status = .paused }
+            if case .failed(let error) = status, error.kind == .disconnected { status = .paused }
+        }
         switch status {
         case .failed(let error):
             DebugLog.write("Transfer failed: \(what): \(error.message)" + (error.details.isEmpty ? "" : "\nThe tools' own words:\n"
@@ -483,14 +613,25 @@ public final class TransferQueue {
         case .completedWithErrors(let text):
             DebugLog.write("Transfer done, but some items weren't copied: \(what)\n" + text, host: DebugLog.name(for: hostID))
         default:
-            DebugLog.write("Transfer \(status == .done ? "done" : "cancelled"): " + what, host: DebugLog.name(for: hostID))
+            DebugLog.write("Transfer \(status == .done ? "done" : status == .paused ? "paused" : "cancelled"): " + what,
+                           host: DebugLog.name(for: hostID))
         }
-        // A single file that a lost connection cut off keeps its partial copy (`upload`, `download`) for the retry.
-        var cutOff = false
-        if case .failed(let error) = status { cutOff = error.kind == .disconnected && !job.isFolder && job.names.isEmpty }
+        // A single file's copy, checked against the original when asked (Settings ▸ Verify transfers with SHA-256, or a
+        // retry after a mismatch). The job runs ("Verifying") until then; Cancel or Pause leaves it done, unchecked.
+        if status == .done, job.isSingleFile, job.checksum == .wanted || (verifiesTransfers ?? TransferCenter.shared.verifyTransfers),
+           let session {
+            setChecksum(job.id, .checking)
+            setChecksum(job.id, await checksum(job, session: session, cancellation: cancellation))
+        }
+        // A single file that a lost connection or Pause cut off keeps its partial copy (`upload`, `download`) for the
+        // retry or Resume.
+        var cutOff = status == .paused
+        if case .failed(let error) = status { cutOff = error.kind == .disconnected }
+        cutOff = cutOff && job.isSingleFile
         let dropped: [TransferJob] = lock.locked {
             cancellations[job.id] = nil
             parsers[job.id] = nil
+            pausing.remove(job.id)
             if cutOff { resumable.insert(job.id) } else { resumable.remove(job.id) }
             var completed = status == .done
             if case .completedWithErrors = status { completed = true }
@@ -566,21 +707,28 @@ public final class TransferQueue {
         } catch {
             // What this job made is partial: its temporary copy goes (an item it was to replace is untouched), and so
             // does a new file scp was writing when cancelled or when the disk filled up. A file that a lost connection
-            // cut off stays for the retry to continue.
+            // or Pause cut off stays for the retry or Resume to continue.
             let kind = (error as? AirSCPError)?.kind
             if job.isFolder {
                 try? await session.deleteFolders([target], slot: .transfer)
-            } else if kind != .disconnected && (staged || kind == .cancelled || kind == .diskFull) {
+            } else if !keepsPartial(job, after: error) && (staged || kind == .cancelled || kind == .diskFull) {
                 _ = try? await session.sftp(["rm \(Quote.sftp(target))"], slot: .transfer)
             }
             return TransferQueue.status(for: error)
         }
     }
 
-    /// A retry of a single file that a lost connection cut off: continues its partial copy `partial` (the local part
-    /// file of a download, the remote file of an upload) with sftp's reget or reput, on a terminal for sftp's progress
-    /// meter (scp's format). False when this job has no partial copy to continue, or sftp couldn't (it is gone, or not
-    /// smaller than the source): then it starts afresh. A lost connection or a cancel throws, as for scp.
+    /// The job's single file stopped with its partial copy intact, for the next try to continue: a lost connection cut
+    /// it off, or Pause stopped it (`pausing`, set before its processes were stopped).
+    private func keepsPartial(_ job: TransferJob, after error: Error) -> Bool {
+        let kind = (error as? AirSCPError)?.kind
+        return kind == .disconnected || kind == .cancelled && lock.locked { pausing.contains(job.id) }
+    }
+
+    /// A retry (or Resume) of a single file that a lost connection or Pause cut off: continues its partial copy `partial`
+    /// (the local part file of a download, the remote file of an upload) with sftp's reget or reput, on a terminal for
+    /// sftp's progress meter (scp's format). False when this job has no partial copy to continue, or sftp couldn't (it is
+    /// gone, or not smaller than the source): then it starts afresh. A lost connection or a cancel throws, as for scp.
     private func resume(_ job: TransferJob, into partial: String, session: Session, cancellation: Cancellation) async throws -> Bool {
         guard !job.isFolder, lock.locked({ resumable.contains(job.id) }) else { return false }
         // A download's kept part must still be there: sftp's reget would start again from 0 into a missing one.
@@ -599,6 +747,29 @@ public final class TransferQueue {
     private func setResumed(_ id: UUID, _ resumed: Bool) {
         lock.locked { if let index = _jobs.firstIndex(where: { $0.id == id }) { _jobs[index].resumed = resumed } }
         publish()
+    }
+
+    private func setChecksum(_ id: UUID, _ checksum: TransferJob.Checksum?) {
+        lock.locked { if let index = _jobs.firstIndex(where: { $0.id == id }) { _jobs[index].checksum = checksum } }
+        publish()
+    }
+
+    /// A single file's copy checked against the original: their SHA-256, worked out where each one is (the server's
+    /// with `sha256(_:on:)`, this Mac's in AirSCP). nil when cancelled.
+    private func checksum(_ job: TransferJob, session: Session, cancellation: Cancellation) async -> TransferJob.Checksum? {
+        let (local, remote) = job.direction == .upload ? (job.source, job.destination) : (job.destination, job.source)
+        let checksum: TransferJob.Checksum
+        do {
+            let server = try await TransferQueue.sha256(remote, on: session, cancellation: cancellation)
+            let mac = try TransferQueue.sha256(local, cancellation: cancellation)
+            let (original, copy) = job.direction == .upload ? (mac, server) : (server, mac)
+            checksum = original == copy ? .verified(copy) : .mismatch(original: original, copy: copy)
+        } catch {
+            if cancellation.isCancelled { return nil }
+            checksum = .unchecked((error as? AirSCPError)?.message ?? error.localizedDescription)
+        }
+        DebugLog.write("Checksum of \(job.source) → \(job.destination): \(checksum)", host: DebugLog.name(for: hostID))
+        return checksum
     }
 
     /// A folder as one stream: this Mac's tar into tar -x on the server, in `target` (made new). Symbolic links stay
@@ -655,8 +826,9 @@ public final class TransferQueue {
             try TransferQueue.moveIntoPlace(part, to: job.destination, replacing: job.replacing)
             return errors.map { .completedWithErrors($0) } ?? .done
         } catch {
-            // A file that a lost connection cut off keeps what arrived, for the retry to continue (`resumable`).
-            if job.isFolder || (error as? AirSCPError)?.kind != .disconnected { try? fileManager.removeItem(atPath: part) }
+            // A file that a lost connection or Pause cut off keeps what arrived, for the retry or Resume to continue
+            // (`resumable`).
+            if job.isFolder || !keepsPartial(job, after: error) { try? fileManager.removeItem(atPath: part) }
             return TransferQueue.status(for: error)
         }
     }
@@ -1064,6 +1236,48 @@ public final class TransferQueue {
         return stat(path, &info) == 0 ? Int64(info.st_size) : nil
     }
 
+    /// The SHA-256 of a file on the server, in lower-case hex: sha256sum (GNU's or BusyBox's), else shasum (Perl's, as
+    /// on macOS), else the BSDs' sha256. A shell account only (`Session.shell`); the transfer slot, so a check waits for
+    /// no listing and holds none up.
+    static func sha256(_ path: String, on session: Session, cancellation: Cancellation) async throws -> String {
+        let file = Quote.shell(path)
+        let output = try await session.shell("if command -v sha256sum >/dev/null 2>&1; then sha256sum -- \(file); "
+            + "elif command -v shasum >/dev/null 2>&1; then shasum -a 256 -- \(file); "
+            + "elif command -v sha256 >/dev/null 2>&1; then sha256 -q -- \(file); "
+            + "else echo 'The server has no sha256sum, shasum or sha256 to work out a checksum with.' >&2; exit 127; fi",
+            slot: .transfer, cancellation: cancellation)
+        // "<hash>  <name>" (GNU puts a "\" first when it escaped the name), or the hash alone.
+        let hash = String(output.drop { $0 == "\\" }.prefix(64)).lowercased()
+        guard hash.count == 64, hash.allSatisfy(\.isHexDigit) else {
+            throw AirSCPError(.other, "The server's checksum tool didn't answer with a checksum.", details: output)
+        }
+        return hash
+    }
+
+    /// The SHA-256 of a file on this Mac, in lower-case hex, read a megabyte at a time.
+    static func sha256(_ path: String, cancellation: Cancellation) throws -> String {
+        let file = open(path, O_RDONLY | O_CLOEXEC)
+        guard file >= 0 else {
+            let failure = errno
+            throw AirSCPError(failure == ENOENT ? .noSuchFile : .other,
+                              "Can't read \(RemotePath.name(path)) on this Mac: \(String(cString: strerror(failure))).")
+        }
+        defer { close(file) }
+        var hasher = SHA256()
+        var buffer = [UInt8](repeating: 0, count: 1 << 20)
+        while true {
+            if cancellation.isCancelled { throw AirSCPError.cancelled }
+            let count = read(file, &buffer, buffer.count)
+            if count == 0 { break }
+            guard count > 0 else {
+                if errno == EINTR { continue }
+                throw AirSCPError(.other, "Can't read \(RemotePath.name(path)) on this Mac: \(String(cString: strerror(errno))).")
+            }
+            buffer.withUnsafeBytes { hasher.update(bufferPointer: UnsafeRawBufferPointer(rebasing: $0.prefix(count))) }
+        }
+        return hasher.finalize().map { String(format: "%02x", $0) }.joined()
+    }
+
     /// Whether names that differ only in case are one file in this Mac's folder (APFS and HFS+ as a rule).
     public static func ignoresCase(_ dir: String) -> Bool {
         let values = try? URL(fileURLWithPath: dir).resourceValues(forKeys: [.volumeSupportsCaseSensitiveNamesKey])
@@ -1248,6 +1462,7 @@ public final class TransferCenter: ObservableObject {
     private var scheduled = false
     private var lastPublished = Date.distantPast
     private var _speedLimit: Int?
+    private var _verifyTransfers = false
 
     private init() {}
 
@@ -1258,9 +1473,25 @@ public final class TransferCenter: ObservableObject {
         set { lock.locked { _speedLimit = newValue.flatMap { $0 > 0 ? $0 : nil } } }
     }
 
+    /// Settings ▸ Verify transfers with SHA-256: each single file's copy is checked against the original once it has
+    /// arrived (`TransferQueue.verify`).
+    public var verifyTransfers: Bool {
+        get { lock.locked { _verifyTransfers } }
+        set { lock.locked { _verifyTransfers = newValue } }
+    }
+
     public func cancel(_ id: UUID) { queue(of: id)?.cancel(id) }
 
     public func retry(_ id: UUID) { queue(of: id)?.retry(id) }
+
+    /// Pauses the queued and running jobs among `ids`, whichever hosts they are on (`TransferQueue.pause`).
+    public func pause(_ ids: Set<UUID>) { queues().forEach { $0.pause(ids) } }
+
+    /// Queues the paused jobs among `ids` again (`TransferQueue.resume`).
+    public func resume(_ ids: Set<UUID>) { queues().forEach { $0.resume(ids) } }
+
+    /// Checks the copies of the finished single files among `ids` against their originals (`TransferQueue.verify`).
+    public func verify(_ ids: Set<UUID>) { queues().forEach { $0.verify(ids) } }
 
     /// Removes a finished job from the list.
     public func remove(_ id: UUID) { queue(of: id)?.remove(id) }

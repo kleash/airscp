@@ -67,7 +67,11 @@ map with tests is [feature-map.md](feature-map.md).
   `--exclude`. Everything arrives as `.airscp-<id>.part` and is renamed into place when complete, so a cancelled or
   failed copy never damages what it was replacing (a replaced file keeps its mode). Server-to-server copies stream
   through this Mac (relay). A single file cut off by a lost connection keeps its part, and its retry continues with
-  sftp `reget`/`reput`.
+  sftp `reget`/`reput`. **Pause** stops a job's processes as a cancel does, but a single file keeps its part (as after a
+  lost connection) and Resume continues it the same way; anything else is cleaned up and starts again. Paused jobs
+  stay paused through a lost connection. **Checks** (Verify with Checksum, Settings ▸ Verify transfers with SHA-256)
+  compare a single file's SHA-256 here (CryptoKit) with the server's (`sha256sum`, else `shasum` or BSD `sha256`), in
+  the queue's turn: after the transfer, or for a finished job after the host's queued jobs.
 - **UI performance**: listing, sorting and progress parsing happen off the main thread; progress updates are throttled
   (≤ 10/s per job, ≤ 4/s for the panel); the Transfers panel lists unfinished jobs and the newest 100 finished.
 

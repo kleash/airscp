@@ -116,7 +116,7 @@ final class BrowserContentController: NSViewController {
         right.connectionChanged(state, startIn: remoteStart(session))
     }
 
-    /// Transfers queued or running: Close and Quit ask before cancelling them.
+    /// Transfers queued, running or paused: Close and Quit ask before cancelling them.
     var runningTransferCount: Int {
         session.transfers.jobs.filter { !$0.status.isFinished }.count
     }
@@ -1006,7 +1006,7 @@ final class BrowserContentController: NSViewController {
             let dir = !local && !job.names.isEmpty ? job.destination : RemotePath.parent(job.destination)
             pendingReloads.append((job.hostID, local, dir, Date()))
         }
-        let busy = Set(jobs.filter { !$0.status.isFinished }.map(\.hostID))
+        let busy = Set(jobs.filter { $0.status.isActive }.map(\.hostID))
         let due = pendingReloads.filter { !busy.contains($0.hostID) || Date().timeIntervalSince($0.since) > 10 }
         guard !due.isEmpty else { return }
         pendingReloads.removeAll { !busy.contains($0.hostID) || Date().timeIntervalSince($0.since) > 10 }

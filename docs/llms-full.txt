@@ -199,7 +199,7 @@ Copy files between your Mac and a server by dragging them, like in Finder.
 
 The copies run in the **Transfers** list at the bottom of the window. You can keep working meanwhile.
 
-(Picture: Files being uploaded: the Transfers list shows one done, one running and one waiting)
+(Picture: Files being uploaded: the Transfers list shows one running, one paused and one done)
 
 ## Other ways to copy
 
@@ -841,7 +841,7 @@ Upload files from your Mac to a server, or download them from a server to your M
 2. Drag files from the server pane to the left pane, or onto your Desktop or a Finder window.
    Or select them and click **Download**, or choose **File ▸ Download To…** to pick a folder.
 
-(Picture: Uploads in the Transfers list: two done, one running, one waiting)
+(Picture: Uploads in the Transfers list: one running, one paused, one done)
 
 The copies run in the **Transfers** list. See [Transfers and the queue](https://kleash.github.io/airscp/transfers/).
 
@@ -1096,7 +1096,7 @@ Source: https://kleash.github.io/airscp/transfers/
 Every upload and download goes into the **Transfers** list at the bottom of the window. Transfers run in the
 background, so you keep browsing. Each host runs one transfer at a time; different hosts run at the same time.
 
-(Picture: The Transfers list: two done, one running at 2.4 MB/s, one waiting)
+(Picture: The Transfers list: one upload running, one paused, one done and verified)
 
 ## What the list shows
 
@@ -1106,8 +1106,11 @@ and the speed. A copy between two servers shows both hosts, “A → B”.
 ## Steps
 
 - **Cancel** one transfer: select it and click **Cancel**. **Cancel All** stops them all (AirSCP asks first).
+- **Pause** a transfer: right-click it and choose **Pause**, later **Resume**. **Pause All** and **Resume All** do it for
+  every transfer.
 - **Retry** a failed transfer: select it and click **Retry**.
 - **Remove** a row: select it and click **Remove**. **Clear Finished** removes all finished rows.
+- **Check a copy**: right-click a finished transfer and choose **Verify with Checksum**.
 - **See what went wrong**: right-click a row and choose **Show Details…**.
 - **Find a download**: right-click it and choose **Show in Finder**.
 
@@ -1116,6 +1119,8 @@ and the speed. A copy between two servers shows both hosts, “A → B”.
 - [When the connection drops during a transfer](https://kleash.github.io/airscp/transfers/resume.html)
 - [Limit the speed](https://kleash.github.io/airscp/transfers/speed-limit.html)
 - [Download as one archive](https://kleash.github.io/airscp/transfers/download-as-archive.html)
+- [Pause and resume transfers](https://kleash.github.io/airscp/transfers/pause-and-resume.html)
+- [Check a copy with its checksum](https://kleash.github.io/airscp/transfers/verify-checksums.html)
 
 ## Tips
 
@@ -1197,6 +1202,69 @@ the server.
   folder (**Settings ▸ Downloads folder**).
 - The progress shows the bytes received, not a percentage: the size is known only at the end.
 - The other way round: **File ▸ Upload Compressed** packs Mac items into one stream and unpacks them on the server.
+
+
+---
+
+Source: https://kleash.github.io/airscp/transfers/pause-and-resume.html
+
+# Pause and resume transfers
+
+Pause a transfer to free the connection for something else, and resume it later. A single file continues where it
+stopped.
+
+## Steps
+
+1. In the Transfers list, right-click a transfer and choose **Pause**. Select several transfers to pause them together.
+2. To go on, right-click it and choose **Resume**.
+
+To pause or resume every transfer at once, click **Pause All** or **Resume All** above the list.
+
+(Picture: The Transfers list: one upload running, one paused, one verified)
+
+## Tips
+
+- A paused transfer waits until you resume it, even when the connection drops and comes back.
+- Single files continue where they stopped. Folders, archives and copies between two servers start again.
+- While AirSCP reconnects to the server by itself, **Resume** waits: resume once the connection is back.
+- AirSCP can't tell whether a file changed while its transfer was paused. Resume only a file that stayed the same, or
+  turn on **Verify transfers with SHA-256** in Settings to check the copy.
+- **Cancel** a paused transfer to throw away the part that was copied. Disconnecting and quitting do that too, and
+  AirSCP asks first.
+- Paused transfers don't keep your Mac awake, and the Dock icon doesn't count them.
+
+
+---
+
+Source: https://kleash.github.io/airscp/transfers/verify-checksums.html
+
+# Check a copy with its checksum
+
+AirSCP can make sure that a copied file is exactly the same as the original. It compares their SHA-256 checksums: a
+fingerprint of every byte in the file.
+
+## Steps
+
+- **One transfer**: right-click a finished transfer in the Transfers list and choose **Verify with Checksum**.
+- **Every transfer**: turn on **AirSCP ▸ Settings ▸ Verify transfers with SHA-256**. Each file is checked as soon as it
+  arrives.
+
+The status then says:
+
+- **Verified**: the copy and the original are the same.
+- **Mismatch** (red): they differ. The copy was damaged, or one of them changed after the copy was made. Click
+  **Retry** to copy the file again. AirSCP replaces the bad copy and checks the new one.
+- **Not verified**: AirSCP couldn't check it. Point at the status to see why.
+
+(Picture: The Transfers list with a verified upload)
+
+## Tips
+
+- Only single files are checked, not folders or archives.
+- The server works out its checksum with `sha256sum` or `shasum`. Accounts that allow file transfers (sftp) only can't
+  run them, so their copies show **Not verified**.
+- Checking reads the whole file on both sides, so big files take longer.
+- To see the checksum, point at **Verified** in the list.
 
 
 ---
@@ -1907,6 +1975,7 @@ still apply. With Increase contrast on, the dark look drops its blue tint.
 | **Downloads folder** | Where **Download To…** starts, and where **Download as .tar.gz** puts the archive when the other pane isn't this Mac. Drags and the Download button go to the folder shown. |
 | **Show hidden files in new panes** | Off by default. Each pane can still switch with <kbd>⇧⌘.</kbd>. |
 | **Copied files keep their original date** | Off by default: copies are dated now. On: they keep the file's own date (`scp -p`). |
+| **Verify transfers with SHA-256** | Off by default. On: each copied file is compared with the original once it arrives. See [Check a copy with its checksum](https://kleash.github.io/airscp/transfers/verify-checksums.html). |
 | **Ask before deleting on a server** | On by default. |
 | **Always calculate folder sizes** | Off by default: folders show “—” until you click **Σ**. |
 
@@ -2182,6 +2251,11 @@ Source: https://kleash.github.io/airscp/whats-new.html
 - **The editor never overwrites someone else's changes unasked**: when a file changed on the server after you opened
   it, **Save** asks first and can show you the server's version.
 - **Owner and Group show names** on servers, as **Get Info** does. Point at one to see its number.
+- **Pause and resume transfers**: one at a time from the Transfers list (right-click), or all at once with **Pause All**
+  and **Resume All**. A single file continues where it stopped. See [Pause and resume transfers](https://kleash.github.io/airscp/transfers/pause-and-resume.html).
+- **Check copies with SHA-256**: **Verify with Checksum** compares a copied file with the original, and **Settings ▸
+  Verify transfers with SHA-256** checks every file as it arrives. A damaged copy shows **Mismatch**, and **Retry**
+  copies it again. See [Check a copy with its checksum](https://kleash.github.io/airscp/transfers/verify-checksums.html).
 
 ## AirSCP 1.0
 
@@ -2426,12 +2500,24 @@ AirSCP was installed with `./install.sh`).
 - Between two servers: show the other server in the left pane (its source menu: `set id=left.source value=<host>`),
   then `drop from=left to=right`.
 - `wait until=transfers_done` (optionally host), then `snapshot include=["transfers"]`: each job's id, host, name,
-  direction, size, percent, speed (or "stalled"), eta, status, problem. Cancel or retry: `select pane=transfers
+  direction, size, percent, speed (or "stalled"), eta, status, problem, note. Cancel or retry: `select pane=transfers
   names=[<name>]` (or `ids=[<id>]`) → `press id=transfers.cancel` / `transfers.retry` / `transfers.remove`, or its
   context menu: `menu path="context > Show in Finder" pane=transfers` (a finished download), `"context > Show
   Details…"` (a problem's output); `press id=transfers.clearFinished`, `press id=transfers.cancelAll` (asks). The
-  panel lists the queued and running jobs first, then the newest 100 finished ones (newest first); snapshot has every
-  unfinished job and the newest 500 finished ones of each host.
+  panel lists the queued, running and paused jobs first, then the newest 100 finished ones (newest first); snapshot has
+  every unfinished job and the newest 500 finished ones of each host.
+- Pause and resume: select the jobs (as above) → `menu path="context > Pause" pane=transfers` (queued or running ones)
+  or `"context > Resume"` (paused ones); every job at once: `press id=transfers.pauseAll` / `transfers.resumeAll`. A
+  paused job's status is "Paused" and its note says how it goes on: a single file keeps what it copied (`"resumable":
+  true`) and continues where it stopped (then `"resumed": true`); folders, archives and server-to-server copies start
+  again. Paused jobs wait through a lost connection and its reconnect (Resume is off while their host reconnects by
+  itself); Cancel, Cancel All and Disconnect throw a paused job's part away. `wait until=transfers_done` doesn't wait
+  for paused jobs.
+- Check a copy against the original (SHA-256, single files): `menu path="context > Verify with Checksum"
+  pane=transfers` on a finished job, or every file as it arrives with `set id=settings.verifyTransfers value=true
+  in=window:Settings`. `wait until=transfers_done` waits for the checks too; then the status is "Verified" (with
+  `sha256`), "Mismatch" (problem, and details with both checksums: `transfers.retry` copies the file again in place of
+  the bad copy and checks it again) or "Not verified" (the note says why: an sftp-only account runs no checksum tool).
 - A lost connection: a single file cut off keeps what arrived, and its job shows `"resumable": true` (problem "The
   connection to the server was lost."). Retry, or the automatic retry once the host has reconnected, continues it
   where it stopped (while the host reconnects by itself, transfers.retry is off: the job runs again by itself then): the job then shows `"resumed": true` and its percent goes on from there. Remove, Clear Finished,

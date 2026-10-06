@@ -78,10 +78,10 @@ final class AppModel: ObservableObject {
             .sink { [weak self] counts in self?.activeTransfers = counts }
     }
 
-    /// Queued and running jobs per host (a relay counts for its destination).
+    /// Queued and running jobs per host (a relay counts for its destination; a paused job waits, and keeps no Mac awake).
     nonisolated static func activeTransferCounts(_ jobs: [TransferJob]) -> [UUID: Int] {
         jobs.reduce(into: [:]) { counts, job in
-            if !job.status.isFinished { counts[job.hostID, default: 0] += 1 }
+            if job.status.isActive { counts[job.hostID, default: 0] += 1 }
         }
     }
 

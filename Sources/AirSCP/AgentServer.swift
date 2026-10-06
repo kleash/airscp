@@ -1508,12 +1508,16 @@ final class AgentServer {
         case "transfers_done":
             let hosts = try (arguments["host"] as? String).map { [try target($0)] }
             check = { [self] in
-                // Nothing queued or running, and nothing being prepared (the destination listed, conflicts asked); and the
-                // Transfers panel shows them finished too (the snapshot's list, which follows the queues within 0.25 s).
+                // Nothing queued or running (paused jobs wait for Resume), no copy waiting for or under its checksum check,
+                // and nothing being prepared (the destination listed, conflicts asked); and the Transfers panel shows them
+                // settled too (the snapshot's list, which follows the queues within 0.25 s).
+                func settled(_ job: TransferJob) -> Bool {
+                    !job.status.isActive && !(job.status == .done && (job.checksum == .wanted || job.checksum == .checking))
+                }
                 let jobs = liveJobs().filter { hosts?.contains($0.hostID) ?? true }
                 let planning = main?.workspaces.values.contains { $0.browser.planning > 0 } ?? false
-                let shown = Dictionary(TransferCenter.shared.jobs.map { ($0.id, $0.status.isFinished) }) { first, _ in first }
-                guard !planning, jobs.allSatisfy({ $0.status.isFinished && shown[$0.id] == true }) else { return nil }
+                let shown = Dictionary(TransferCenter.shared.jobs.map { ($0.id, settled($0)) }) { first, _ in first }
+                guard !planning, jobs.allSatisfy({ settled($0) && shown[$0.id] == true }) else { return nil }
                 return ["summary": TransferText.summary(jobs), "jobs": jobs.map(jobJSON)]
             }
         case "text":

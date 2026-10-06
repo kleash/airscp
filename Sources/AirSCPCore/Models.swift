@@ -291,6 +291,8 @@ public struct AppSettings: Codable, Equatable {
     public var agentControl = false
     /// The Transfers panel's speed limit for every host's transfers, in MB/s; 0: none (PLAN.md S.2).
     public var transferSpeedLimit = 0
+    /// Each single file's copy is checked against the original (SHA-256) once it has arrived. Off by default.
+    public var verifyTransfers = false
     /// The welcome sheet has been shown (it comes once, on a first run with no hosts; Help ▸ Welcome to AirSCP… again).
     public var welcomeShown = false
     /// How new hosts check their server's key, and new desktops their server's certificate (with `caFile` for
@@ -319,6 +321,7 @@ public struct AppSettings: Codable, Equatable {
             ?? defaults.alwaysCalculateFolderSizes
         agentControl = try container.decodeIfPresent(Bool.self, forKey: .agentControl) ?? defaults.agentControl
         transferSpeedLimit = try container.decodeIfPresent(Int.self, forKey: .transferSpeedLimit) ?? defaults.transferSpeedLimit
+        verifyTransfers = try container.decodeIfPresent(Bool.self, forKey: .verifyTransfers) ?? defaults.verifyTransfers
         welcomeShown = try container.decodeIfPresent(Bool.self, forKey: .welcomeShown) ?? defaults.welcomeShown
         hostKeyCheck = try container.decodeIfPresent(HostKeyCheck.self, forKey: .hostKeyCheck) ?? defaults.hostKeyCheck
         certificateCheck = try container.decodeIfPresent(CertificateCheck.self, forKey: .certificateCheck)

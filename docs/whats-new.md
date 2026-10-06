@@ -17,6 +17,11 @@ nav_order: 18
 - **The editor never overwrites someone else's changes unasked**: when a file changed on the server after you opened
   it, **Save** asks first and can show you the server's version.
 - **Owner and Group show names** on servers, as **Get Info** does. Point at one to see its number.
+- **Pause and resume transfers**: one at a time from the Transfers list (right-click), or all at once with **Pause All**
+  and **Resume All**. A single file continues where it stopped. See [Pause and resume transfers](transfers/pause-and-resume.md).
+- **Check copies with SHA-256**: **Verify with Checksum** compares a copied file with the original, and **Settings ▸
+  Verify transfers with SHA-256** checks every file as it arrives. A damaged copy shows **Mismatch**, and **Retry**
+  copies it again. See [Check a copy with its checksum](transfers/verify-checksums.md).
 
 ## AirSCP 1.0
 

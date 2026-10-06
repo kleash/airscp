@@ -231,7 +231,7 @@ final class HostWorkspace: NSViewController {
         }
     }
 
-    /// Transfers queued or running (the browser's count): Disconnect, Delete and Quit ask before cancelling them.
+    /// Transfers queued, running or paused (the browser's count): Disconnect, Delete and Quit ask before cancelling them.
     var runningTransferCount: Int { browser.runningTransferCount }
 
     /// Idle, not starting to connect, no transfers listed, and no editor or file open in another app (they save or
