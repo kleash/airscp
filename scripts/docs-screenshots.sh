@@ -508,7 +508,6 @@ shot tunnels
 a press title='Add Tunnel…'
 sheet
 a set id=tunnelEditor.listenPort value=8080
-a set id=tunnelEditor.targetHost value=localhost
 a set id=tunnelEditor.targetPort value=80
 sleep 0.3
 shot tunnel-editor target=sheet

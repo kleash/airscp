@@ -274,14 +274,19 @@ AirSCP was installed with `./install.sh`).
   here); without sudo, it says the process can't be killed from this account.
 
 ## tunnels
-- `press title=Tunnels` (tab) → `press title="Add Tunnel…"` → `set id=tunnelEditor.type value=Local` (Remote,
-  "SOCKS proxy"), `tunnelEditor.listenPort`, `tunnelEditor.targetHost` (Reach host), `tunnelEditor.targetPort` (Reach
-  port) → `press title=Save`.
-- Each tunnel's controls are named after it: its switch `press title="Local 8022 → localhost:22"` (or
-  `set title="Local 8022 → localhost:22" value=true`), `press title="Edit Local 8022 → localhost:22"` (only while
-  it is off) and `press title="Remove Local 8022 → localhost:22"`. `snapshot` → workspace.tunnels: each one's title
-  and whether it is on (screenshots may draw a switch off). This Mac's end listens on 127.0.0.1; a port another
-  program listens on is refused, with its error under the row (elements).
+- `press title=Tunnels` (tab) → `press title="Add Tunnel…"` → a sheet that reads as a sentence: `set
+  id=tunnelEditor.type value=Local` (Remote, "SOCKS proxy"), `tunnelEditor.listenPort` (the port to open: on this Mac,
+  for Remote on the server), `tunnelEditor.destination` ("The server itself" for Local, "This Mac" for Remote: ssh's
+  localhost at that end; or "Another machine", which shows `tunnelEditor.targetHost`: a name that end looks up),
+  `tunnelEditor.targetPort` (the port to open until you set it) → `press title=Save`. The sheet's text has the route it
+  saves, and why Save is off.
+- Each tunnel is named by its route, as its row shows it (web: the host's name): "localhost:8022 on this Mac → web →
+  localhost:22 on web (the server itself)", "localhost:9000 on web → this Mac → localhost:3000 on this Mac",
+  "localhost:1080 on this Mac (SOCKS proxy) → web → any address web can reach". Its switch is `press title=<route>` (or
+  `set title=<route> value=true`), then `press title="Edit <route>"` (only while it is off) and `press title="Remove
+  <route>"`. `snapshot` → workspace.tunnels: each one's title (its route) and whether it is on (screenshots may draw a
+  switch off). This Mac's end listens on 127.0.0.1; a port another program listens on is refused, with its error
+  under the row (elements).
 
 ## keys
 - `menu path="Window > Keys"` opens the Keys window: use `in="window:Keys"` for its controls (and its sheets). The keys
