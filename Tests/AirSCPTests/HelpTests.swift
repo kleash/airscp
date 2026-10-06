@@ -357,7 +357,10 @@ extension FeatureRoundAppTests {
             defer { main.window?.orderOut(nil) }
             var silent: [String] = []
             @MainActor func check(_ state: String) {
-                for item in agent.menusJSON() where item["enabled"] as? Bool == false && (item["reason"] as? String ?? "").isEmpty {
+                // macOS's own items say nothing of AirSCP: Hide Others is off when no other app is open (a fresh CI runner).
+                let appKits: Set<String> = ["AirSCP > Hide Others", "AirSCP > Show All", "AirSCP > Services"]
+                for item in agent.menusJSON() where item["enabled"] as? Bool == false && (item["reason"] as? String ?? "").isEmpty
+                    && !appKits.contains(item["path"] as? String ?? "") {
                     silent.append("\(state): \(item["path"] as? String ?? "")")
                 }
             }
