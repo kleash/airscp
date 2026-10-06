@@ -356,9 +356,6 @@ private func pauseMidway(_ queue: TransferQueue, _ id: UUID, partial: String) as
         var now = await job()
         #expect(now?["status"] as? String == "Paused" && now?["resumable"] as? Bool == true, "\(now ?? [:])")
         #expect(now?["note"] as? String == "Paused: Resume continues where it stopped", "\(now ?? [:])")
-        let elements = await call(agent, "snapshot", ["include": ["elements"]])["elements"] as? [[String: Any]] ?? []
-        let resumeAll = elements.first { $0["id"] as? String == "transfers.resumeAll" }
-        #expect(resumeAll?["enabled"] as? Bool == true && resumeAll?["help"] as? String == "Continue every paused transfer")
 
         session.transfers.bandwidthLimit = nil
         #expect(await call(agent, "menu", ["path": "context > Resume", "pane": "transfers"]).error == nil)

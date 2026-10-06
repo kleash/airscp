@@ -977,7 +977,8 @@ func field(_ sheet: [String: Any]?, _ id: String) -> [String: Any]? {
         _ = await call(agent, "menu", ["path": "Host > Connect"])
         #expect(await call(agent, "wait", ["until": "connected", "timeout": 20]).error == nil)
         let session = try #require(main.selectedWorkspace?.session)
-        session.transfers.bandwidthLimit = 16_000  // 2 MB/s: 10 s for the file
+        // 500 KB/s (40 s for the file): still running when a busy main queue lets the wait below look again.
+        session.transfers.bandwidthLimit = 4_000
         _ = await call(agent, "wait", ["until": "listed", "pane": "right", "text": "agent-resume.bin", "timeout": 20])
         _ = await call(agent, "select", ["pane": "right", "names": ["agent-resume.bin"]])
         let reply = await call(agent, "drop", ["from": "right", "to": "local:" + local])
