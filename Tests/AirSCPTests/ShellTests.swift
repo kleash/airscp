@@ -491,3 +491,56 @@ private func report(_ state: Session.State, _ workspace: HostWorkspace?) {
     #expect(bar.items.map(\.title) == ["AirSCP", "File", "Edit", "View", "Go", "Host", "Window", "Help"])
     #expect(seen.count > 40)
 }
+
+/// The toolbar's + (an NSMenuToolbarItem) is a pull-down button, whose first item is its title and is never listed: it
+/// offered only New Remote Desktop… and New Group…, with or without hosts. It lists New Host… first.
+@MainActor @Test func theAddButtonOffersNewHostFirst() throws {
+    _ = NSApplication.shared
+    let askpass = try AskpassServer(helperPath: TestEnvironment.airscpBinary)
+    defer { askpass.close() }
+    for model in [testModel([]), testModel([SSHHost(label: "web", hostname: "web")])] {
+        let main = testWindow(model, askpass)
+        defer { main.window?.orderOut(nil) }
+        let add = try #require(main.window?.toolbar?.items.first { $0.itemIdentifier == .add } as? NSMenuToolbarItem)
+        #expect(add.menu.items.first?.title == "")  // the pull-down's title
+        #expect(add.menu.items.dropFirst().map(\.title) == ["New Host…", "New Remote Desktop…", "New Group…"])
+        #expect(add.menu.items.dropFirst().allSatisfy { $0.toolTip?.isEmpty == false })
+        // AppKit draws it as a pull-down of this menu (when its view is there).
+        let frame = main.window?.contentView?.superview
+        for button in views(NSPopUpButton.self, in: frame) where button.menu === add.menu { #expect(button.pullsDown) }
+    }
+}
+
+/// The sidebar's "Debug logging on" had no way to turn it off there: its Turn Off does, and Help ▸ Turn Off Debug
+/// Logging (Turn On Debug Logging while it is off) too. Settings keeps its switch.
+@MainActor @Test func debugLoggingTurnsOffFromTheSidebarAndTheHelpMenu() async throws {
+    _ = NSApplication.shared
+    _ = TestEnvironment.isolated
+    let model = testModel([])
+    let delegate = AppDelegate()
+    delegate.model = model
+    let help = try #require(delegate.mainMenu().item(withTitle: "Help")?.submenu)
+    let toggle = try #require(help.items.first { $0.action == #selector(AppDelegate.toggleDebugLogging(_:)) })
+    #expect(delegate.validateMenuItem(toggle) && toggle.title == "Turn On Debug Logging")
+    delegate.toggleDebugLogging(toggle)
+    #expect(model.data.settings.debugLogging)
+    model.debugLoggingOn = true  // as the app's observer of the setting does
+    #expect(delegate.validateMenuItem(toggle) && toggle.title == "Turn Off Debug Logging")
+    delegate.toggleDebugLogging(toggle)
+    #expect(!model.data.settings.debugLogging)
+
+    // The sidebar: Turn Off next to "Debug logging on".
+    model.data.settings.debugLogging = true
+    let askpass = try AskpassServer(helperPath: TestEnvironment.airscpBinary)
+    defer { askpass.close() }
+    let (main, agent, _) = try agentWindow(model, askpass)
+    defer {
+        agent.close()
+        main.window?.orderOut(nil)
+    }
+    let window = try #require(main.window)
+    #expect(await eventually { AXNode.flatten(window).contains { $0.id == "debugLog.turnOff" && $0.help?.isEmpty == false } })
+    #expect(await call(agent, "press", ["id": "debugLog.turnOff"]).error == nil)
+    #expect(!model.data.settings.debugLogging)
+    model.debugLoggingOn = false
+}

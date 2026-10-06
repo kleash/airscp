@@ -160,7 +160,9 @@ AirSCP was installed with `./install.sh`).
   `prompt.answer`; set it and press OK). A question asked again begins "That password wasn't accepted" (a code:
   "That answer wasn't accepted"). Then `wait until=connected`.
   Disconnect: `menu path="Host > Disconnect"`. A lost connection reconnects by itself when it can (banner
-  "Reconnecting…"); `snapshot` → workspace.banner says what happened, with its buttons ("Reconnect").
+  "Reconnecting…"); `snapshot` → workspace.banner says what happened, with its buttons ("Reconnect"). Once
+  disconnected, the server pane has no rows (its dir stays) and isn't "listed"; `press id=right.reconnect` connects
+  and lists that folder again (`wait until=listed pane=right`).
 - Import from ~/.ssh/config: `menu path="File > Import from ~/.ssh/config…"` → a sheet with a checkbox per alias
   (titled "<alias>, <user@host>"): `set title=<alias> value=false` leaves one out → `press title=Import`.
   Hosts to and from a file: `menu path="File > Export Hosts…" file=/tmp/hosts.json`,
@@ -411,15 +413,18 @@ AirSCP was installed with `./install.sh`).
   AirSCP (MCP)". The bridge talks to the AirSCP of its own settings folder (AIRSCP_SUPPORT_DIR, when set). "AirSCP
   didn't answer": it is busy with many calls at once, or quitting; check with snapshot before doing it again.
 - A connect or transfer fails and its message doesn't say enough (often through a proxy or a jump host): turn on the
-  debug log with `set id=settings.debugLogging value=true in="window:Settings"` (or, in the "Can't connect" sheet or
-  a Disconnected banner, `press title="Turn On Debug Logging and Try Again"`, which connects again), make it happen
-  again, then read the plain-text file at `snapshot` → debugLog.path. Each line has the time and the host.
+  debug log with `menu path="Help > Turn On Debug Logging"` or `set id=settings.debugLogging value=true
+  in="window:Settings"` (or, in the "Can't connect" sheet or a Disconnected banner,
+  `press title="Turn On Debug Logging and Try Again"`, which connects again), make it happen again, then read the
+  plain-text file at `snapshot` → debugLog.path. Each line has the time and the host.
   "Couldn't connect: it stopped at …" names the hop that failed (the HTTP proxy, the jump host or the server) in plain
   words; the lines before it are ssh's own (-vv: "Authenticated to bastion", "channel 0: open failed"), the proxy's
   answer ("proxy-connect: the proxy 127.0.0.1:3128 answered CONNECT bastion:22 with “HTTP/1.1 407 …”") and the
   questions ssh asked (never the answers: no password is ever in the file). `menu path="Help > Copy Diagnostics"`
   copies the versions and the log's last lines; "Help > Show Debug Log in Finder" shows the file to the user. Turn the
-  log off when done (`value=false`). AIRSCP_DEBUG=1 in AirSCP's environment turns it on from the start.
+  log off when done: `value=false`, `press id=debugLog.turnOff` (the sidebar's Turn Off) or
+  `menu path='Help > Turn Off Debug Logging'`. AIRSCP_DEBUG=1 in AirSCP's environment turns it on from the start (and
+  keeps it on).
 - "… is disabled now: <reason>": the reason says what is missing (no selection, not connected, sftp only, the Files
   tab not shown…).
   "Nothing to press called …" / "No field …": `snapshot include=["sheets","elements"]` shows what is there (add

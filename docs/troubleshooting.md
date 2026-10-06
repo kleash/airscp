@@ -47,13 +47,14 @@ common ones.
 When a connection fails and the message doesn't say enough (often through a proxy or a jump host), the debug log shows
 each step: which server answered, what the proxy said, and where it stopped.
 
-1. Open **AirSCP ▸ Settings…** and turn on **Debug logging** (under **Advanced**). Or click **Turn On Debug Logging
-   and Try Again** in the error message.
+1. Choose **Help ▸ Turn On Debug Logging**. Or turn on **Debug logging** in **AirSCP ▸ Settings…** (under
+   **Advanced**), or click **Turn On Debug Logging and Try Again** in the error message.
 2. Connect again, or do again what failed.
 3. Choose **Help ▸ Show Debug Log in Finder**. The file is `AirSCP-debug.log` in `~/Library/Logs/AirSCP`.
 4. Attach the file to your report (**Help ▸ Report a Problem**). **Help ▸ Copy Diagnostics** copies your versions and
    the last lines of the log.
-5. Turn **Debug logging** off when you are done.
+5. Turn it off when you are done: click **Turn Off** next to **Debug logging on** at the bottom of the sidebar, or
+   choose **Help ▸ Turn Off Debug Logging**.
 
 {% include shot.html name="debug-log" alt="With debug logging on, the sidebar says so and an error offers Show Debug Log" %}
 

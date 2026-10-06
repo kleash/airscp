@@ -972,3 +972,61 @@ private func answerSheet(on window: NSWindow, button index: Int, checkbox: NSCon
         #expect(pane.statusLabel.stringValue.contains("the start folder /no/such/dir can't be opened"))
     }
 }
+
+/// After Disconnect the server pane still showed the folder's old rows. It shows none, says it is disconnected and offers
+/// Reconnect; the folder is kept, and listed again once connected.
+@MainActor @Test func aDisconnectedServerPaneShowsNoStaleRows() async throws {
+    _ = NSApplication.shared
+    try await withServer { @MainActor server in
+        try write("x", to: server.path("logs/app.log"))
+        let session = try await server.connectedSession()
+        let browser = filesTab(session)
+        let pane = try #require(browser.right)
+        #expect(await eventually { pane.dir == server.home && pane.activities.isEmpty })
+        #expect(await pane.open(server.path("logs")))
+        #expect(pane.rows.map(\.name) == ["app.log"])
+        @MainActor func shown(_ text: String) -> Bool {
+            AgentServer.views(NSTextField.self, in: pane.view).contains { !$0.isHiddenOrHasHiddenAncestor && $0.stringValue == text }
+        }
+        let reconnect = try #require(AgentServer.views(NSButton.self, in: pane.view).first { $0.accessibilityIdentifier() == "right.reconnect" })
+        #expect(reconnect.isHidden)
+
+        await session.disconnect()
+        browser.stateChanged(session.state)
+        #expect(pane.rows.isEmpty && pane.table.numberOfRows == 0 && pane.dir == server.path("logs") && pane.unlisted)
+        #expect(shown("Disconnected. Reconnect to come back to \(server.path("logs")).") && shown("Not connected"))
+        #expect(!reconnect.isHidden && reconnect.toolTip?.isEmpty == false)
+
+        try await session.connect()
+        browser.stateChanged(session.state)
+        #expect(await eventually { pane.dir == server.path("logs") && pane.rows.map(\.name) == ["app.log"] && !pane.unlisted })
+        #expect(reconnect.isHidden && !shown("Disconnected. Reconnect to come back to \(server.path("logs"))."))
+    }
+}
+
+/// With overlay scroll bars (System Settings' "Show scroll bars" automatically or when scrolling), the horizontal bar
+/// lay over the last row's text. Scrolled to the end, the last row is clear of it, with legacy scroll bars too.
+@MainActor @Test func theHorizontalScrollBarCoversNoRow() async throws {
+    _ = NSApplication.shared
+    let folder = try scratch()
+    for index in 0..<60 { try write("x", to: folder + "/file \(index).txt") }
+    let pane = FilePane(source: .local, choosesSource: true, showHidden: false)
+    let window = NSWindow(contentRect: NSRect(x: -22000, y: -22000, width: 420, height: 360), styleMask: [.titled],
+                          backing: .buffered, defer: false)
+    window.isReleasedWhenClosed = false
+    window.contentView = pane.view
+    defer { window.orderOut(nil) }
+    #expect(await pane.open(folder))
+    let scroll = try #require(pane.table.enclosingScrollView)
+    for style in [NSScroller.Style.overlay, .legacy] {
+        scroll.scrollerStyle = style
+        window.contentView?.layoutSubtreeIfNeeded()
+        scroll.tile()
+        pane.table.scrollRowToVisible(pane.rows.count - 1)
+        let bar = try #require(scroll.horizontalScroller)
+        #expect(!bar.isHidden, "\(style.rawValue)")  // the columns are wider than the pane
+        let last = pane.table.convert(pane.table.rect(ofRow: pane.rows.count - 1), to: scroll)
+        #expect(!last.intersects(bar.frame), "\(style.rawValue): \(last) \(bar.frame)")
+        #expect(scroll.documentVisibleRect.maxY >= pane.table.rect(ofRow: pane.rows.count - 1).maxY, "\(style.rawValue)")
+    }
+}

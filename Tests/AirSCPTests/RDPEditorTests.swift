@@ -186,3 +186,47 @@ import Testing
         window.endSheet(sheet)
     }
 }
+
+/// A field's focus ring is drawn 3 points outside it, inside the scroll view around it, which cuts off what goes past:
+/// in the host and Remote Desktop editors the first field's ring lost its top and every field's its right edge, so that
+/// the ring seemed to sit below the field. Every field of the editor sheets has room for its whole ring.
+@MainActor
+@Test func editorFieldsHaveRoomForTheirFocusRing() throws {
+    _ = NSApplication.shared
+    let model = testModel([])
+    let keys = KeysModel(folder: try scratch(), askpass: [:])
+    var host = SSHHost(hostname: "web")
+    host.extraOptions = ["Compression=yes"]  // Advanced shown
+    var entry = RDPEntry(hostname: "win")
+    entry.port = 3390  // Advanced shown
+    let sheets: [(String, AnyView)] = [
+        ("host", AnyView(HostEditorView(model: model, host: host, isNew: true) { _ in })),
+        ("Remote Desktop", AnyView(RDPEditorView(model: model, entry: entry, isNew: true, sshSession: nil) { _ in })),
+        ("proxy", AnyView(ProxyEditorView(model: model, proxy: Proxy(), isNew: true) { _ in })),
+        ("tunnel", AnyView(TunnelEditor(tunnel: Tunnel(kind: .local, listenPort: 0, targetHost: "localhost", targetPort: 0),
+                                        server: "web", save: { _ in }, cancel: {}))),
+        ("new key pair", AnyView(KeyFlowView(flow: KeyFlow(newKeyIn: keys.folder, keys: keys, downloads: keys.folder,
+                                                           install: nil, close: {})))),
+    ]
+    for (name, sheet) in sheets {
+        let view = NSHostingView(rootView: sheet)
+        let window = NSWindow(contentRect: NSRect(origin: NSPoint(x: -22000, y: -22000), size: view.fittingSize),
+                              styleMask: [.titled], backing: .buffered, defer: false)
+        window.isReleasedWhenClosed = false
+        window.contentView = view
+        view.layoutSubtreeIfNeeded()
+        let fields = AgentServer.views(NSTextField.self, in: view).filter(\.isEditable)
+        #expect(fields.count >= 2, "\(name)")
+        for field in fields {
+            let ring = field.bounds.insetBy(dx: -3, dy: -3)
+            var above = field.superview
+            while let clip = above {
+                if let clip = clip as? NSClipView {
+                    #expect(clip.bounds.contains(field.convert(ring, to: clip)), "\(name): \(field.placeholderString ?? "")")
+                }
+                above = clip.superview
+            }
+        }
+        window.orderOut(nil)
+    }
+}
