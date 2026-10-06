@@ -400,6 +400,89 @@ import Testing
         #expect(await call(agent, "wait", ["until": "monitor", "text": "porter-busy", "timeout": 2]).error == nil)
     }
 
+    /// Reading the ports is costly (every process's open files), so only Monitor ▸ Ports does it, while it is shown:
+    /// of every command the session sends, none reads them in the Processes view, after going back to it, or for the
+    /// header's pulse strip; the Ports view reads them at once and every 5 s, and only then are they in the snapshot.
+    @MainActor @Test func portsAreReadOnlyWhileTheyAreShown() async throws {
+        _ = NSApplication.shared
+        try await withServer(TestServer.Options(linux: true)) { @MainActor server in
+            let host = server.host()
+            let model = testModel([host])
+            let askpass = try AskpassServer(helperPath: TestEnvironment.airscpBinary)
+            defer { askpass.close() }
+            let (main, agent, _) = try agentWindow(model, askpass)
+            defer {
+                agent.close()
+                main.window?.orderOut(nil)
+            }
+            _ = await call(agent, "select", ["pane": "sidebar", "names": [host.displayName]])
+            _ = await call(agent, "menu", ["path": "Host > Connect"])
+            #expect(await call(agent, "wait", ["until": "connected", "timeout": 30]).error == nil)
+            let workspace = try #require(main.selectedWorkspace)
+            let monitor = workspace.monitor.model
+            // Each command as it is sent (the command log lists a repeated one once).
+            let sent = Recorder<String>()
+            let log = workspace.session.onLog
+            workspace.session.onLog = { entry in
+                sent.append(entry.command)
+                log?(entry)
+            }
+            func reads(after start: Int) -> (figures: Int, ports: Int) {
+                let refreshes = sent.all.dropFirst(start).filter { $0.contains("@@df") }
+                return (refreshes.count, refreshes.filter { $0.contains("@@ports") }.count)
+            }
+            // An agent at work keeps the tab refreshing, also off screen.
+            @MainActor func refreshes(_ count: Int, after start: Int) async -> Bool {
+                await eventually {
+                    model.agentRequested()
+                    return reads(after: start).figures >= count
+                }
+            }
+            @MainActor func snapshotPorts() async -> Any? {
+                (await call(agent, "snapshot", ["include": ["monitor"]])["monitor"] as? [String: Any])?["ports"]
+            }
+
+            var start = sent.all.count
+            _ = await call(agent, "press", ["title": "Monitor"])
+            #expect(await refreshes(2, after: start))
+            #expect(reads(after: 0).ports == 0 && monitor.shown == .processes)
+            #expect(await snapshotPorts() == nil)
+            #expect(await call(agent, "select", ["pane": "ports", "names": ["22"]]).error?.contains("shows no ports") == true)
+
+            // Ports: at once (this Mac has no /proc/net: the note says so), then every 5 s.
+            start = sent.all.count
+            _ = await call(agent, "press", ["title": "Ports"])
+            #expect(monitor.shown == .ports)
+            #expect(await eventually {
+                model.agentRequested()
+                return reads(after: start).ports >= 2
+            })
+            let reply = await call(agent, "wait", ["until": "monitor", "timeout": 30])
+            #expect((reply["ports"] as? [String: Any])?["note"] as? String == Monitor.noPortTables, "\(reply.json)")
+
+            // Back to the processes: the read under way ends (or is stopped), and no other follows.
+            _ = await call(agent, "press", ["title": "Processes"])
+            #expect(await eventually { !monitor.refreshing })
+            start = sent.all.count
+            #expect(await refreshes(2, after: start))
+            #expect(reads(after: start).ports == 0)
+            #expect(monitor.snapshot?.ports == nil)
+            #expect(await snapshotPorts() == nil)
+
+            // Ports again, then another tab: the pulse strip's refreshes read no ports either.
+            _ = await call(agent, "press", ["title": "Ports"])
+            #expect(await eventually {
+                model.agentRequested()
+                return monitor.snapshot?.ports != nil
+            })
+            _ = await call(agent, "press", ["title": "Files"])
+            #expect(await eventually { !monitor.refreshing })
+            start = sent.all.count
+            #expect(await refreshes(1, after: start))
+            #expect(reads(after: start).ports == 0)
+        }
+    }
+
     // MARK: Screenshots
 
     /// An alert sheet is drawn with its background (its text lay over the window's rows, see-through).

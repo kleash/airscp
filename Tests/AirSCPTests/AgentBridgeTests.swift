@@ -642,6 +642,15 @@ struct AgentLabTests {
         try await app.call("wait", ["until": "sheet", "text": "Kill"])
         try await app.call("press", ["title": "Kill", "in": "sheet"])
         try await app.call("wait", ["until": "no_sheet"])
+        // Its ports: sshd's, with this connection to it (through the bastion), then the processes again.
+        try await app.call("press", ["title": "Ports"])
+        let listening = try await app.call("wait", ["until": "monitor", "text": "22"])["ports"] as? [String: Any]
+        #expect((listening?["listening"] as? [[String: Any]])?.contains { $0["port"] as? Int == 22 && $0["user"] as? String == "root" } == true,
+                "\(listening ?? [:])")
+        try await app.call("select", ["pane": "ports", "names": ["22"]])
+        let ssh = try await app.call("wait", ["until": "monitor"])["ports"] as? [String: Any]
+        #expect((ssh?["connections"] as? [[String: Any]])?.isEmpty == false, "\(ssh ?? [:])")
+        try await app.call("press", ["title": "Processes"])
 
         // A screenshot, written by --agent --out.
         let shot = app.root + "/shot.png"
