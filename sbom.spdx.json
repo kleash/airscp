@@ -1,0 +1,72 @@
+{
+  "spdxVersion": "SPDX-2.3",
+  "dataLicense": "CC0-1.0",
+  "SPDXID": "SPDXRef-DOCUMENT",
+  "name": "AirSCP 1.0.0",
+  "documentNamespace": "https://github.com/kleash/airscp/releases/download/v1.0.0/sbom.spdx.json",
+  "comment": "The third-party code built into AirSCP: FreeRDP and OpenSSL, pinned and checksummed in scripts/build-freerdp.sh and linked statically. AirSCP has no package-manager dependencies. At run time it also uses the OpenSSH that is part of macOS (/usr/bin/ssh, scp, sftp), which Apple updates with macOS; it isn't shipped with AirSCP. Written by scripts/sbom.sh.",
+  "creationInfo": {
+    "created": "2026-10-05T07:24:06Z",
+    "creators": ["Tool: scripts/sbom.sh"]
+  },
+  "packages": [
+    {
+      "SPDXID": "SPDXRef-AirSCP",
+      "name": "AirSCP",
+      "versionInfo": "1.0.0",
+      "supplier": "Person: kleash",
+      "downloadLocation": "https://github.com/kleash/airscp/releases/download/v1.0.0/AirSCP-1.0.0.zip",
+      "homepage": "https://kleash.github.io/airscp/",
+      "filesAnalyzed": false,
+      "licenseConcluded": "Apache-2.0",
+      "licenseDeclared": "Apache-2.0",
+      "copyrightText": "Copyright 2026 kleash",
+      "primaryPackagePurpose": "APPLICATION",
+      "externalRefs": [
+        {"referenceCategory": "PACKAGE-MANAGER", "referenceType": "purl", "referenceLocator": "pkg:git/github.com/kleash/airscp@v1.0.0"}
+      ]
+    },
+    {
+      "SPDXID": "SPDXRef-FreeRDP",
+      "name": "FreeRDP",
+      "versionInfo": "3.32.1",
+      "supplier": "Organization: FreeRDP",
+      "downloadLocation": "https://github.com/FreeRDP/FreeRDP/releases/download/3.32.1/freerdp-3.32.1.tar.gz",
+      "homepage": "https://www.freerdp.com",
+      "filesAnalyzed": false,
+      "checksums": [{"algorithm": "SHA256", "checksumValue": "3021cf8848efbd0064664e187cb61e6101e4e74a4d8ffb495d9f7715e22d67de"}],
+      "licenseConcluded": "Apache-2.0",
+      "licenseDeclared": "Apache-2.0",
+      "copyrightText": "Copyright the FreeRDP contributors",
+      "comment": "The client library only, with one line changed at build time (utils_set_umask leaves the process umask as it is); see scripts/build-freerdp.sh.",
+      "primaryPackagePurpose": "LIBRARY",
+      "externalRefs": [
+        {"referenceCategory": "PACKAGE-MANAGER", "referenceType": "purl", "referenceLocator": "pkg:git/github.com/freerdp/freerdp@3.32.1"},
+        {"referenceCategory": "SECURITY", "referenceType": "cpe23Type", "referenceLocator": "cpe:2.3:a:freerdp:freerdp:3.32.1:*:*:*:*:*:*:*"}
+      ]
+    },
+    {
+      "SPDXID": "SPDXRef-OpenSSL",
+      "name": "OpenSSL",
+      "versionInfo": "3.5.9",
+      "supplier": "Organization: OpenSSL",
+      "downloadLocation": "https://github.com/openssl/openssl/releases/download/openssl-3.5.9/openssl-3.5.9.tar.gz",
+      "homepage": "https://www.openssl.org",
+      "filesAnalyzed": false,
+      "checksums": [{"algorithm": "SHA256", "checksumValue": "603f5602e2eef00d77fbd429d34dcd5822bb301757a1bc9cdb24c670f1eb859a"}],
+      "licenseConcluded": "Apache-2.0",
+      "licenseDeclared": "Apache-2.0",
+      "copyrightText": "Copyright The OpenSSL Project Authors",
+      "primaryPackagePurpose": "LIBRARY",
+      "externalRefs": [
+        {"referenceCategory": "PACKAGE-MANAGER", "referenceType": "purl", "referenceLocator": "pkg:git/github.com/openssl/openssl@openssl-3.5.9"},
+        {"referenceCategory": "SECURITY", "referenceType": "cpe23Type", "referenceLocator": "cpe:2.3:a:openssl:openssl:3.5.9:*:*:*:*:*:*:*"}
+      ]
+    }
+  ],
+  "relationships": [
+    {"spdxElementId": "SPDXRef-DOCUMENT", "relationshipType": "DESCRIBES", "relatedSpdxElement": "SPDXRef-AirSCP"},
+    {"spdxElementId": "SPDXRef-AirSCP", "relationshipType": "STATIC_LINK", "relatedSpdxElement": "SPDXRef-FreeRDP"},
+    {"spdxElementId": "SPDXRef-AirSCP", "relationshipType": "STATIC_LINK", "relatedSpdxElement": "SPDXRef-OpenSSL"}
+  ]
+}

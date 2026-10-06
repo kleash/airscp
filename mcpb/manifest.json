@@ -1,0 +1,50 @@
+{
+  "manifest_version": "0.3",
+  "name": "airscp",
+  "display_name": "AirSCP",
+  "version": "1.0.0",
+  "description": "Drive AirSCP, the Mac app for SSH servers, SCP/SFTP file transfers and Windows Remote Desktop.",
+  "long_description": "AirSCP is a free, open-source Mac app for SSH servers and Windows desktops: saved hosts, a two-pane SCP/SFTP file browser with a transfer queue, Synchronize, Find Files, a Linux monitor, tunnels, jump hosts and HTTP proxies, and a built-in Remote Desktop client. This bundle starts AirSCP's own MCP server (`AirSCP --mcp`), which drives the AirSCP running on this Mac the way its user does. It needs AirSCP installed (`brew install --cask kleash/tap/airscp`) and **AirSCP ▸ Settings ▸ Allow AI agents to control AirSCP (MCP)** turned on. Agents never see saved passwords, and AirSCP still asks before it deletes or replaces anything.",
+  "author": {
+    "name": "kleash",
+    "url": "https://github.com/kleash"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/kleash/airscp"
+  },
+  "homepage": "https://kleash.github.io/airscp/",
+  "documentation": "https://kleash.github.io/airscp/ai-agents.html",
+  "support": "https://github.com/kleash/airscp/issues",
+  "icon": "icon.png",
+  "server": {
+    "type": "binary",
+    "entry_point": "server/airscp-mcp",
+    "mcp_config": {
+      "command": "/bin/sh",
+      "args": ["${__dirname}/server/airscp-mcp"],
+      "env": {}
+    }
+  },
+  "tools": [
+    {"name": "snapshot", "description": "AirSCP's state as JSON: hosts, both file panes, transfers, open questions and their fields"},
+    {"name": "screenshot", "description": "A PNG of an AirSCP window, the Remote Desktop included, drawn by AirSCP itself"},
+    {"name": "menu", "description": "Choose a menu-bar or context-menu command, e.g. Host > Connect"},
+    {"name": "press", "description": "Press a button, checkbox, tab or segment"},
+    {"name": "set", "description": "Set a text field, checkbox, pop-up menu or segmented control"},
+    {"name": "key", "description": "Press keys in AirSCP or on the Remote Desktop"},
+    {"name": "type", "description": "Type text into the focused field or the Remote Desktop"},
+    {"name": "click", "description": "Click at a point of a window, the last resort after press and set"},
+    {"name": "focus", "description": "Give the keyboard focus to a file pane, the sidebar, a filter or the path field"},
+    {"name": "select", "description": "Select rows: files, hosts, processes, transfers, or a list in a sheet or window"},
+    {"name": "sort", "description": "Sort a file pane or the Monitor's processes by a column"},
+    {"name": "drop", "description": "Copy files as a drag would: upload, download, between panes or to the Remote Desktop"},
+    {"name": "wait", "description": "Wait until connected, listed, transfers done, a question appears, and more"},
+    {"name": "guide", "description": "How to drive AirSCP: the loop, every tool with an example, a recipe per feature"}
+  ],
+  "keywords": ["ssh", "sftp", "scp", "file transfer", "remote desktop", "rdp", "macos"],
+  "license": "Apache-2.0",
+  "compatibility": {
+    "platforms": ["darwin"]
+  }
+}

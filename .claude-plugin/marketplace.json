@@ -1,0 +1,17 @@
+{
+  "name": "airscp",
+  "description": "AirSCP for Claude Code: the airscp skill and AirSCP's MCP server, to drive the AirSCP Mac app (SSH, SCP/SFTP, Remote Desktop).",
+  "owner": {
+    "name": "kleash",
+    "url": "https://github.com/kleash"
+  },
+  "plugins": [
+    {
+      "name": "airscp",
+      "source": "./plugins/airscp",
+      "description": "Drive the AirSCP Mac app from Claude: hosts, two-pane SCP/SFTP file transfers, Synchronize, Find Files and Windows Remote Desktop.",
+      "category": "productivity",
+      "tags": ["ssh", "sftp", "scp", "file-transfer", "remote-desktop", "macos"]
+    }
+  ]
+}

@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!-- build.sh sets CFBundleShortVersionString and CFBundleVersion from VERSION. -->
+	<key>CFBundleDevelopmentRegion</key>
+	<string>en</string>
+	<key>CFBundleExecutable</key>
+	<string>AirSCP</string>
+	<key>CFBundleIconFile</key>
+	<string>AppIcon</string>
+	<key>CFBundleIdentifier</key>
+	<string>com.kleash.airscp</string>
+	<key>CFBundleInfoDictionaryVersion</key>
+	<string>6.0</string>
+	<key>CFBundleName</key>
+	<string>AirSCP</string>
+	<key>CFBundlePackageType</key>
+	<string>APPL</string>
+	<key>LSApplicationCategoryType</key>
+	<string>public.app-category.developer-tools</string>
+	<key>LSMinimumSystemVersion</key>
+	<string>13.1</string>
+	<!-- Shown when AirSCP asks iTerm (through osascript) to open a terminal. -->
+	<key>NSAppleEventsUsageDescription</key>
+	<string>AirSCP asks iTerm to open a window with the ssh session.</string>
+	<!-- Shown once when AirSCP first connects to a server on the local network (SSH, Remote Desktop). -->
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>AirSCP connects to servers on your local network: SSH and Remote Desktop.</string>
+	<key>NSHighResolutionCapable</key>
+	<true/>
+	<key>NSPrincipalClass</key>
+	<string>NSApplication</string>
+</dict>
+</plist>

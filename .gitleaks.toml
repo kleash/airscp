@@ -1,0 +1,13 @@
+# gitleaks (security.yml scans the whole git history) with its default rules. Only verified false positives are
+# allowed here, each with the reason.
+[extend]
+useDefault = true
+
+# PEM header strings in the code that writes and checks key files (PuTTYKey.swift, KeyFormatTests, KeyFlowAppTests):
+# each header is a string of its own, closed by a quote right after it, so no key follows it. The private-key rule
+# reports the text from one such header to the next "KEY-----". A real key in a file has its key lines after the header.
+[[allowlists]]
+description = "PEM header strings in code, with no key after them"
+targetRules = ["private-key"]
+regexTarget = "match"
+regexes = ['''^-----BEGIN [A-Z ]*PRIVATE KEY-----"''']

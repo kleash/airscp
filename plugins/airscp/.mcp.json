@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "airscp": {
+      "command": "${CLAUDE_PLUGIN_ROOT}/scripts/airscp-mcp",
+      "args": []
+    }
+  }
+}

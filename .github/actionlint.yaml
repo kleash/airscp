@@ -1,0 +1,4 @@
+# actionlint: the label of the maintainer's self-hosted runner (lab.yml, docs/dev/self-hosted-runner.md).
+self-hosted-runner:
+  labels:
+    - porter-mac-lab

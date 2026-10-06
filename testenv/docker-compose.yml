@@ -1,0 +1,83 @@
+# Porter's Docker test lab (PLAN.md J and Q). Start it with testenv/up.sh, remove it with testenv/down.sh.
+# The published ports listen on 127.0.0.1 only. "inner" has no way out: there the bastion and the proxy reach the
+# target by its service name.
+name: porter-lab
+
+services:
+  target:
+    build:
+      context: target
+      additional_contexts:
+        keys: .keys
+    hostname: target
+    init: true
+    ports: ["127.0.0.1:42201:22"]
+    networks: [edge, inner]
+    # A second file system in sftponly's chroot: a move onto it can't be a rename.
+    tmpfs: ["/srv/sftp/upload/other-disk:uid=1001,gid=1001,mode=0755"]
+
+  minimal:
+    build:
+      context: alpine
+      additional_contexts:
+        keys: .keys
+      args: {LAB_USER: dev, LAB_PASSWORD: porter-min}
+    hostname: minimal
+    init: true
+    ports: ["127.0.0.1:42202:22"]
+    networks: [edge]
+
+  bastion:
+    build:
+      context: alpine
+      additional_contexts:
+        keys: .keys
+      args: {LAB_USER: jump, LAB_PASSWORD: porter-jump}
+    hostname: bastion
+    init: true
+    command: ["/usr/sbin/sshd", "-D", "-e", "-o", "AllowTcpForwarding=yes"]
+    ports: ["127.0.0.1:42203:22"]
+    networks: [edge, inner]
+
+  # The lab key, then a verification code (two-factor: PAM with Google Authenticator's module).
+  twofactor:
+    build:
+      context: twofactor
+      additional_contexts:
+        keys: .keys
+    hostname: twofactor
+    init: true
+    ports: ["127.0.0.1:42204:22"]
+    networks: [edge]
+
+  proxy:
+    build: proxy
+    hostname: proxy
+    init: true
+    ports: ["127.0.0.1:42280:8888"]
+    networks: [edge, inner]
+
+  # The same proxy without a password: CONNECT with no Proxy-Authorization.
+  openproxy:
+    build: proxy
+    hostname: openproxy
+    init: true
+    command: ["sh", "-c", "grep -v '^BasicAuth' /etc/tinyproxy/tinyproxy.conf >/tmp/open.conf && exec tinyproxy -d -c /tmp/open.conf"]
+    ports: ["127.0.0.1:42281:8888"]
+    networks: [edge, inner]
+
+  # Only on "inner", with no published port: reachable from the Mac only through the bastion or a proxy.
+  private:
+    build:
+      context: alpine
+      additional_contexts:
+        keys: .keys
+      args: {LAB_USER: dev, LAB_PASSWORD: porter-private}
+    hostname: private
+    init: true
+    networks: [inner]
+
+networks:
+  edge: {}
+  inner:
+    internal: true

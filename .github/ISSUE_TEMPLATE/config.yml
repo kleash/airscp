@@ -1,0 +1,8 @@
+blank_issues_enabled: true
+contact_links:
+  - name: AirSCP Help
+    url: https://kleash.github.io/airscp/
+    about: Every task step by step, and answers to common problems.
+  - name: Report a security problem
+    url: https://github.com/kleash/airscp/security/advisories/new
+    about: Privately, please, not as a public issue.

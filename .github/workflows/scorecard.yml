@@ -1,0 +1,46 @@
+# OpenSSF Scorecard (scorecard.dev): how well the repository follows supply-chain security practices (pinned
+# dependencies, token permissions, code review, and so on), on pushes to main and by hand. It publishes the results
+# behind the README's Scorecard badge (the action publishes only while the repository is public), and every run keeps
+# them as the scorecard-sarif artifact. Publishing allows only these actions in the job and no env or defaults here.
+name: Scorecard
+
+# Scorecard only runs on the default branch, so it runs when a pull request merges into main (and by hand); no
+# schedule (owner's rule, 2026-10-05).
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  analysis:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      id-token: write   # to sign the published results
+      # Reads it needs while the repository is private (they are public afterwards).
+      actions: read
+      checks: read
+      contents: read
+      issues: read
+      pull-requests: read
+      security-events: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: ossf/scorecard-action@2d1146689b8cda280b9bc96326124645441f03bc # v2.4.4
+        with:
+          results_file: scorecard.sarif
+          results_format: sarif
+          publish_results: true
+
+      - name: Keep the results
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: scorecard-sarif
+          path: scorecard.sarif
+          retention-days: 30

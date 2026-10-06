@@ -1,0 +1,66 @@
+# Help ▸ Report a Problem opens this form with the version fields filled in (?template=bug_report.yml&version=…&macos=…).
+name: Report a problem
+description: Something in AirSCP doesn't work as it should.
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you for telling us. Many answers are in [AirSCP Help](https://kleash.github.io/airscp/troubleshooting.html).
+        Please don't paste passwords, private keys or server names you want to keep private.
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened?
+      description: What did you do, what did you expect, and what happened instead?
+      placeholder: I dragged a folder onto the server pane, and…
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to see it again
+      placeholder: |
+        1. Connect to a server through a jump host
+        2. …
+  - type: textarea
+    id: message
+    attributes:
+      label: Message or command log
+      description: The error message (Details shows ssh's own words), or lines from View ▸ Show Command Log.
+      render: text
+  - type: textarea
+    id: debug-log
+    attributes:
+      label: Debug log
+      description: |
+        For a connection or transfer problem: turn on AirSCP ▸ Settings… ▸ Debug logging, make it happen again, then
+        choose Help ▸ Show Debug Log in Finder and drag AirSCP-debug.log into this box. It never holds passwords.
+      placeholder: Drag AirSCP-debug.log here.
+  - type: input
+    id: version
+    attributes:
+      label: AirSCP version
+      description: AirSCP ▸ About AirSCP
+      placeholder: "1.0.0"
+    validations:
+      required: true
+  - type: input
+    id: macos
+    attributes:
+      label: macOS version
+      placeholder: "15.5"
+  - type: dropdown
+    id: area
+    attributes:
+      label: Where in AirSCP?
+      options:
+        - Connecting (hosts, keys, passwords, jump hosts, proxies)
+        - Files
+        - Transfers
+        - Synchronize or Find
+        - Remote Desktop (Windows)
+        - Monitor or Tunnels
+        - Keys
+        - AI agents (MCP)
+        - Something else

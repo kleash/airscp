@@ -1,0 +1,16 @@
+AirSCP
+Copyright 2026 kleash
+
+Licensed under the Apache License, Version 2.0 (see LICENSE).
+
+The app includes, statically linked, two libraries that are also licensed under the Apache License, Version 2.0:
+
+- FreeRDP (https://github.com/FreeRDP/FreeRDP), the Remote Desktop client.
+  Copyright the FreeRDP contributors.
+- OpenSSL (https://www.openssl.org), used by FreeRDP and for PuTTY key encryption and certificate checks.
+  Copyright The OpenSSL Project Authors.
+
+Their versions are pinned in scripts/build-freerdp.sh. Their licence texts ship in the app
+(AirSCP.app/Contents/Resources/Licenses) and are in this repository under Resources/Licenses.
+
+The tests, not the app, build PuTTY's puttygen from its source (MIT licence) to check .ppk files: testenv/putty.

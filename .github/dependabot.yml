@@ -1,0 +1,21 @@
+# Dependabot keeps the pinned dependencies current, one monthly pull request each: the actions in .github/workflows (each
+# commit SHA and its version comment) and the base images of the Docker lab (testenv/*/Dockerfile, each pinned by
+# digest; a merged update rebuilds the lab at the next testenv/up.sh). FreeRDP and OpenSSL are pinned in
+# scripts/build-freerdp.sh, and security.yml fails when they need a newer release; the tools that workflows and scripts
+# download are pinned to a release and checked by SHA-256 where they are downloaded.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly
+    groups:
+      actions:
+        patterns: ["*"]
+  - package-ecosystem: docker
+    directories: ["/testenv/alpine", "/testenv/proxy", "/testenv/target", "/testenv/twofactor"]
+    schedule:
+      interval: monthly
+    groups:
+      lab-images:
+        patterns: ["*"]

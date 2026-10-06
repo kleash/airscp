@@ -1,0 +1,9 @@
+#!/bin/sh
+# AirSCP's MCP server is the AirSCP app's own program: `AirSCP --mcp` speaks MCP over stdio and passes each tool call
+# to the running AirSCP on this Mac through a private socket. This starts it from where AirSCP is installed.
+for app in /Applications/AirSCP.app ~/Applications/AirSCP.app; do
+    if [ -x "$app/Contents/MacOS/AirSCP" ]; then exec "$app/Contents/MacOS/AirSCP" --mcp; fi
+done
+echo "AirSCP isn't installed. Install it (brew install --cask kleash/tap/airscp), open it, and turn on" \
+    "AirSCP > Settings > Allow AI agents to control AirSCP (MCP)." >&2
+exit 1

@@ -1,0 +1,85 @@
+# CodeQL code scanning of AirSCP's own code, Swift and C (Sources/CRDP, Sources/CPTY), with the security-extended
+# queries: on pushes to main, pull requests and by hand. CodeQL analyses what is built while it watches, so FreeRDP and
+# OpenSSL (vendor/, from the cache or scripts/build-freerdp.sh) are built before it starts and only `swift build` is
+# analysed. The results go to the Security tab once the repository is public (code scanning is free there); every run
+# also keeps them as the codeql-sarif artifact.
+name: CodeQL
+
+# Pull requests and merges into main (which also keep the Security tab current), and by hand; no schedule.
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+# A newer push to a pull request replaces its run; every run on a branch finishes (the badges show the last one).
+concurrency:
+  group: codeql-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
+jobs:
+  analyze:
+    runs-on: macos-26
+    timeout-minutes: 75
+    permissions:
+      actions: read            # CodeQL reads its own run's details (needed on a private repository)
+      contents: read
+      security-events: write   # to upload the results to the Security tab
+    env:
+      DEVELOPER_DIR: /Library/Developer/CommandLineTools
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Restore FreeRDP and OpenSSL
+        id: freerdp
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: vendor/out
+          key: freerdp-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('scripts/build-freerdp.sh') }}
+
+      - name: Build FreeRDP and OpenSSL (only when the cache missed)
+        if: steps.freerdp.outputs.cache-hit != 'true'
+        run: scripts/build-freerdp.sh
+
+      - name: Save FreeRDP and OpenSSL
+        if: steps.freerdp.outputs.cache-hit != 'true'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: vendor/out
+          key: freerdp-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('scripts/build-freerdp.sh') }}
+
+      - uses: github/codeql-action/init@2892aa5e19bbd11bc0cff5427e3b750a04d9e3c2 # v4.38.2
+        with:
+          languages: swift, c-cpp
+          build-mode: manual
+          queries: security-extended
+
+      - name: swift build
+        run: swift build
+
+      # Results go to the Security tab only while the repository is public: ask the API whether it is.
+      - name: Is the repository public?
+        id: repository
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: echo "public=$(gh api "repos/$GITHUB_REPOSITORY" --jq '.private == false')" >> "$GITHUB_OUTPUT"
+
+      - uses: github/codeql-action/analyze@2892aa5e19bbd11bc0cff5427e3b750a04d9e3c2 # v4.38.2
+        with:
+          output: build/codeql-sarif
+          upload: ${{ steps.repository.outputs.public == 'true' && 'always' || 'never' }}
+
+      - name: Keep the results
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: codeql-sarif
+          path: build/codeql-sarif
+          if-no-files-found: ignore
+          retention-days: 30

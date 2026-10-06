@@ -1,0 +1,18 @@
+{
+  "name": "airscp",
+  "displayName": "AirSCP",
+  "version": "1.0.0",
+  "description": "Let Claude use AirSCP, the Mac app for SSH servers, SCP/SFTP file transfers and Windows Remote Desktop: connect, copy, synchronize, find and run, through AirSCP's own MCP server.",
+  "author": {
+    "name": "kleash",
+    "url": "https://github.com/kleash"
+  },
+  "homepage": "https://kleash.github.io/airscp/ai-agents.html",
+  "repository": "https://github.com/kleash/airscp",
+  "license": "Apache-2.0",
+  "keywords": ["ssh", "sftp", "scp", "file-transfer", "remote-desktop", "rdp", "macos", "mcp"],
+  "icon": "./icon.png",
+  "documentationUrl": "https://kleash.github.io/airscp/ai-agents.html",
+  "supportUrl": "https://github.com/kleash/airscp/issues",
+  "privacyPolicyUrl": "https://kleash.github.io/airscp/privacy-security.html"
+}

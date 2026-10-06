@@ -1,0 +1,266 @@
+# Releases AirSCP for a tag vX.Y.Z (VERSION must say X.Y.Z): the notarized universal app as AirSCP-X.Y.Z.zip with its
+# SHA-256, the MCP bundle airscp.mcpb, the SBOM sbom.spdx.json, signed build provenance for the files this run built
+# (AirSCP-X.Y.Z.intoto.jsonl), the GitHub Release with notes, the Homebrew cask in kleash/homebrew-tap and the entry in
+# the official MCP Registry. Runs when the tag is pushed, when a release is published (for example by
+# `gh release create`), or by hand (Actions ▸ Release ▸ Run workflow, with the tag).
+#
+# The app is signed and notarized here when the signing secrets exist (DEVELOPER_ID_P12: the base64 of the Developer ID
+# Application .p12, DEVELOPER_ID_P12_PASSWORD, NOTARY_KEY: the base64 of an App Store Connect API key's .p8,
+# NOTARY_KEY_ID, NOTARY_ISSUER). Without them the release must already have the zip that scripts/release-local.sh made
+# on a Mac with the Developer ID (gh release create vX.Y.Z build/AirSCP-X.Y.Z.zip …): it is checked and used as it is.
+# TAP_TOKEN (a token that can push to kleash/homebrew-tap) lets it update the cask; without it that step is skipped.
+# The whole procedure: docs/dev/release.md.
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "The tag to release, e.g. v1.0.0"
+        required: true
+
+concurrency:
+  group: release-${{ inputs.tag || github.event.release.tag_name || github.ref_name }}
+  cancel-in-progress: false
+
+# bash with pipefail, so that `… | tee log` fails when the command does.
+defaults:
+  run:
+    shell: bash
+
+permissions:
+  contents: read
+
+env:
+  TAG: ${{ inputs.tag || github.event.release.tag_name || github.ref_name }}
+
+jobs:
+  # No release ships with a known vulnerability in its dependencies: the same scan as pull requests, first.
+  scan:
+    uses: ./.github/workflows/security.yml
+    permissions:
+      contents: read
+
+  release:
+    needs: scan
+    runs-on: macos-26
+    timeout-minutes: 90
+    permissions:
+      contents: write       # the GitHub Release and its files
+      id-token: write       # to sign the build provenance (Sigstore)
+      attestations: write   # to keep it with the repository's artifact attestations
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      mcpb-sha256: ${{ steps.mcpb.outputs.sha256 }}
+    env:
+      DEVELOPER_DIR: /Library/Developer/CommandLineTools
+      GH_TOKEN: ${{ github.token }}
+      HAS_SIGNING: ${{ secrets.DEVELOPER_ID_P12 != '' }}
+      HAS_TAP: ${{ secrets.TAP_TOKEN != '' }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ env.TAG }}
+          persist-credentials: false
+
+      - name: Version
+        id: version
+        run: |
+          version=$(tr -d '[:space:]' < VERSION)
+          [ "v$version" = "$TAG" ] || { echo "::error::VERSION says $version, the tag is $TAG"; exit 1; }
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "VERSION=$version" >> "$GITHUB_ENV"
+
+      # With the signing secrets: build, sign and notarize here.
+      - name: Restore FreeRDP and OpenSSL
+        if: env.HAS_SIGNING == 'true'
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: vendor/out
+          key: freerdp-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('scripts/build-freerdp.sh') }}
+
+      - name: Sign and notarize (scripts/release-local.sh)
+        if: env.HAS_SIGNING == 'true'
+        env:
+          DEVELOPER_ID_P12: ${{ secrets.DEVELOPER_ID_P12 }}
+          DEVELOPER_ID_P12_PASSWORD: ${{ secrets.DEVELOPER_ID_P12_PASSWORD }}
+          NOTARY_KEY: ${{ secrets.NOTARY_KEY }}
+          NOTARY_KEY_ID: ${{ secrets.NOTARY_KEY_ID }}
+          NOTARY_ISSUER: ${{ secrets.NOTARY_ISSUER }}
+        run: |
+          keychain=$RUNNER_TEMP/signing.keychain-db
+          password=$(uuidgen)
+          security create-keychain -p "$password" "$keychain"
+          security set-keychain-settings -lut 21600 "$keychain"
+          security unlock-keychain -p "$password" "$keychain"
+          echo "$DEVELOPER_ID_P12" | base64 --decode > "$RUNNER_TEMP/developer-id.p12"
+          security import "$RUNNER_TEMP/developer-id.p12" -k "$keychain" -P "$DEVELOPER_ID_P12_PASSWORD" -T /usr/bin/codesign
+          security set-key-partition-list -S apple-tool:,apple: -s -k "$password" "$keychain" > /dev/null
+          security list-keychains -d user | tr -d '"' | xargs security list-keychains -d user -s "$keychain"
+          echo "$NOTARY_KEY" | base64 --decode > "$RUNNER_TEMP/notary.p8"
+          NOTARY_KEY_PATH=$RUNNER_TEMP/notary.p8 scripts/release-local.sh
+          rm -f "$RUNNER_TEMP/developer-id.p12" "$RUNNER_TEMP/notary.p8"
+
+      # Without them: the notarized zip made on a Mac, already on the release.
+      - name: Use the zip on the release
+        if: env.HAS_SIGNING != 'true'
+        run: |
+          mkdir -p build
+          if ! gh release download "$TAG" --pattern "AirSCP-$VERSION.zip" --dir build --clobber; then
+            echo "::error::No signing secrets, and the release $TAG has no AirSCP-$VERSION.zip. On the Mac with the Developer ID: scripts/release-local.sh, then gh release upload $TAG build/AirSCP-$VERSION.zip build/AirSCP-$VERSION.zip.sha256, then run this workflow again (Actions ▸ Release ▸ Run workflow, tag $TAG)."
+            exit 1
+          fi
+          (cd build && shasum -a 256 "AirSCP-$VERSION.zip" > "AirSCP-$VERSION.zip.sha256")
+
+      - name: Check the app in the zip
+        run: |
+          rm -rf "$RUNNER_TEMP/check" && mkdir "$RUNNER_TEMP/check"
+          ditto -x -k "build/AirSCP-$VERSION.zip" "$RUNNER_TEMP/check"
+          app=$RUNNER_TEMP/check/AirSCP.app
+          [ "$(plutil -extract CFBundleShortVersionString raw "$app/Contents/Info.plist")" = "$VERSION" ] \
+            || { echo "::error::the app in the zip isn't version $VERSION"; exit 1; }
+          [ "$(lipo -archs "$app/Contents/MacOS/AirSCP")" = "x86_64 arm64" ] \
+            || { echo "::error::the app in the zip isn't universal"; exit 1; }
+          codesign --verify --deep --strict --verbose=2 "$app"
+          if spctl --assess --type execute --verbose=4 "$app"; then
+            echo "Notarized: Gatekeeper accepts it." >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "::warning::The app isn't notarized: Gatekeeper will block it (people need Open Anyway). See docs/dev/release.md."
+            echo "**Not notarized**: Gatekeeper will block it." >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      # An .mcpb is a zip of the bundle's folder: made with zip, so no downloaded tool runs in this job, and with fixed
+      # dates, so every run of a release makes the same bytes (the MCP Registry entry names the first run's SHA-256).
+      - name: MCP bundle (airscp.mcpb)
+        id: mcpb
+        run: |
+          rm -rf build/mcpb build/airscp.mcpb && mkdir -p build/mcpb/server
+          cp mcpb/manifest.json docs/assets/icon.png build/mcpb/
+          cp plugins/airscp/scripts/airscp-mcp build/mcpb/server/
+          jq -e '.server.entry_point == "server/airscp-mcp" and .icon == "icon.png"' build/mcpb/manifest.json > /dev/null
+          (cd build/mcpb && touch -t 202001010000 manifest.json icon.png server/airscp-mcp \
+            && zip -X -9 -q ../airscp.mcpb manifest.json icon.png server/airscp-mcp)
+          sha=$(shasum -a 256 build/airscp.mcpb | cut -d' ' -f1)
+          echo "$sha  airscp.mcpb" > build/airscp.mcpb.sha256
+          echo "sha256=$sha" >> "$GITHUB_OUTPUT"
+
+      - name: SBOM (sbom.spdx.json)
+        run: scripts/sbom.sh build/sbom.spdx.json
+
+      # SLSA build provenance, signed with Sigstore through GitHub's artifact attestations, for the files this run
+      # built: the bundle, the SBOM and, when the app was built and notarized here, the zip. A zip made on the Mac
+      # (scripts/release-local.sh) is left out, because this run didn't build it. How to check: docs/dev/release.md.
+      - name: Build provenance
+        id: provenance
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
+        with:
+          subject-path: |
+            build/airscp.mcpb
+            build/sbom.spdx.json
+            ${{ env.HAS_SIGNING == 'true' && format('build/AirSCP-{0}.zip', steps.version.outputs.version) || '' }}
+
+      - name: GitHub Release
+        env:
+          PROVENANCE: ${{ steps.provenance.outputs.bundle-path }}
+        run: |
+          cp "$PROVENANCE" "build/AirSCP-$VERSION.intoto.jsonl"
+          files=("build/AirSCP-$VERSION.zip" "build/AirSCP-$VERSION.zip.sha256" build/airscp.mcpb build/airscp.mcpb.sha256
+            build/sbom.spdx.json "build/AirSCP-$VERSION.intoto.jsonl")
+          if gh release view "$TAG" > /dev/null 2>&1; then
+            gh release upload "$TAG" "${files[@]}" --clobber
+            gh release edit "$TAG" --draft=false
+          else
+            cat > "$RUNNER_TEMP/notes.md" <<EOF
+          Install with Homebrew:
+
+          \`\`\`sh
+          brew tap kleash/tap
+          brew install --cask airscp
+          \`\`\`
+
+          Or download **AirSCP-$VERSION.zip** below, unzip it and drag AirSCP to Applications. macOS 13.1 or later, Apple silicon and Intel.
+          SHA-256: \`$(cut -d' ' -f1 "build/AirSCP-$VERSION.zip.sha256")\`
+
+          What's new: https://kleash.github.io/airscp/whats-new.html
+          EOF
+            gh release create "$TAG" "${files[@]}" --verify-tag --title "AirSCP $VERSION" \
+              --notes-file "$RUNNER_TEMP/notes.md" --generate-notes
+          fi
+
+      - name: Homebrew cask (kleash/homebrew-tap)
+        if: env.HAS_TAP == 'true'
+        env:
+          TAP_TOKEN: ${{ secrets.TAP_TOKEN }}
+        run: |
+          sha=$(cut -d' ' -f1 "build/AirSCP-$VERSION.zip.sha256")
+          git clone --depth 1 "https://x-access-token:$TAP_TOKEN@github.com/kleash/homebrew-tap.git" "$RUNNER_TEMP/tap"
+          mkdir -p "$RUNNER_TEMP/tap/Casks"
+          cat > "$RUNNER_TEMP/tap/Casks/airscp.rb" <<EOF
+          cask "airscp" do
+            version "$VERSION"
+            sha256 "$sha"
+
+            url "https://github.com/kleash/airscp/releases/download/v#{version}/AirSCP-#{version}.zip",
+                verified: "github.com/kleash/airscp/"
+            name "AirSCP"
+            desc "SCP and SFTP client with a two-pane browser and Remote Desktop"
+            homepage "https://kleash.github.io/airscp/"
+
+            livecheck do
+              url :url
+              strategy :github_latest
+            end
+
+            depends_on macos: ">= :ventura"
+
+            app "AirSCP.app"
+
+            zap trash: [
+              "~/Library/Application Support/AirSCP",
+              "~/Library/Preferences/com.kleash.airscp.plist",
+              "~/Library/Saved Application State/com.kleash.airscp.savedState",
+            ]
+          end
+          EOF
+          cd "$RUNNER_TEMP/tap"
+          git add Casks/airscp.rb
+          if git diff --cached --quiet; then echo "The cask is already at $VERSION."; exit 0; fi
+          git -c user.name="github-actions[bot]" -c user.email="41898282+github-actions[bot]@users.noreply.github.com" \
+            commit -m "AirSCP $VERSION"
+          git push origin HEAD
+
+  # The official MCP Registry (registry.modelcontextprotocol.io), as io.github.kleash/airscp: server.json with this
+  # release's bundle and its SHA-256, published with GitHub's OIDC token (no secret needed).
+  mcp-registry:
+    needs: release
+    if: github.repository == 'kleash/airscp'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ env.TAG }}
+          persist-credentials: false
+      - name: Publish server.json
+        env:
+          SHA256: ${{ needs.release.outputs.mcpb-sha256 }}
+          VERSION: ${{ needs.release.outputs.version }}
+        run: |
+          if curl -fsS "https://registry.modelcontextprotocol.io/v0.1/servers/io.github.kleash%2Fairscp/versions/$VERSION" > /dev/null 2>&1; then
+            echo "io.github.kleash/airscp $VERSION is in the MCP Registry already."
+            exit 0
+          fi
+          jq --arg sha "$SHA256" '.packages[0].fileSha256 = $sha' server.json > server.json.new && mv server.json.new server.json
+          curl -fsSL --retry 3 -o "$RUNNER_TEMP/mcp-publisher.tar.gz" \
+            https://github.com/modelcontextprotocol/registry/releases/download/v1.8.1/mcp-publisher_linux_amd64.tar.gz
+          echo "a06c9096dcb9727c13555b6be26c7effa707b01f06a4c561ba7a3635443cf2cc  $RUNNER_TEMP/mcp-publisher.tar.gz" | sha256sum -c -
+          tar -xzf "$RUNNER_TEMP/mcp-publisher.tar.gz" mcp-publisher
+          ./mcp-publisher login github-oidc
+          ./mcp-publisher publish

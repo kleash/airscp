@@ -1,0 +1,105 @@
+# Builds and tests AirSCP on a GitHub-hosted Mac (Apple silicon) for every push and pull request, then runs a scripted
+# agent-control session against the built app (scripts/agent-session.sh) and keeps its screenshots and snapshots as
+# the "agent-session" artifact. The Docker lab, the Windows VM and the real screen aren't here: lab.yml runs those on
+# the maintainer's Mac. How to read a run: .claude/skills/airscp-dev/SKILL.md.
+name: CI
+
+# Runs on pull requests and when one merges into main (the badge shows main), and by hand; not on other pushes or on a
+# schedule (owner's rule, 2026-10-05). After launch, main only changes through merged pull requests.
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+# bash with pipefail, so that `… | tee log` fails when the command does.
+defaults:
+  run:
+    shell: bash
+
+permissions:
+  contents: read
+
+jobs:
+  build-and-test:
+    runs-on: macos-26
+    timeout-minutes: 75
+    env:
+      # AirSCP builds with the Command Line Tools alone (no Xcode project); the runner has them next to Xcode.
+      DEVELOPER_DIR: /Library/Developer/CommandLineTools
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Versions agree with VERSION
+        run: |
+          v=$(tr -d '[:space:]' < VERSION)
+          for f in plugins/airscp/.claude-plugin/plugin.json mcpb/manifest.json server.json; do
+            [ "$(jq -r .version "$f")" = "$v" ] || { echo "::error file=$f::version isn't $v (VERSION)"; exit 1; }
+          done
+          [ "$(jq -r '.packages[0].identifier' server.json)" = "https://github.com/kleash/airscp/releases/download/v$v/airscp.mcpb" ] \
+            || { echo "::error file=server.json::the package URL isn't the v$v release's airscp.mcpb"; exit 1; }
+
+      - name: Agent-readable docs are up to date
+        run: |
+          scripts/llms.sh
+          git diff --exit-code -- docs/llms.txt docs/llms-full.txt \
+            || { echo "::error::docs/llms.txt or llms-full.txt is out of date: run scripts/llms.sh and commit them"; exit 1; }
+
+      # Saved right after it is built, so that a run failing later doesn't build it again next time.
+      - name: Restore FreeRDP and OpenSSL
+        id: freerdp
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: vendor/out
+          key: freerdp-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('scripts/build-freerdp.sh') }}
+
+      - name: Build FreeRDP and OpenSSL (only when the cache missed)
+        if: steps.freerdp.outputs.cache-hit != 'true'
+        run: scripts/build-freerdp.sh
+
+      - name: Save FreeRDP and OpenSSL
+        if: steps.freerdp.outputs.cache-hit != 'true'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: vendor/out
+          key: freerdp-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('scripts/build-freerdp.sh') }}
+
+      - name: swift build (no warnings)
+        run: |
+          mkdir -p build
+          swift build 2>&1 | tee build/swift-build.log
+          if grep -q 'warning:' build/swift-build.log; then
+            echo "::error::swift build has warnings (above)"
+            exit 1
+          fi
+
+      # The tests wait on conditions, not timings, so the suite passes as it is on a busy 3-core runner. A test that
+      # fails anyway is run once more on its own, with a warning (a timing bug to fix); one that fails again fails the run.
+      - name: Tests (./test.sh)
+        run: |
+          if ./test.sh 2>&1 | tee build/test.log; then exit 0; fi
+          failed=$(sed -n -E 's/^✘ Test ([A-Za-z0-9_]+)\(.*/\1/p' build/test.log | sort -u | paste -sd '|' -)
+          [ -n "$failed" ] || exit 1
+          echo "::warning::Failed under the full suite, running them again alone: $failed"
+          ./test.sh --filter "$failed"
+
+      - name: App (./build.sh --native)
+        run: ./build.sh --native
+
+      - name: Agent-control session (scripts/agent-session.sh)
+        run: scripts/agent-session.sh build/agent-session
+
+      - name: Upload the session's screenshots and snapshots
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: agent-session
+          path: build/agent-session
+          if-no-files-found: ignore
+          retention-days: 14

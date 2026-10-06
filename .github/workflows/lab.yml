@@ -1,0 +1,112 @@
+# The checks GitHub's Macs can't run, on the maintainer's Mac through a self-hosted runner (label porter-mac-lab):
+# the Docker lab suite, the Windows VM's Remote Desktop suite and the real-screen checks. Only by hand or by
+# `gh workflow run lab.yml -r <branch> -f suite=<all|docker|windows|screen>`, only for the repository owner, never for
+# pull requests or forks. The runner and its one-time setup (AIRSCP_LAB_HOME, the lab key, the VM, Accessibility):
+# docs/dev/self-hosted-runner.md.
+name: Lab (maintainer's Mac)
+
+on:
+  workflow_dispatch:
+    inputs:
+      suite:
+        description: "Which suites to run"
+        type: choice
+        options: [all, docker, windows, screen]
+        default: all
+
+concurrency:
+  group: lab
+  cancel-in-progress: false
+
+# bash with pipefail, so that `… | tee log` fails when the command does.
+defaults:
+  run:
+    shell: bash
+
+permissions:
+  contents: read
+
+env:
+  DEVELOPER_DIR: /Library/Developer/CommandLineTools
+
+jobs:
+  docker:
+    if: github.repository == 'kleash/airscp' && github.actor == github.repository_owner && (inputs.suite == 'all' || inputs.suite == 'docker')
+    runs-on: [self-hosted, porter-mac-lab]
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: This Mac's lab key and VM credentials (from AIRSCP_LAB_HOME)
+        run: testenv/lab-files.sh
+      - name: Restore FreeRDP and OpenSSL
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: vendor/out
+          key: freerdp-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('scripts/build-freerdp.sh') }}
+      - name: Docker lab suite (AIRSCP_DOCKER=1 ./test.sh)
+        run: |
+          ./build.sh --native   # the agent end-to-end test (AgentLabTests) launches this build
+          AIRSCP_DOCKER=1 ./test.sh 2>&1 | tee "$RUNNER_TEMP/docker.log"
+      - name: Summary
+        if: always()
+        run: |
+          { echo "### Docker lab suite"; echo '```'; grep -E '^(✔|✘) Test run|issues?|Suite .* failed' "$RUNNER_TEMP/docker.log" | tail -n 20; echo '```'; } >> "$GITHUB_STEP_SUMMARY" || true
+
+  windows:
+    needs: docker
+    if: always() && github.repository == 'kleash/airscp' && github.actor == github.repository_owner && (inputs.suite == 'all' || inputs.suite == 'windows')
+    runs-on: [self-hosted, porter-mac-lab]
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: This Mac's lab key and VM credentials (from AIRSCP_LAB_HOME)
+        run: testenv/lab-files.sh
+      - name: Restore FreeRDP and OpenSSL
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: vendor/out
+          key: freerdp-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('scripts/build-freerdp.sh') }}
+      - name: The Windows VM answers
+        run: |
+          state=$(bash testenv/windows/windows-vm.sh status)
+          echo "$state"
+          case $state in *rdp:open*) ;; *) echo "::error::The Windows VM isn't ready ($state): start it on the Mac (testenv/windows/README.md)"; exit 1 ;; esac
+      - name: Remote Desktop suite (AIRSCP_WINDOWS=1)
+        run: AIRSCP_WINDOWS=1 ./test.sh --filter RDPWindowsTests 2>&1 | tee "$RUNNER_TEMP/windows.log"
+      - name: Summary
+        if: always()
+        run: |
+          { echo "### Windows VM suite"; echo '```'; grep -E '^(✔|✘) Test run|issues?|Suite .* failed' "$RUNNER_TEMP/windows.log" | tail -n 20; echo '```'; } >> "$GITHUB_STEP_SUMMARY" || true
+
+  screen:
+    needs: [docker, windows]
+    if: always() && github.repository == 'kleash/airscp' && github.actor == github.repository_owner && (inputs.suite == 'all' || inputs.suite == 'screen')
+    runs-on: [self-hosted, porter-mac-lab]
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: This Mac's lab key and VM credentials (from AIRSCP_LAB_HOME)
+        run: testenv/lab-files.sh
+      - name: Restore FreeRDP and OpenSSL
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: vendor/out
+          key: freerdp-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('scripts/build-freerdp.sh') }}
+      - name: Real-screen checks (testenv/uidriver/smoke.sh)
+        run: |
+          ./build.sh --native
+          testenv/uidriver/smoke.sh build/screen-smoke
+      - name: Upload the real screenshots
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: screen-smoke
+          path: build/screen-smoke
+          if-no-files-found: ignore
+          retention-days: 14

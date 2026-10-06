@@ -1,0 +1,14 @@
+{%- comment -%}
+A picture of AirSCP in light mode, or in dark mode when the reader's Mac is dark: assets/shots/<name>-light.png and
+-dark.png, made by scripts/docs-screenshots.sh at twice their size in points (2x: shown at their size in points, sharp
+on Retina screens). A click opens it at full size.
+  {% include shot.html name="files" alt="What the picture shows" %}
+{%- endcomment -%}
+{%- assign light = "/assets/shots/" | append: include.name | append: "-light.png" | relative_url -%}
+{%- assign dark = "/assets/shots/" | append: include.name | append: "-dark.png" | relative_url -%}
+<figure class="shot">
+  <a href="{{ light }}"><picture>
+    <source srcset="{{ dark }} 2x" media="(prefers-color-scheme: dark)">
+    <img src="{{ light }}" srcset="{{ light }} 2x" alt="{{ include.alt }}" loading="lazy">
+  </picture></a>
+</figure>

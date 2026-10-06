@@ -1,0 +1,115 @@
+# The README's "Vulnerability scan" badge: on pushes to main, pull requests, by hand, and before every release (a CVE
+# published since the last run shows then). Any finding fails the run.
+# - OSV-Scanner checks sbom.spdx.json (FreeRDP and OpenSSL, as scripts/build-freerdp.sh pins them) against the OSV
+#   database (osv.dev), after showing that it sees these two at all: the same SBOM with older releases must fail.
+# - FreeRDP's own GitHub security advisories: OSV's FreeRDP records list no release after 3.5.1, so each advisory must
+#   be fixed at or before the pinned release.
+# - gitleaks looks for secrets in every commit (.gitleaks.toml lists its verified false positives).
+# A CVE in FreeRDP or OpenSSL is fixed by a newer pin in scripts/build-freerdp.sh, then scripts/sbom.sh.
+name: Vulnerability scan
+
+# Pull requests, merges into main, by hand, and as a gate in release.yml (no daily schedule: owner's rule,
+# 2026-10-05), so no release ships with a known vulnerability in FreeRDP or OpenSSL.
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+  workflow_call:
+
+# A newer push to a pull request replaces its run; every run on a branch finishes (the badges show the last one).
+concurrency:
+  group: security-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+# bash with pipefail.
+defaults:
+  run:
+    shell: bash
+
+permissions:
+  contents: read
+
+jobs:
+  dependencies:
+    name: Known vulnerabilities in FreeRDP and OpenSSL
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: OSV-Scanner 2.6.0
+        run: |
+          curl -fsSL --retry 3 -o "$RUNNER_TEMP/osv-scanner" \
+            https://github.com/google/osv-scanner/releases/download/v2.6.0/osv-scanner_linux_amd64
+          echo "ca69b3d3cd08f889a49dc0a383122f71cc528b83803671df5fd874d97485b108  $RUNNER_TEMP/osv-scanner" | sha256sum -c -
+          chmod +x "$RUNNER_TEMP/osv-scanner"
+
+      - name: OSV-Scanner sees FreeRDP and OpenSSL (their 3.5.0 releases must fail it)
+        run: |
+          sed -E 's#(pkg:git/github.com/freerdp/freerdp@)[^"]+#\13.5.0#; s#(pkg:git/github.com/openssl/openssl@)[^"]+#\1openssl-3.5.0#' \
+            sbom.spdx.json > "$RUNNER_TEMP/old.spdx.json"
+          "$RUNNER_TEMP/osv-scanner" scan source --format json -L "$RUNNER_TEMP/old.spdx.json" > "$RUNNER_TEMP/old.json" || true
+          found=$(jq -r '[.results[].packages[] | select(.vulnerabilities | length > 0) | .package.name] | sort | join(" ")' \
+            "$RUNNER_TEMP/old.json" || true)
+          if [ "$found" != "freerdp openssl" ]; then
+            echo "::error::OSV-Scanner flagged '$found' instead of both FreeRDP 3.5.0 and OpenSSL 3.5.0: it can't see these components, so its scan of the SBOM would prove nothing"
+            exit 1
+          fi
+          echo "OSV-Scanner flags FreeRDP 3.5.0 and OpenSSL 3.5.0, so it sees both components."
+
+      - name: OSV-Scanner on the SBOM
+        run: |
+          "$RUNNER_TEMP/osv-scanner" scan source -L sbom.spdx.json
+
+      # Advisories that name no fixed release are read by hand and listed here with why they don't apply:
+      #   GHSA-rqgv-grx4-xm6x  RDSTLS server authentication: fixed in FreeRDP 3.30.0 (its release notes), and AirSCP is
+      #                        only a client
+      #   GHSA-rq8f-9xjh-pr3m  "/" option lines in .rdp files: AirSCP never reads .rdp files with FreeRDP (rdp_shim.c
+      #                        sets every setting itself)
+      - name: FreeRDP's own security advisories
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REVIEWED: GHSA-rqgv-grx4-xm6x GHSA-rq8f-9xjh-pr3m
+        run: |
+          pin=$(sed -n 's/^freerdp_version=//p' scripts/build-freerdp.sh)
+          gh api --paginate "repos/FreeRDP/FreeRDP/security-advisories?per_page=100" \
+            --jq '.[] | [.ghsa_id, ([.vulnerabilities[].patched_versions // ""] | join(" "))] | @tsv' > "$RUNNER_TEMP/advisories.tsv"
+          [ -s "$RUNNER_TEMP/advisories.tsv" ] || { echo "::error::Read no FreeRDP advisories"; exit 1; }
+          affected=0
+          while IFS=$'\t' read -r id patched; do
+            fixed=$(grep -oE '[0-9]+(\.[0-9]+)+' <<< "$patched" | sort -V | tail -n 1 || true)
+            if [ -z "$fixed" ]; then
+              [[ " $REVIEWED " == *" $id "* ]] && continue
+              echo "::error::FreeRDP advisory $id names no fixed release: read https://github.com/FreeRDP/FreeRDP/security/advisories/$id, then upgrade the pin or add it with the reason to REVIEWED in security.yml"
+              affected=1
+            elif [ "$(printf '%s\n' "$fixed" "$pin" | sort -V | tail -n 1)" != "$pin" ]; then
+              echo "::error::FreeRDP $pin has https://github.com/FreeRDP/FreeRDP/security/advisories/$id (fixed in $fixed): upgrade the pin in scripts/build-freerdp.sh"
+              affected=1
+            fi
+          done < "$RUNNER_TEMP/advisories.tsv"
+          echo "FreeRDP $pin: $(wc -l < "$RUNNER_TEMP/advisories.tsv") advisories checked"
+          exit "$affected"
+
+  secrets:
+    name: Secrets in the git history
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0   # every commit of every branch
+          persist-credentials: false
+
+      - name: gitleaks 8.30.1
+        run: |
+          curl -fsSL --retry 3 -o "$RUNNER_TEMP/gitleaks.tar.gz" \
+            https://github.com/gitleaks/gitleaks/releases/download/v8.30.1/gitleaks_8.30.1_linux_x64.tar.gz
+          echo "551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb  $RUNNER_TEMP/gitleaks.tar.gz" | sha256sum -c -
+          tar -xzf "$RUNNER_TEMP/gitleaks.tar.gz" -C "$RUNNER_TEMP" gitleaks
+
+      - name: gitleaks on every commit
+        run: |
+          "$RUNNER_TEMP/gitleaks" git --redact --verbose .

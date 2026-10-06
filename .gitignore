@@ -1,0 +1,12 @@
+.build/
+build/
+
+# Windows RDP test VM (testenv/windows): generated password, answer/guest-tools ISOs, logs
+testenv/.windows*
+*.iso
+*.qcow2
+
+# FreeRDP build cache (scripts/build-freerdp.sh) and the Docker lab's throwaway keys
+vendor/
+testenv/.keys/
+testenv/.uidriver/
