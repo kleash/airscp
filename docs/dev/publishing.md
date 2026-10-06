@@ -29,8 +29,10 @@ release.yml's `mcp-registry` job publishes `server.json` with the release's `air
 - Validate without publishing: `curl -X POST -H 'Content-Type: application/json' --data @server.json
   https://registry.modelcontextprotocol.io/v0.1/validate` (it answered `{"valid":true}` for this file).
 
-**Fed from the registry, nothing to submit**: GitHub's MCP Registry (github.com/mcp) and VS Code's MCP gallery
-ingest it; **PulseMCP** ingests it weekly (its own submission form is paused: "publish it to the Official MCP Registry").
+**PulseMCP** ingests the registry weekly (its own submission form is paused: "publish it to the Official MCP Registry").
+**GitHub's MCP Registry** (github.com/mcp, which feeds VS Code's @mcp gallery) is curated: ask for onboarding in
+https://github.com/github/github-mcp-server/discussions/1257 (a public comment: the user's yes first); after that, new
+versions sync from the official registry.
 
 ## 2. Glama (glama.ai/mcp/servers)
 
@@ -67,7 +69,8 @@ npx -y smithery@latest auth login                                   # OAuth in t
 npx -y smithery@latest mcp publish ./airscp.mcpb -n kleash/airscp   # the airscp.mcpb from the release
 ```
 
-Known issue (Smithery CLI #806): its publish wants an `inputSchema` per tool, which the MCPB manifest format forbids;
+Known issue ([arcadeai-labs/smithery-cli#806](https://github.com/arcadeai-labs/smithery-cli/issues/806), open on
+2026-10-06): its publish wants an `inputSchema` per tool, which the MCPB manifest format forbids;
 if it refuses the bundle, note it here and retry when fixed (the listing's quality score also stays low without
 schemas).
 
@@ -78,7 +81,7 @@ schemas).
 | mcpservers.org | https://mcpservers.org/submit: name, category (Development or File System), short description, repository URL, registry name `io.github.kleash/airscp`, contact email | Free plan: review within 2 weeks; skip the paid option |
 | MCP Market (mcpmarket.com) | the site's **Submit** form | Thin details; repository URL and description |
 | Cline MCP Marketplace (github.com/cline/mcp-marketplace) | New issue ▸ **mcp-server-submission** template: repository URL, a 400×400 PNG logo, why it helps Cline users, and that Cline set it up from the README | Reviewed by people within days; adoption counts |
-| LobeHub MCP (lobehub.com/mcp) | its **Submit MCP** page (GitHub URL) | Optional |
+| LobeHub MCP (lobehub.com/mcp) | Nothing to submit: it listed AirSCP by itself, https://lobehub.com/mcp/kleash-airscp (Unvalidated) | Claim it there (GitHub login) to manage it |
 
 ## 7. Claude Code plugins and skills
 
