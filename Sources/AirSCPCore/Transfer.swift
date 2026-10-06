@@ -224,12 +224,15 @@ public final class TransferQueue {
     public var onChange: (([TransferJob]) -> Void)?
 
     public var jobs: [TransferJob] { lock.locked { _jobs } }
-    /// Test seam: scp -l (Kbit/s), so that a transfer lasts long enough to be cancelled half-way.
+    /// Test seam: a speed limit in Kbit/s (scp's and sftp's -l, the pump's for streams), so that a transfer lasts long
+    /// enough to be cancelled or paused half-way.
     var bandwidthLimit: Int?
     /// Test seam: Settings ▸ Verify transfers with SHA-256 for this queue alone (the setting is every host's).
     var verifiesTransfers: Bool?
     /// scp's and sftp's -l (Kbit/s) for a job starting now: the test seam, else the Transfers panel's speed limit.
     private var limit: Int? { bandwidthLimit ?? TransferCenter.shared.speedLimit.map { max(1, $0 * 8 / 1024) } }
+    /// The pump's limit (bytes a second) for a stream starting now: the test seam, else the panel's speed limit.
+    private var streamLimit: Int? { bandwidthLimit.map { $0 * 1024 / 8 } ?? TransferCenter.shared.speedLimit }
     /// A job is queued, running or paused (confirm before quitting or disconnecting).
     public var isBusy: Bool { lock.locked { _jobs.contains { !$0.status.isFinished } } }
 
@@ -785,7 +788,7 @@ public final class TransferQueue {
         let pumped = await Runner.pump(producer, environment: ["COPYFILE_DISABLE": "1"], hostID: session.host.id,
                                        log: session.emit, into: .command(consumer, environment: [:], hostID: session.host.id,
                                                                          log: session.emit),
-                                       after: nil, cancellation: cancellation, limit: TransferCenter.shared.speedLimit,
+                                       after: nil, cancellation: cancellation, limit: streamLimit,
                                        preamble: preamble) {
             self.streamed(job.id, $0)
         }
@@ -848,7 +851,7 @@ public final class TransferQueue {
         let pumped = await Runner.pump(producer, input: input, hostID: session.host.id, log: session.emit,
                                        into: .command(consumer, environment: [:], hostID: session.host.id, log: session.emit),
                                        after: TransferQueue.marker, cancellation: cancellation,
-                                       limit: TransferCenter.shared.speedLimit) { self.streamed(job.id, $0) }
+                                       limit: streamLimit) { self.streamed(job.id, $0) }
         streamed(job.id, pumped.bytes, final: true)
         return try outcome(pumped, cancellation: cancellation, producer: session, consumer: nil)
     }
@@ -870,7 +873,7 @@ public final class TransferQueue {
             startStream(job.id, label: job.name, total: nil)
             let pumped = await Runner.pump(producer, input: input, hostID: session.host.id, log: session.emit,
                                            into: .file(file), after: TransferQueue.marker, cancellation: cancellation,
-                                           limit: TransferCenter.shared.speedLimit) { self.streamed(job.id, $0) }
+                                           limit: streamLimit) { self.streamed(job.id, $0) }
             streamed(job.id, pumped.bytes, final: true)
             var errors = try outcome(pumped, cancellation: cancellation, producer: session, consumer: nil)
             if job.isFolder {
@@ -941,7 +944,7 @@ public final class TransferQueue {
             let pumped = await Runner.pump(producer, input: names, environment: ["COPYFILE_DISABLE": "1"],
                                            hostID: session.host.id, log: session.emit,
                                            into: .command(consumer, environment: [:], hostID: session.host.id, log: session.emit),
-                                           after: nil, cancellation: cancellation, limit: TransferCenter.shared.speedLimit,
+                                           after: nil, cancellation: cancellation, limit: streamLimit,
                                            preamble: preamble) {
                 self.streamed(job.id, $0)
             }
@@ -1000,7 +1003,7 @@ public final class TransferQueue {
         let pumped = await Runner.pump(producer, input: input, hostID: source.host.id, log: source.emit,
                                        into: .command(consumer, environment: [:], hostID: session.host.id, log: session.emit),
                                        after: TransferQueue.marker, cancellation: cancellation,
-                                       limit: TransferCenter.shared.speedLimit, preamble: preamble) { self.streamed(job.id, $0) }
+                                       limit: streamLimit, preamble: preamble) { self.streamed(job.id, $0) }
         streamed(job.id, pumped.bytes, final: true)
         return try outcome(pumped, cancellation: cancellation, producer: source, consumer: session)
     }

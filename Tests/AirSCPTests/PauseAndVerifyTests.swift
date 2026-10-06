@@ -152,28 +152,34 @@ private func pauseMidway(_ queue: TransferQueue, _ id: UUID, partial: String) as
         let queue = session.transfers
         let local = try server.scratch()
         try write("<p>\n", to: local + "/site/index.html")
-        try writeZeros(bytes: 400 << 20, to: local + "/site/zeros")
+        try writeRandom(bytes: 20_000_000, to: local + "/site/video.bin")
+        queue.bandwidthLimit = 16_000  // 2 MB/s through the pump: 10 s for the folder
         let up = queue.upload(local + "/site", to: server.path("site"), isFolder: true)
-        #expect(await eventually { (job(up, in: queue)?.progress.bytes ?? 0) > 0 })
+        #expect(await eventually { (job(up, in: queue)?.progress.bytes ?? 0) > 1_000_000 })
         queue.pause([up])
         await queue.waitUntilIdle()
         #expect(job(up, in: queue)?.status == .paused && !queue.isResumable(up))
         #expect(!rawExists(server.path("site")) && !names(in: server.home).contains { $0.hasPrefix(".airscp-") })
         #expect(TransferText.note(try #require(job(up, in: queue)))?.contains("starts it again") == true)
+        queue.bandwidthLimit = nil
         queue.resume([up])
         await queue.waitUntilIdle()
         #expect(job(up, in: queue)?.status == .done && read(server.path("site/index.html")) == "<p>\n")
-        #expect(TransferQueue.localSize(server.path("site/zeros")) == 400 << 20)
+        #expect(same(local + "/site/video.bin", server.path("site/video.bin")))
 
+        queue.bandwidthLimit = 16_000
         let down = queue.download(server.path("site"), to: local + "/back", isFolder: true)
-        #expect(await eventually { (job(down, in: queue)?.progress.bytes ?? 0) > 0 })
+        #expect(await eventually { (job(down, in: queue)?.progress.bytes ?? 0) > 1_000_000 })
         queue.pause([down])
         await queue.waitUntilIdle()
         #expect(job(down, in: queue)?.status == .paused)
         #expect(!rawExists(local + "/back") && !names(in: local).contains { $0.hasPrefix(".airscp-") })
+        queue.bandwidthLimit = nil
         queue.resume([down])
         await queue.waitUntilIdle()
-        #expect(job(down, in: queue)?.status == .done && TransferQueue.localSize(local + "/back/zeros") == 400 << 20)
+        #expect(job(down, in: queue)?.status == .done && same(local + "/site/video.bin", local + "/back/video.bin"))
+        let commands = (await server.logEntries()).map(\.command)
+        #expect(commands.filter { $0.contains("tar -x") }.count >= 2, "\(commands)")  // streams, not scp -r
     }
 }
 
