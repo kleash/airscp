@@ -17,9 +17,10 @@ on:
   workflow_dispatch:
   workflow_call:
 
-# A newer push to a pull request replaces its run; every run on a branch finishes (the badges show the last one).
+# A newer push to a pull request replaces its run. Every other run has a group of its own and finishes: a cancelled
+# run (even one still waiting for an earlier one) shows as "failing" on the README's badge.
 concurrency:
-  group: security-${{ github.event.pull_request.number || github.ref }}
+  group: security-${{ github.event.pull_request.number || github.run_id }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 # bash with pipefail.
