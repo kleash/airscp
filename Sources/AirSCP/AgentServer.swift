@@ -10,8 +10,9 @@ import SwiftUI
 /// token}`, from processes of the same user carrying the token in `agent/token` (0600, new each time it starts), and
 /// answers in MCP's tool-result shape. Tools reach the app the way the user does: menu items through their own
 /// validation (a disabled item says why), buttons and fields of windows and sheets through the accessibility tree
-/// VoiceOver reads (SwiftUI's too), keys and clicks as events, and five things no click can carry (drop, select, sort,
-/// wait, snapshot) by calling what the drop and table code calls. Screenshots are drawn by AirSCP itself.
+/// VoiceOver reads (SwiftUI's too), keys and clicks as events, and what no click should carry (drop, select, sort, go,
+/// open, wait, snapshot) by calling what the drop, table and Go to Folder code calls. Screenshots are drawn by AirSCP
+/// itself.
 /// The app's own questions stay in the way: Delete still asks, and the agent presses "Delete".
 @MainActor
 final class AgentServer {
@@ -235,6 +236,8 @@ final class AgentServer {
             case "type": result = try await type(arguments)
             case "click": result = try await click(arguments)
             case "focus": result = try await focus(arguments)
+            case "go": result = try await go(arguments)
+            case "open": result = try await openRow(arguments)
             case "select": result = try await select(arguments)
             case "sort": result = try await sort(arguments)
             case "drop": result = try await drop(arguments)
@@ -296,6 +299,8 @@ final class AgentServer {
             text = arguments["wheel"] != nil ? "Turned the mouse wheel on the Windows desktop"
                 : "\(count) at \(arguments["x"].map { "\($0)" } ?? "?"), \(arguments["y"].map { "\($0)" } ?? "?")"
         case "focus": text = "Focused " + (pane ?? string("target") ?? "a pane")
+        case "go": text = "Went to \(quoted(string("path") ?? "?")) in \(pane ?? "the right pane")"
+        case "open": text = "Opened \(quoted(string("name") ?? "?")) in \(pane ?? "the right pane")"
         case "select":
             let names = (arguments["names"] as? [String]) ?? string("names").map { [$0] } ?? []
             let what = arguments["all"] as? Bool == true ? "everything" : arguments["none"] as? Bool == true ? "nothing"
@@ -945,14 +950,22 @@ final class AgentServer {
 
     private func click(_ arguments: [String: Any]) async throws -> [String: Any] {
         guard let x = (arguments["x"] as? NSNumber)?.doubleValue, let y = (arguments["y"] as? NSNumber)?.doubleValue else {
-            throw Failure("click needs x and y: points from the top left of the main window (a screenshot at scale 1).")
+            throw Failure("click needs x and y: points from the top left of the main window (a screenshot at scale 1), for the "
+                          + "Windows desktop. Hosts, folders and rows are taken by name: select pane=sidebar names=[\"web\"], "
+                          + "go path=…, open name=….")
         }
         let base = try (arguments["in"] as? String).map { try scopes($0).last! } ?? mainWindow
         let point = NSPoint(x: base.frame.minX + x, y: base.frame.maxY - y)
         let window = openSheets().reversed().first { $0.frame.contains(point) } ?? base
         let location = NSPoint(x: point.x - window.frame.minX, y: point.y - window.frame.minY)
         let right = (arguments["button"] as? String)?.lowercased() == "right"
-        let desktop = window.contentView?.hitTest(window.contentView!.convert(location, from: nil)) as? RDPDesktopView
+        let hit = window.contentView?.hitTest(window.contentView!.convert(location, from: nil))
+        if let hit, Self.takenByName(hit) {
+            throw Failure("Never click in the sidebar or the file panes: hosts, folders and rows are taken by name, their "
+                          + "controls by id (press, set). A host: select pane=sidebar names=[\"web\"]; a folder: go path=/var/log; "
+                          + "a row: open name=… (a folder, ..) or select pane=right names=[\"a.txt\"], then menu path=\"File > …\".")
+        }
+        let desktop = hit as? RDPDesktopView
         if right, desktop == nil {
             throw Failure("A right-click opens a context menu, which agents can't see: use menu \"context > …\" instead.")
         }
@@ -982,6 +995,13 @@ final class AgentServer {
         bringToFront(window)
         let count = max(1, min(arguments["count"] as? Int ?? 1, 3))
         return await perform { Self.click(at: location, in: window, right: right, modifiers: modifiers, count: count) }
+    }
+
+    /// Whether `view` is in the sidebar or a file pane, whose hosts, folders and files are taken by name (and controls by
+    /// id): a click there is never needed, and behind other apps it may not even select (AppKit takes it for the click
+    /// that activates the window).
+    static func takenByName(_ view: NSView) -> Bool {
+        sequence(first: view, next: \.superview).contains { $0.nextResponder is FilePane || $0.nextResponder is NSHostingController<Sidebar> }
     }
 
     /// Mouse down and up at `location`, `count` times, as a person clicks.
@@ -1032,6 +1052,96 @@ final class AgentServer {
         return ((view as? T).map { [$0] } ?? []) + view.subviews.flatMap { views(type, in: $0) }
     }
 
+    // MARK: Go and open: folders by path, rows by name (never by coordinates)
+
+    /// The rows go and open answer with; `more` counts the others (snapshot's rows lists them).
+    static let listedRows = 100
+
+    /// go: a pane to a folder, as the Go to Folder field (⇧⌘G) takes a typed path: the pane moves where the user sees
+    /// it, and the answer comes once the folder is listed.
+    private func go(_ arguments: [String: Any]) async throws -> [String: Any] {
+        let pane = try browsable(arguments["pane"] as? String)
+        guard let path = pane.resolve(arguments["path"] as? String ?? "") else {
+            throw Failure("go needs path: a folder (/var/log, ~, ~/logs, or relative to the folder shown; .. goes up).")
+        }
+        return try await go(pane, to: path)
+    }
+
+    /// open: a row by name, as a double-click or Return opens it (FilePane.openItems): a folder, or a link to one, is
+    /// listed in the pane and answered as go answers; ".." is the enclosing folder; a file opens in its app on this Mac.
+    private func openRow(_ arguments: [String: Any]) async throws -> [String: Any] {
+        guard let name = arguments["name"] as? String, !name.isEmpty else {
+            throw Failure("open needs name: a row's name (snapshot: the pane's rows), or \"..\" for the enclosing folder.")
+        }
+        let pane = try browsable(arguments["pane"] as? String)
+        guard let dir = pane.dir else { throw Failure("The pane shows no folder yet: wait until=listed first.") }
+        if name == ".." {
+            guard dir != "/" else { throw Failure("This is the top folder (/).") }
+            return try await go(pane, to: RemotePath.parent(dir), select: [RemotePath.name(dir)])
+        }
+        // By its exact bytes, as select takes names: "café" composed and decomposed are two files on a Linux server.
+        guard let row = pane.rows.firstIndex(where: { Data($0.name.utf8) == Data(name.utf8) }) else {
+            if pane.items.contains(where: { Data($0.name.utf8) == Data(name.utf8) }) {
+                throw Failure("“\(name)” isn't shown in \(dir): the filter or hidden files (View > Show Hidden Files) hide it.")
+            }
+            throw Failure("No “\(name)” in \(dir). There: " + pane.rows.prefix(30).map(\.name).joined(separator: ", ")
+                          + (pane.rows.count > 30 ? ", …" : "."))
+        }
+        let item = pane.rows[row]
+        if item.kind == .directory || item.kind == .symlink && !pane.isRemote && FileList.isLocalFolder(item.path) {
+            return try await go(pane, to: item.path)
+        }
+        // A server's link may lead to a folder: listed if it does, as Return lists it; else it opens as a file.
+        if item.kind == .symlink, pane.isRemote, let listed = try? await go(pane, to: item.path) { return listed }
+        pane.view.window?.makeFirstResponder(pane.table)
+        pane.table.selectRowIndexes([row], byExtendingSelection: false)
+        pane.table.scrollRowToVisible(row)
+        pane.openItems(nil)
+        return await acted(["opened": item.name, "note": "A file opens in its app on this Mac, outside AirSCP: you can't see "
+                            + "it. To read one, download it (drop from=… to=\"local:<folder>\") or use File > Edit in AirSCP."])
+    }
+
+    /// A file pane go and open may move: the Files tab shown, no sheet over the window (answered first, as a person must)
+    /// and its server connected.
+    private func browsable(_ name: String?) throws -> FilePane {
+        if let sheet = main?.window?.attachedSheet {
+            throw Failure("A sheet is open in AirSCP's window: answer or close it first. " + describe(sheetJSON(sheet)))
+        }
+        let pane = try pane(name ?? "right")
+        guard pane.isConnected else {
+            throw Failure("“\(pane.session?.host.displayName ?? "")” isn't connected: menu path=\"Host > Connect\", then wait "
+                          + "until=connected.")
+        }
+        return pane
+    }
+
+    /// Lists `path` in `pane` as Go to Folder does (its Back list and path bar follow) and gives the pane the focus, as
+    /// Return in that field does. A folder that can't be listed is this request's error, not a sheet left to close.
+    private func go(_ pane: FilePane, to path: String, select: [String] = []) async throws -> [String: Any] {
+        // Just connected, the pane lists its start folder a moment after the state changed: that listing would take this
+        // one's place, so it goes first (as a person sees the first folder before typing another).
+        let deadline = Date().addingTimeInterval(30)
+        while pane.dir == nil && Date() < deadline { try await Task.sleep(nanoseconds: 50_000_000) }
+        let before = pane.dir
+        var failure: Error?
+        guard await pane.open(path, select: select, quiet: true, failed: { failure = $0 }) else {
+            let stays = before.map { " (the pane stays in \($0))" } ?? ""
+            switch failure.flatMap({ ($0 as? AirSCPError)?.kind }) {
+            case .noSuchFile?: throw Failure("No such folder: \(path)\(stays).")
+            case .permissionDenied?: throw Failure("Permission denied: this account may not list \(path)\(stays).")
+            default:
+                guard let failure else {
+                    throw Failure("Another listing took this one's place (the pane shows \(pane.dir ?? "no folder")): go again.")
+                }
+                throw Failure("Can't open \(path)\(stays): " + ((failure as? AirSCPError)?.message ?? failure.localizedDescription))
+            }
+        }
+        pane.view.window?.makeFirstResponder(pane.table)
+        var json = paneJSON(pane, rows: Self.listedRows)
+        if pane.rows.count > Self.listedRows { json["more"] = pane.rows.count - Self.listedRows }
+        return await acted(["pane": json])
+    }
+
     // MARK: Select, sort, drop
 
     private func select(_ arguments: [String: Any]) async throws -> [String: Any] {
@@ -1039,7 +1149,8 @@ final class AgentServer {
         let ids = (arguments["ids"] as? [String]) ?? []
         let all = arguments["all"] as? Bool == true, none = arguments["none"] as? Bool == true
         guard !names.isEmpty || !ids.isEmpty || all || none else {
-            throw Failure("select needs pane and names (or all: true, none: true).")
+            throw Failure("select needs pane and names, e.g. {\"pane\": \"sidebar\", \"names\": [\"web\"]} for a host or "
+                          + "{\"pane\": \"right\", \"names\": [\"a.txt\"]} for files (or all: true, none: true).")
         }
         let paneName = (arguments["pane"] as? String)?.lowercased()
         if paneName == nil, let spec = arguments["in"] as? String {

@@ -562,6 +562,112 @@ func field(_ sheet: [String: Any]?, _ id: String) -> [String: Any]? {
     }
 }
 
+/// go and open (owner's report, 1.0.0: an agent clicked its way through a server's folders): a folder by its path
+/// (absolute, ~, relative, ..) and a row by its name, through the pane's own navigation (the pane moves, its Back list
+/// follows), answered with the folder's rows (the first 100, `more` counting the others) or a plain error, and no
+/// error sheet left to close; a file opens as Return opens it.
+@MainActor @Test func agentGoesToFoldersAndOpensRowsByName() async throws {
+    _ = NSApplication.shared
+    try await withServer { @MainActor server in
+        var host = server.host()
+        host.label = "lab"
+        let local = try server.scratch()
+        host.lastLocalDir = local
+        let data = server.path("data")
+        try write("q,1\n", to: data + "/reports/q3.csv")
+        try write("notes\n", to: data + "/notes.txt")
+        try write("x", to: data + "/.cache/x")
+        try write("x", to: data + "/locked/x")
+        for index in 0..<150 { try write("\(index)", to: data + "/many/f\(index).txt") }
+        try FileManager.default.createSymbolicLink(atPath: data + "/link", withDestinationPath: data + "/reports")
+        chmod(data + "/locked", 0)  // the server's shutdown unlocks it
+        let model = testModel([host])
+        let askpass = try AskpassServer(helperPath: TestEnvironment.airscpBinary)
+        defer { askpass.close() }
+        let (main, agent, _) = try agentWindow(model, askpass)
+        defer {
+            agent.close()
+            main.window?.orderOut(nil)
+        }
+        func listed(_ reply: Reply) -> (dir: String?, names: [String]) {
+            let pane = reply["pane"] as? [String: Any]
+            return (pane?["dir"] as? String, (pane?["rows"] as? [[String: Any]] ?? []).compactMap { $0["name"] as? String })
+        }
+
+        // Not connected yet: said so, nothing moves.
+        _ = await call(agent, "select", ["pane": "sidebar", "names": ["lab"]])
+        var reply = await call(agent, "go", ["path": data])
+        #expect(reply.error == "“lab” isn't connected: menu path=\"Host > Connect\", then wait until=connected.", "\(reply.error ?? "")")
+        _ = await call(agent, "menu", ["path": "Host > Connect"])
+        #expect(await call(agent, "wait", ["until": "connected", "timeout": 20]).error == nil)
+        let right = try #require(main.selectedWorkspace?.browser.right)
+
+        // An absolute path: the pane shows it (and focuses), the reply lists it once listed; hidden files stay hidden.
+        reply = await call(agent, "go", ["path": data])
+        #expect(listed(reply).dir == data && Set(listed(reply).names) == ["link", "locked", "many", "reports", "notes.txt"],
+                "\(reply.json) \(reply.error ?? "")")
+        let row = ((reply["pane"] as? [String: Any])?["rows"] as? [[String: Any]])?.first { $0["name"] as? String == "notes.txt" }
+        #expect(row?["kind"] as? String == "file" && row?["size"] as? Int == 6 && row?["perm"] as? String != nil
+                && row?["modified"] as? String != nil, "\(row ?? [:])")
+        #expect(right.dir == data && (reply["pane"] as? [String: Any])?["focused"] as? Bool == true
+                && (reply["pane"] as? [String: Any])?["more"] == nil)
+        // A click in a file pane or the sidebar is refused (the bridge's test clicks there): what is there is taken by name.
+        let sidebar = try #require((main.window?.contentViewController as? NSSplitViewController)?.splitViewItems.first?.viewController.view)
+        let cell = try #require(right.table.view(atColumn: 0, row: 0, makeIfNecessary: true))
+        #expect([cell, right.statusLabel, right.filterField, sidebar.subviews.first ?? sidebar].allSatisfy(AgentServer.takenByName))
+        #expect(!AgentServer.takenByName(try #require(main.window?.contentView)))
+        // ~ is the server's home, and relative paths start in the folder shown; the Back list follows as for a person.
+        #expect(listed(await call(agent, "go", ["path": "~"])).dir == server.home)
+        #expect(listed(await call(agent, "go", ["path": "~/data"])).dir == data && right.back.last == server.home)
+        #expect(listed(await call(agent, "go", ["path": "reports"])).dir == data + "/reports")
+        #expect(listed(await call(agent, "go", ["path": ".."])).dir == data)
+        // A folder that isn't there, or can't be read: a plain error, the pane stays, and no sheet to close.
+        reply = await call(agent, "go", ["path": "nothing"])
+        #expect(reply.error == "No such folder: \(data)/nothing (the pane stays in \(data)).", "\(reply.error ?? "")")
+        reply = await call(agent, "go", ["path": data + "/locked"])
+        #expect(reply.error?.hasPrefix("Permission denied: this account may not list \(data)/locked") == true, "\(reply.error ?? "")")
+        #expect(right.dir == data && main.window?.attachedSheet == nil)
+
+        // open: a folder by its name, .. back up (with the folder left selected), a link to a folder.
+        reply = await call(agent, "open", ["name": "reports"])
+        #expect(listed(reply).dir == data + "/reports" && listed(reply).names == ["q3.csv"], "\(reply.json) \(reply.error ?? "")")
+        reply = await call(agent, "open", ["name": ".."])
+        #expect(listed(reply).dir == data && (reply["pane"] as? [String: Any])?["selected"] as? [String] == ["reports"])
+        reply = await call(agent, "open", ["name": "link"])
+        #expect(listed(reply).dir == data + "/link" && listed(reply).names == ["q3.csv"], "\(reply.json) \(reply.error ?? "")")
+        _ = await call(agent, "open", ["name": ".."])
+        #expect(await call(agent, "open", ["name": "nope"]).error?.hasPrefix("No “nope” in \(data). There: ") == true)
+        #expect(await call(agent, "open", ["name": ".cache"]).error?.contains("isn't shown") == true)
+        // A file opens as Return opens it: downloaded, then handed to its app (here: recorded).
+        let opened = Recorder<URL>()
+        right.browser?.openFile = { opened.append($0) }
+        reply = await call(agent, "open", ["name": "notes.txt"])
+        #expect(reply.error == nil && reply["opened"] as? String == "notes.txt" && right.selectedItems.map(\.name) == ["notes.txt"])
+        #expect(await eventually { opened.all.first.map { read($0.path) } == "notes\n" })
+
+        // A long folder: the first 100 rows, and how many more.
+        reply = await call(agent, "go", ["path": "many"])
+        let pane = reply["pane"] as? [String: Any]
+        #expect((pane?["rows"] as? [Any])?.count == 100 && pane?["more"] as? Int == 50 && pane?["total"] as? Int == 150,
+                "\(pane?["more"] ?? "") \(pane?["total"] ?? "")")
+
+        // This Mac's pane, by pane=left.
+        try write("m", to: local + "/sub/mac.txt")
+        reply = await call(agent, "go", ["pane": "left", "path": local + "/sub"])
+        #expect(listed(reply).dir == local + "/sub" && listed(reply).names == ["mac.txt"], "\(reply.json) \(reply.error ?? "")")
+
+        // A sheet in the way is answered first, as a person must.
+        main.newGroup()
+        #expect(await call(agent, "go", ["path": "~"]).error?.hasPrefix("A sheet is open") == true)
+        _ = await call(agent, "key", ["combo": "escape"])
+        #expect(await call(agent, "wait", ["until": "no_sheet", "timeout": 5]).error == nil)
+
+        _ = await call(agent, "menu", ["path": "Host > Disconnect"])
+        #expect(await call(agent, "wait", ["until": "disconnected", "timeout": 20]).error == nil)
+        #expect(await call(agent, "open", ["name": "reports"]).error?.contains("isn't connected") == true)
+    }
+}
+
 /// Test Connection in the host editor works while AirSCP isn't the active app (ssh's question comes on the editor), and
 /// a tunnel's switch, Edit… and Remove are pressed by the tunnel's name, with its state in the snapshot.
 @MainActor @Test func agentTestsAConnectionAndSwitchesATunnel() async throws {
