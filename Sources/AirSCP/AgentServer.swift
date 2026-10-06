@@ -961,9 +961,9 @@ final class AgentServer {
         let right = (arguments["button"] as? String)?.lowercased() == "right"
         let hit = window.contentView?.hitTest(window.contentView!.convert(location, from: nil))
         if let hit, Self.takenByName(hit) {
-            throw Failure("Never click in the sidebar or the file panes: hosts, folders and rows are taken by name. A host: "
-                          + "select pane=sidebar names=[\"web\"]; a folder: go path=/var/log; a row: open name=… (a folder, "
-                          + "..) or select pane=right names=[\"a.txt\"], then menu path=\"File > …\".")
+            throw Failure("Never click in the sidebar or the file panes: hosts, folders and rows are taken by name, their "
+                          + "controls by id (press, set). A host: select pane=sidebar names=[\"web\"]; a folder: go path=/var/log; "
+                          + "a row: open name=… (a folder, ..) or select pane=right names=[\"a.txt\"], then menu path=\"File > …\".")
         }
         let desktop = hit as? RDPDesktopView
         if right, desktop == nil {

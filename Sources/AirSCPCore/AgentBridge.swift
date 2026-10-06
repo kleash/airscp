@@ -55,8 +55,8 @@ public enum AgentBridge {
         tool("type", "Type text into the focused field (or the Windows desktop with target rdp).",
              ["text": string("Text"), "target": string("window | rdp"), "in": string("window:<title> | sheet")], required: ["text"]),
         tool("click", "Click at x, y: points from the top left of the main window (or the window named by in), as in a "
-             + "screenshot of it at scale 1. For the Windows desktop; refused on file rows and in the sidebar (go, open, "
-             + "select and menu take folders, rows and hosts by name), elsewhere only a last resort after press and set. "
+             + "screenshot of it at scale 1. For the Windows desktop; refused in the file panes and the sidebar (go, "
+             + "open, select and menu take folders, rows and hosts by name), elsewhere only a last resort after press and set. "
              + "On the Windows desktop the pointer rests there first; wheel turns the mouse wheel there instead of clicking "
              + "(notches, up when positive).",
              ["x": number("X"), "y": number("Y"), "button": string("left | right"), "count": integer("2 for a double-click"),
