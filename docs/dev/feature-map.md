@@ -29,7 +29,7 @@ Files are under `Sources/` (`Core/` = `AirSCPCore`, `App/` = `AirSCP`); tests un
 | Server-to-server copy, drag to Finder [L] | Core/Transfer (relay); App/FilePane (file promises) | StreamTransferTests `serverToServerCopies`; WorkspaceTests (promise path) |
 | Resume after a lost connection [S.1] | Core/Transfer (`resumable`, `resume`), Runner, Session | ResumeTests; lab `cutOffTransfersContinueOnAnSFTPOnlyAccount`; AgentTests `aCutOffTransferShowsItContinuesWhereItStopped` |
 | Find Files [S.1] | Core/RemoteOps (`Session.find`); App/FileSheets, FileActions | SyncFindTests; lab `findFilesOnLinuxBusyBoxAndSFTPOnly` |
-| Synchronize [S.1] | App/Synchronize, BrowserContent | SyncFindTests; FeatureRoundTests (a level per command, 20+ files as one stream); lab (GNU, BusyBox, sftp) |
+| Synchronize [S.1]; its Leave out and unticking items (1.1.0) | App/Synchronize, BrowserContent; agent set/select/snapshot in App/AgentServer, AgentSnapshot | SyncFindTests (incl. `synchronizeLeavesOutWhatMatchesAndDoesOnlyTheTickedItems`); FeatureRoundTests (a level per command, 20+ files as one stream); AgentTests `agentLeavesOutAndUnticksWhatToSynchronize`; lab (GNU, BusyBox, sftp; `aCompareOf5000FilesStaysFast`, `untickedItemsAreNeitherCopiedNorDeleted`) |
 | Transfers panel, Dock badge, App Nap held off [C] | App/TransfersPanel, AppModel, AppDelegate | WorkspaceTests; ShellTests; FeatureRoundTests `transfersKeepAppNapAway` |
 | Monitor tab, Kill, sudo in Terminal [I] | Core/Monitor; App/MonitorTab | MonitorTests (real Debian/BusyBox captures); lab `monitorOnDebianAndBusyBoxWithKill` |
 | Remote Desktop: entries, desktop, keyboard/mouse, certificates, login, through SSH [M, R] | CRDP/*; Core/RDP; App/RDPWorkspace, RDPDesktopView, RDPEditor | RDPTests (unit + VM); RDPEditorTests |
@@ -55,4 +55,5 @@ plain tool look slower when it always went first.
 | Upload a 1 GiB file | 115–142 MB/s | scp 120–143 MB/s |
 | Upload / download 10 000 small files (one stream) | 0.75–1.6 s / 1.2–1.3 s | scp -r 23–26 s / 26 s |
 | Synchronize: compare 301 folders | 0.39 s | (20.1 s before the fix) |
+| Synchronize: compare 5,000 files in 51 folders (Leave out keeps a node_modules of 2,000 unread) / show their 5,000 rows | 0.55 s / 0.5–0.8 s | |
 | Remote Desktop file copy, Mac → Windows / Windows → Mac | ~9 MB/s / 1–1.5 MB/s | (the RDP channel is the limit) |

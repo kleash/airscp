@@ -662,6 +662,16 @@ final class AgentServer {
         let query = (arguments["id"] as? String) ?? (arguments["title"] as? String)
         guard let query else { throw Failure("set needs an id or a title (a label, title or placeholder).") }
         let windows = try reachable(arguments["in"] as? String)
+        // A row's box in Synchronize's list, by the item's path: its list makes rows only where it shows them.
+        if arguments["id"] == nil, let sync = (windows.first?.contentViewController as? NSHostingController<SyncView>)?.rootView.model,
+           let step = sync.plan.steps.first(where: { $0.path == query || $0.path + "/" == query }) {
+            if (value as? Bool) ?? ["true", "on", "yes", "1"].contains("\(value)".lowercased()) {
+                sync.unticked.remove(step.path)
+            } else {
+                sync.unticked.insert(step.path)
+            }
+            return await acted(["ticked": sync.chosen.steps.count])
+        }
         for window in windows where !(window is NSSavePanel) {
             guard let node = field(query, in: AXNode.flatten(window)) else { continue }
             guard node.enabled else { throw Failure("“\(query)” is disabled now" + (node.help.map { ": " + $0 } ?? ".")) }
@@ -1164,6 +1174,19 @@ final class AgentServer {
                 else { throw Failure("No result shows \(name).") }
                 find.selection = path
                 return await acted(["selected": 1])
+            }
+            // Synchronize's list: the items ticked, by their paths (its list makes rows only where it shows them): only
+            // these, all of them, or none.
+            if let sync = syncModel, let sheet = try scopes(spec).first,
+               (sheet.contentViewController as? NSHostingController<SyncView>) != nil {
+                let paths = Set(sync.plan.steps.map(\.path))
+                let wanted = Set(names.map { $0.hasSuffix("/") ? String($0.dropLast()) : $0 })
+                let missing = wanted.subtracting(paths)
+                guard missing.isEmpty else {
+                    throw Failure("Not in Synchronize's list: \(missing.sorted().joined(separator: ", ")) (snapshot → sync: its steps).")
+                }
+                sync.unticked = all ? [] : none ? paths : paths.subtracting(wanted)
+                return await acted(["ticked": sync.chosen.steps.count])
             }
             // A list in another window or a sheet (Keys, Snippets, Proxies): the first with rows showing the names.
             // SwiftUI fills a list a moment after its model changes: looked for again for 2 s.

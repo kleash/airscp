@@ -888,6 +888,68 @@ func field(_ sheet: [String: Any]?, _ id: String) -> [String: Any]? {
     }
 }
 
+/// Synchronize with the host's Leave out patterns (shown and changed in the sheet, remembered once it synchronizes) and
+/// with items unticked by name (a row's box by its path, `select in=sheet`): only the ticked ones are done.
+@MainActor @Test func agentLeavesOutAndUnticksWhatToSynchronize() async throws {
+    _ = NSApplication.shared
+    try await withServer { @MainActor server in
+        var host = server.host()
+        host.label = "lab"
+        host.leaveOut = "*.log"
+        let local = try server.scratch(), mirror = server.path("mirror")
+        host.lastLocalDir = local
+        for path in ["a.txt", "b.txt", "app.log", "cache/big.bin", "docs/c.txt"] { try write(path, to: local + "/" + path) }
+        try write("stale", to: mirror + "/stale.txt")
+        let model = testModel([host])
+        let askpass = try AskpassServer(helperPath: TestEnvironment.airscpBinary)
+        defer { askpass.close() }
+        let (main, agent, _) = try agentWindow(model, askpass)
+        defer {
+            agent.close()
+            main.window?.orderOut(nil)
+        }
+        _ = await call(agent, "select", ["pane": "sidebar", "names": ["lab"]])
+        _ = await call(agent, "menu", ["path": "Host > Connect"])
+        #expect(await call(agent, "wait", ["until": "connected", "timeout": 20]).error == nil)
+        #expect(await call(agent, "wait", ["until": "listed", "pane": "left", "path": local, "timeout": 20]).error == nil)
+        // The pane's first listing first: a later one would replace the folder opened.
+        #expect(await call(agent, "wait", ["until": "listed", "pane": "right", "path": server.home, "timeout": 20]).error == nil)
+        let right = try #require(main.selectedWorkspace?.browser.right)
+        #expect(await right.open(mirror))
+        _ = await call(agent, "focus", ["pane": "right"])
+        var reply = await call(agent, "menu", ["path": "File > Synchronize…"])
+        #expect(field(sheet(reply), "sync.leaveOut")?["value"] as? String == "*.log", "\(reply.json) \(reply.error ?? "")")
+        func steps(_ json: [String: Any]) -> [String] {
+            (json["steps"] as? [[String: Any]] ?? []).map { "\($0["path"] ?? "")" + ($0["ticked"] as? Bool == false ? " (unticked)" : "") }
+        }
+        reply = await call(agent, "wait", ["until": "compared", "timeout": 20])
+        #expect(reply["leaveOut"] as? String == "*.log" && steps(reply.json) == ["a.txt", "b.txt", "cache/", "docs/"], "\(reply.json)")
+        // Another pattern: compared again without what it matches.
+        #expect(await call(agent, "set", ["id": "sync.leaveOut", "value": "*.log, cache"]).error == nil)
+        reply = await call(agent, "wait", ["until": "compared", "timeout": 20])
+        #expect(steps(reply.json) == ["a.txt", "b.txt", "docs/"] && reply["ticked"] as? Int == 3, "\(reply.json)")
+        // Unticked by path: a row's box; none (then Synchronize is off, and says why); only the items named.
+        reply = await call(agent, "set", ["title": "docs/", "value": false])
+        #expect(reply["ticked"] as? Int == 2, "\(reply.json) \(reply.error ?? "")")
+        let plan = await call(agent, "snapshot")["sync"] as? [String: Any] ?? [:]
+        #expect(steps(plan) == ["a.txt", "b.txt", "docs/ (unticked)"]
+                && (plan["summary"] as? String)?.contains("\n1 unticked: left as it is.") == true, "\(plan)")
+        reply = await call(agent, "select", ["in": "sheet", "none": true])
+        #expect(reply["ticked"] as? Int == 0, "\(reply.json) \(reply.error ?? "")")
+        reply = await call(agent, "press", ["title": "Synchronize"])
+        #expect(reply.error?.contains("Nothing is ticked") == true, "\(reply.json) \(reply.error ?? "")")
+        reply = await call(agent, "select", ["in": "sheet", "names": ["missing.txt"]])
+        #expect(reply.error?.hasPrefix("Not in Synchronize's list: missing.txt") == true, "\(reply.error ?? "")")
+        reply = await call(agent, "select", ["in": "sheet", "names": ["a.txt", "docs/"]])
+        #expect(reply["ticked"] as? Int == 2, "\(reply.json) \(reply.error ?? "")")
+        #expect(await call(agent, "press", ["title": "Synchronize"]).error == nil)
+        #expect(await call(agent, "wait", ["until": "transfers_done", "host": "lab", "timeout": 30]).error == nil)
+        #expect(await eventually { files(below: mirror) == ["a.txt", "docs/c.txt", "stale.txt"] }, "\(files(below: mirror))")
+        #expect(model.host(host.id)?.leaveOut == "*.log, cache")  // remembered for the server
+        await main.selectedWorkspace?.connection.disconnect()
+    }
+}
+
 /// A download cut off by a lost connection: its job says the retry will continue it (`resumable`), and after Retry
 /// that it did (`resumed`).
 @MainActor @Test func aCutOffTransferShowsItContinuesWhereItStopped() async throws {

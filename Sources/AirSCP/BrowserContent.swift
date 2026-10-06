@@ -675,22 +675,26 @@ final class BrowserContentController: NSViewController {
     func synchronize() {
         guard let window = view.window, let (local, remote) = synchronizedPanes, let server = remote.session,
               let localDir = local.dir, let remoteDir = remote.dir else { return }
-        let model = SyncModel(session: server, localDir: localDir, remoteDir: remoteDir)
+        let saved = workspace?.model.host(server.host.id)?.leaveOut ?? server.host.leaveOut
+        let model = SyncModel(session: server, localDir: localDir, remoteDir: remoteDir, leaveOut: saved)
         presentSheet(on: window) { close in
             SyncView(model: model, close: {
                 model.cancel()
                 close()
             }, synchronize: { [weak self] plan in
                 close()
-                self?.apply(plan, on: server)
+                // Remembered for the server, as the folder-transfer sheet does.
+                if model.leaveOut != saved { self?.workspace?.model.updateHost(server.host.id) { $0.leaveOut = model.leaveOut } }
+                self?.apply(plan, on: server, excluding: model.patterns)
             })
         }
         if !model.waitsForCompare { model.compare() }
     }
 
     /// Queues a Synchronize plan's copies (times kept, whatever Settings say: the next compare must find them the same)
-    /// and runs its deletions: Delete on the server, Move to Trash on this Mac.
-    func apply(_ plan: Sync.Plan, on server: Session) {
+    /// and runs its deletions: Delete on the server, Move to Trash on this Mac. `patterns`: the Leave out patterns the
+    /// plan was made with, which a folder copied whole as a stream leaves out inside it.
+    func apply(_ plan: Sync.Plan, on server: Session, excluding patterns: [String] = []) {
         // Many files of one folder go as one stream (a job per file costs a round trip or two each); times are kept.
         var streamed = Set<String>()
         if server.compressUnavailableReason(.tarGz) == nil {
@@ -718,10 +722,10 @@ final class BrowserContentController: NSViewController {
             switch step.action {
             case .upload:
                 server.transfers.upload(step.item.path, to: step.destination, isFolder: step.item.isFolder,
-                                        replacing: step.replaces, preserveTimes: true)
+                                        replacing: step.replaces, preserveTimes: true, excluding: patterns)
             case .download:
                 server.transfers.download(step.item.path, to: step.destination, isFolder: step.item.isFolder,
-                                          replacing: step.replaces, preserveTimes: true)
+                                          replacing: step.replaces, preserveTimes: true, excluding: patterns)
             case .deleteHere, .deleteThere:
                 break
             }

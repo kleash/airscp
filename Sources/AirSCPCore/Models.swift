@@ -63,7 +63,7 @@ public struct SSHHost: Codable, Identifiable, Hashable {
     public var autoReconnect = true
     /// Server folders kept with Go ▸ Add to Favourites, in the order added.
     public var favourites: [String] = []
-    /// The folder-transfer sheet's "Leave out" as last typed: names or patterns separated by commas
+    /// The folder-transfer and Synchronize sheets' "Leave out" as last typed: names or patterns separated by commas
     /// (`TransferQueue.patterns`).
     public var leaveOut = ""
     /// How the server's host key is checked.

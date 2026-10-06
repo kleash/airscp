@@ -18,9 +18,14 @@ what it would copy. Nothing is copied until you click **Synchronize**.
    - **Both ways**: copy the newer file each way, and what is missing on either side.
 4. Optional, one way only: tick **Delete what is only on …** to also delete what the other side doesn't have. On a
    server it is deleted; on your Mac it goes to the Trash.
-5. Check the list, then click **Synchronize**. The copies run in the Transfers list.
+5. Optional: in **Leave out**, type names or patterns to skip, separated by commas, for example
+   `*.log, node_modules, .git`. AirSCP doesn't compare, copy or delete what matches, in any folder. It is the same list
+   as for folder uploads and downloads to this server, and AirSCP remembers it. AirSCP compares again as you type.
+6. Check the list. Untick an item to leave it as it is, or use **Select All** and **Select None**. The line under the
+   list counts the ticked items and adds up their sizes.
+7. Click **Synchronize**. The copies run in the Transfers list.
 
-{% include shot.html name="synchronize" alt="The Synchronize Folders sheet: five uploads from this Mac to web-01" %}
+{% include shot.html name="synchronize" alt="The Synchronize Folders sheet: Leave out, and five ticked uploads from this Mac to web-01" %}
 
 ## How AirSCP compares
 
@@ -31,6 +36,10 @@ what it would copy. Nothing is copied until you click **Synchronize**.
 - Some items are left as they are, and the sheet says how many. These are: files that are newer on the side being
   updated, a file on one side against a folder on the other, symbolic links, `.DS_Store` files, and AirSCP's own
   temporary `.airscp-*` items.
+- What matches **Leave out** is not compared. A folder that matches is not even read, so comparing is faster.
+- A folder that is only on one side is copied as one piece, without what matches **Leave out** inside it. A server
+  without `tar` (such as an sftp-only account) gets the whole folder. **Delete…** deletes such a folder with
+  everything in it.
 
 ## Tips
 
@@ -41,7 +50,7 @@ what it would copy. Nothing is copied until you click **Synchronize**.
 
 ## If something goes wrong
 
-- **“Can't list … Nothing was copied or deleted.”**: a folder couldn't be read (often permissions). Fix it, or leave
-  it out, and compare again.
+- **“Can't list … Nothing was copied or deleted.”**: a folder couldn't be read (often permissions). Add its name to
+  **Leave out**, or fix it and compare again.
 - Two versions with the same size saved within the same minute count as the same: the server lists times to the
   minute.
