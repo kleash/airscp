@@ -472,6 +472,117 @@ func field(_ sheet: [String: Any]?, _ id: String) -> [String: Any]? {
     #expect(focus == [true, false, true, false])
 }
 
+/// One coordinate space for the Windows desktop (1.0.0: an agent's clicks landed hundreds of pixels away, or outside
+/// the desktop, when it clicked what it saw in screenshot target=rdp): click with target rdp takes that picture's
+/// pixels as they are, whatever the view makes of them (Retina, a desktop scaled to fit with bars, a fixed size, full
+/// screen in a window of its own), while window points still go through the view.
+@MainActor @Test func desktopClicksTakeThePicturesOwnPixels() throws {
+    _ = NSApplication.shared
+    let window = NSWindow(contentRect: NSRect(x: -20000, y: -20000, width: 882, height: 453), styleMask: [.titled],
+                          backing: .buffered, defer: false)
+    let desktop = RDPDesktopView(frame: window.contentLayoutRect)
+    window.contentView = desktop
+    /// Where a click at view points (x, y from the top left) lands on the desktop.
+    func landing(_ x: CGFloat, _ y: CGFloat) -> CGPoint {
+        desktop.desktopPoint(atWindowPoint: desktop.convert(NSPoint(x: x, y: desktop.bounds.height - y), to: nil))
+    }
+    func near(_ a: CGPoint, _ b: CGPoint) -> Bool { abs(a.x - b.x) <= 1 && abs(a.y - b.y) <= 1 }
+    // (desktop size, a pixel of its picture, the view point showing that pixel)
+    let modes: [(String, CGSize, CGPoint, CGPoint)] = [
+        ("Retina, fit", CGSize(width: 1764, height: 906), CGPoint(x: 912, y: 858), CGPoint(x: 456, y: 429)),
+        // 1×, fit: Windows' smallest height (480) is taller than the view, so it is scaled down with bars at the sides.
+        ("1×, fit", CGSize(width: 882, height: 480), CGPoint(x: 279, y: 456), CGPoint(x: 25 + 279 * 0.94375, y: 456 * 0.94375)),
+        ("fixed 1280 × 800", CGSize(width: 1280, height: 800), CGPoint(x: 396, y: 776),
+         CGPoint(x: 78.6 + 396 * 0.56625, y: 776 * 0.56625)),
+    ]
+    for (mode, size, pixel, viewPoint) in modes {
+        desktop.desktopSize = size
+        // target rdp: the picture's pixel itself, nothing converted.
+        #expect(try AgentServer.desktopPixel(x: pixel.x, y: pixel.y, size: size) == pixel, "\(mode)")
+        #expect(try AgentServer.desktopPixel(x: pixel.x + 0.7, y: pixel.y + 0.2, size: size) == pixel, "\(mode)")
+        // The same numbers as window points land elsewhere (or, past the view, not on the desktop at all).
+        #expect(!near(landing(pixel.x, pixel.y), pixel), "\(mode)")
+        // Window points go through the view: its scale and its bars.
+        #expect(near(landing(viewPoint.x, viewPoint.y), pixel), "\(mode): \(landing(viewPoint.x, viewPoint.y))")
+    }
+    // A bar beside a desktop scaled to fit is no part of it: a click there lands on its edge.
+    desktop.desktopSize = CGSize(width: 882, height: 480)
+    #expect(landing(10, 200).x == 0)
+    // Full screen moves the view into a window of its own, the screen's size: the main window's points don't reach it
+    // any more; the picture's pixels are the same as ever.
+    let fullScreen = NSWindow(contentRect: NSRect(x: -30000, y: -30000, width: 1728, height: 1117), styleMask: [.borderless],
+                              backing: .buffered, defer: false)
+    window.contentView = NSView()
+    fullScreen.contentView = desktop
+    desktop.desktopSize = CGSize(width: 3456, height: 2234)
+    #expect(window.contentView?.hitTest(NSPoint(x: 400, y: 200)) as? RDPDesktopView == nil)
+    #expect(near(landing(850, 1100), CGPoint(x: 1700, y: 2200)))
+    #expect(try AgentServer.desktopPixel(x: 1700, y: 2200, size: desktop.desktopSize) == CGPoint(x: 1700, y: 2200))
+
+    // Outside the picture: refused, with its size.
+    for (x, y) in [(-1.0, 10.0), (10, -0.5), (1764, 10), (10, 906)] {
+        #expect(throws: AgentServer.Failure.self) { try AgentServer.desktopPixel(x: x, y: y, size: CGSize(width: 1764, height: 906)) }
+    }
+    do {
+        _ = try AgentServer.desktopPixel(x: 1764, y: 1000, size: CGSize(width: 1764, height: 906))
+    } catch let failure as AgentServer.Failure {
+        #expect(failure.message.contains("1764 × 906"))
+    }
+}
+
+/// A click on the Windows desktop shows the agent what it hit: 200 × 120 pixels around the point (less at an edge),
+/// zoomed 2× without smoothing, with a red cross whose middle leaves the clicked pixel itself to be seen.
+@MainActor @Test func aDesktopClicksPictureShowsWhereItLanded() throws {
+    // A desktop of 400 × 300 pixels: grey, one blue pixel at (250, 100).
+    let space = try #require(CGColorSpace(name: CGColorSpace.sRGB))
+    let frame = try #require(CGContext(data: nil, width: 400, height: 300, bitsPerComponent: 8, bytesPerRow: 0, space: space,
+                                       bitmapInfo: CGImageAlphaInfo.noneSkipFirst.rawValue | CGBitmapInfo.byteOrder32Little.rawValue))
+    frame.setFillColor(CGColor(srgbRed: 0.5, green: 0.5, blue: 0.5, alpha: 1))
+    frame.fill(CGRect(x: 0, y: 0, width: 400, height: 300))
+    frame.setFillColor(CGColor(srgbRed: 0, green: 0, blue: 1, alpha: 1))
+    frame.fill(CGRect(x: 250, y: 300 - 100 - 1, width: 1, height: 1))  // the context's origin is at the bottom left
+    let image = try #require(frame.makeImage())
+    func color(_ picture: NSBitmapImageRep, _ x: Int, _ y: Int) -> [Int] {
+        let c = picture.colorAt(x: x, y: y)!.usingColorSpace(.sRGB)!
+        return [c.redComponent, c.greenComponent, c.blueComponent].map { Int(($0 * 255).rounded()) }
+    }
+    let source = NSBitmapImageRep(cgImage: image)
+    let grey = color(source, 0, 0), blue = color(source, 250, 100)
+    #expect(blue != grey && blue[2] > 200)
+
+    let middle = NSBitmapImageRep(cgImage: try #require(AgentServer.clickPicture(image, at: CGPoint(x: 250, y: 100))))
+    #expect(middle.pixelsWide == 400 && middle.pixelsHigh == 240)
+    // The clicked pixel is in the middle, 2 × 2, uncovered; the cross is red a little way off, on both axes.
+    #expect(color(middle, 200, 120) == blue && color(middle, 201, 121) == blue)
+    #expect(color(middle, 202, 120) == grey && color(middle, 199, 119) == grey)
+    #expect(color(middle, 220, 120)[0] > 200 && color(middle, 220, 120)[1] < 60)
+    #expect(color(middle, 200, 140)[0] > 200 && color(middle, 200, 140)[1] < 60)
+    #expect(color(middle, 150, 120) == grey && color(middle, 0, 0) == grey)
+
+    // Near a corner the picture is smaller, and the cross still marks the pixel.
+    frame.fill(CGRect(x: 3, y: 300 - 4 - 1, width: 1, height: 1))
+    let marked = try #require(frame.makeImage())
+    let corner = NSBitmapImageRep(cgImage: try #require(AgentServer.clickPicture(marked, at: CGPoint(x: 3, y: 4))))
+    #expect(corner.pixelsWide == 206 && corner.pixelsHigh == 128)
+    #expect(color(corner, 6, 8) == blue && color(corner, 7, 9) == blue && color(corner, 5, 8) == grey)
+    #expect(color(corner, 26, 8)[0] > 200 && color(corner, 26, 8)[1] < 60)
+}
+
+/// The Windows key has no Mac key: "win" (or "windows", "⊞", "super") in a combo for the desktop is taken out and held
+/// around the rest; "win" alone presses it alone (Start).
+@Test func theWindowsKeyIsTakenOutOfADesktopCombo() throws {
+    #expect(KeyCombo.windowsKey(in: "win+e") == ("e", true))
+    #expect(KeyCombo.windowsKey(in: "Windows+R") == ("R", true))
+    #expect(KeyCombo.windowsKey(in: "⊞+shift+s") == ("shift+s", true))
+    #expect(KeyCombo.windowsKey(in: "super+d") == ("d", true))
+    #expect(KeyCombo.windowsKey(in: "win") == (nil, true))
+    #expect(KeyCombo.windowsKey(in: "ctrl+shift+escape") == ("ctrl+shift+escape", false))
+    #expect(KeyCombo.windowsKey(in: "cmd++") == ("cmd++", false))
+    #expect(try KeyCombo("alt+d").modifiers == .option && KeyCombo("ctrl+l").modifiers == .control)
+    #expect(try KeyCombo("ctrl+shift+escape").keyCode == 53)
+    #expect(throws: AgentServer.Failure.self) { try KeyCombo("win+e") }  // the windows key is for the desktop only
+}
+
 // MARK: A session against a throwaway sshd
 
 @MainActor @Test func agentConnectsTrustsRenamesUploadsAndDownloads() async throws {
@@ -1027,6 +1138,59 @@ func field(_ sheet: [String: Any]?, _ id: String) -> [String: Any]? {
 
 // MARK: The Windows test VM (AIRSCP_WINDOWS=1)
 
+/// One coordinate space on a real Windows (1.0.0: an agent clicked what it saw in screenshot target=rdp and missed):
+/// a magenta target at physical pixels 340, 220 (120 × 80; the PowerShell that shows it is DPI-aware) is at those
+/// pixels of the desktop's picture, and click with target rdp at a pixel of it lands on that very pixel, which Windows
+/// reports. The reply says where in words and shows the spot.
+@MainActor
+func clickTheMagentaTarget(_ server: AgentServer, _ runner: WindowsRunner, shared: String) async throws {
+    let marker = UUID().uuidString.prefix(8)
+    #expect(try await runner.powershell("target", "if (-not ('AirSCPDpi' -as [type])) { Add-Type -TypeDefinition "
+        + "'using System; using System.Runtime.InteropServices; public static class AirSCPDpi { [DllImport(\"user32.dll\")] "
+        + "public static extern bool SetProcessDpiAwarenessContext(IntPtr value); }' }; "
+        + "[void][AirSCPDpi]::SetProcessDpiAwarenessContext([IntPtr](-4)); Add-Type -AssemblyName System.Windows.Forms; "
+        + "$f = New-Object Windows.Forms.Form; $f.FormBorderStyle = 'None'; $f.StartPosition = 'Manual'; "
+        + "$f.AutoScaleMode = 'None'; $f.TopMost = $true; $f.ShowInTaskbar = $false; "
+        + "$f.Location = New-Object Drawing.Point(340, 220); $f.Size = New-Object Drawing.Size(120, 80); "
+        + "$f.BackColor = [Drawing.Color]::Magenta; $f.Add_MouseClick({ $p = [Windows.Forms.Cursor]::Position; "
+        + "Set-Content \\\\tsclient\\AirSCP\\target-\(marker).txt \"$($p.X) $($p.Y)\"; $f.Close() }); "
+        + "$f.Add_Shown({ $f.Activate(); Set-Content \\\\tsclient\\AirSCP\\shown-\(marker).txt x }); [void]$f.ShowDialog()") {
+        exists(shared + "/shown-\(marker).txt")
+    }, "\(read(shared + "/airscp.log") ?? "")")
+    // Where the picture shows it (Windows may still be drawing it: until it is all there).
+    var box = CGRect.null, size = CGSize.zero
+    #expect(await eventually(timeout: 20) {
+        let shot = await call(server, "screenshot", ["target": "rdp"])
+        guard let picture = shot.image, let data = picture.bitmapData else { return false }
+        size = CGSize(width: picture.pixelsWide, height: picture.pixelsHigh)
+        #expect((shot["coordinates"] as? String)?.contains("\(picture.pixelsWide) × \(picture.pixelsHigh)") == true)
+        box = .null
+        let step = picture.bitsPerPixel / 8  // RGB(A), as a PNG decodes
+        for y in 0..<min(picture.pixelsHigh, 600) {
+            let row = data + y * picture.bytesPerRow
+            for x in 0..<min(picture.pixelsWide, 800) where row[x * step] > 200 && row[x * step + 1] < 60 && row[x * step + 2] > 200 {
+                box = box.union(CGRect(x: x, y: y, width: 1, height: 1))
+            }
+        }
+        return abs(box.width - 120) <= 2 && abs(box.height - 80) <= 2
+    }, "the target in the desktop's picture: \(box) (\(size))")
+    #expect(abs(box.minX - 340) <= 1 && abs(box.minY - 220) <= 1, "\(box)")
+    // Any pixel of it, off its middle: the click lands on that one.
+    let pixel = CGPoint(x: box.minX + 77, y: box.minY + 31)
+    let reply = await call(server, "click", ["target": "rdp", "x": pixel.x, "y": pixel.y])
+    #expect(reply.error == nil && (reply["desktop"] as? String)?.hasPrefix(
+        "Clicked \(Int(pixel.x)), \(Int(pixel.y)) of the \(Int(size.width)) × \(Int(size.height)) desktop picture") == true,
+            "\(reply.json) \(reply.error ?? "")")
+    #expect(reply.image?.pixelsWide == 400 && reply.image?.pixelsHigh == 240)
+    #expect(await eventually(timeout: 20) { read(shared + "/target-\(marker).txt") != nil }, "the target wasn't clicked")
+    let landed = (read(shared + "/target-\(marker).txt") ?? "").split(whereSeparator: \.isWhitespace).compactMap { Double($0) }
+    #expect(landed.count == 2 && abs(landed[0] - pixel.x) <= 1 && abs(landed[1] - pixel.y) <= 1,
+            "Windows got the click at \(landed); it was meant for \(pixel)")
+    // Outside the picture: refused with its size, nothing clicked.
+    #expect(await call(server, "click", ["target": "rdp", "x": size.width, "y": 10]).error?
+        .contains("\(Int(size.width)) × \(Int(size.height)) pixels") == true)
+}
+
 // In RDPWindowsTests, whose tests run one at a time: Windows gives the account one session, and a second login takes
 // it over (run beside that suite, these lost their desktop halfway).
 extension RDPWindowsTests {
@@ -1079,6 +1243,10 @@ extension RDPWindowsTests {
         }
         return Set(samples.map { Int($0 * 20) }).count > 3
     }, "the screenshot of the desktop shows Windows")
+
+    // A fixed size, scaled down to fit the window with bars beside it: the picture's pixels are still Windows' own.
+    try await clickTheMagentaTarget(server, WindowsRunner(session: try #require(server.selectedDesktop?.session), shared: shared),
+                                    shared: shared)
 
     // Typing lends the desktop the focus for the request only: the Mac's clipboard isn't watched afterwards.
     let desktop = try #require(server.selectedDesktop?.desktop)
@@ -1194,6 +1362,33 @@ extension RDPWindowsTests {
     let middle = desktop.convert(NSPoint(x: desktop.bounds.midX, y: desktop.bounds.midY), to: nil)
     #expect(await call(server, "click", ["x": middle.x, "y": frame.height - middle.y]).error == nil)
     #expect(await eventually(timeout: 20) { exists(shared + "/clicked-\(marker).txt") }, "the button wasn't pressed")
+
+    // The desktop's own pixels (Retina: twice the window's points), clicked as they are.
+    try await clickTheMagentaTarget(server, runner, shared: shared)
+
+    // Keys first (the agent guide's advice for Windows): the Windows key and Explorer's shortcuts reach Windows. Win+R
+    // runs a command; Win+E opens Explorer, Alt+D its address bar for a path, Return goes there and Ctrl+Shift+N makes
+    // a folder in it: the shared folder, so the Mac sees it.
+    #expect(await call(server, "key", ["combo": "win+r", "target": "rdp"]).error == nil)
+    try await Task.sleep(nanoseconds: 3_000_000_000)  // the Run box opens
+    #expect(await call(server, "type", ["text": "cmd /c echo ok> \\\\tsclient\\AirSCP\\winr-\(marker).txt",
+                                        "target": "rdp"]).error == nil)
+    #expect(await call(server, "key", ["combo": "return", "target": "rdp"]).error == nil)
+    #expect(await eventually(timeout: 60) { exists(shared + "/winr-\(marker).txt") }, "Win+R and the command didn't reach Windows")
+    var made = false
+    for _ in 0..<3 where !made {  // a busy Windows can open Explorer after the keys meant for it
+        #expect(await call(server, "key", ["combo": "win+e", "target": "rdp"]).error == nil)
+        try await Task.sleep(nanoseconds: 5_000_000_000)
+        #expect(await call(server, "key", ["combo": "alt+d", "target": "rdp"]).error == nil)
+        #expect(await call(server, "type", ["text": "\\\\tsclient\\AirSCP", "target": "rdp"]).error == nil)
+        #expect(await call(server, "key", ["combo": "return", "target": "rdp"]).error == nil)
+        try await Task.sleep(nanoseconds: 4_000_000_000)
+        #expect(await call(server, "key", ["combo": "ctrl+shift+n", "target": "rdp"]).error == nil)
+        made = await eventually(timeout: 20) { exists(shared + "/New folder") }
+        _ = await call(server, "key", ["combo": "escape", "target": "rdp"])  // keeps the name
+        _ = await call(server, "key", ["combo": "ctrl+w", "target": "rdp"])  // closes Explorer (nothing on the desktop)
+    }
+    #expect(made, "Win+E, Alt+D, the path and Ctrl+Shift+N didn't make a folder in \\tsclient\\AirSCP")
 
     // Typing into Notepad: read back through Windows' clipboard (Ctrl+A, Ctrl+C).
     // An empty file of its own; Windows 11's Notepad may still show an earlier run's unsaved tab, so the text replaces
