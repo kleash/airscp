@@ -304,7 +304,7 @@ struct MonitorView: View {
             VStack(spacing: 10) {
                 if model.refreshing { ProgressView().controlSize(.small) }
                 Text(model.failure.map(MonitorText.explained) ?? (model.connected ? (model.refreshing ? "Reading the system…" : "")
-                     : "Not connected. Connect to see CPU, memory, disks and processes."))
+                     : "Not connected. Connect to see CPU, memory, disks, processes and ports."))
                     .foregroundColor(.secondary)
                     .multilineTextAlignment(.center)
             }
@@ -505,9 +505,10 @@ struct MonitorView: View {
     private func ports(_ ports: MonitorPorts?) -> some View {
         if let ports {
             // Side by side: the tab is wide and not tall.
-            HSplitView {
-                listening(ports).frame(minWidth: 380, maxWidth: .infinity, maxHeight: .infinity)
-                connections(ports).frame(minWidth: 240, idealWidth: 320, maxWidth: 480, maxHeight: .infinity)
+            HStack(spacing: 0) {
+                listening(ports)
+                Divider()
+                connections(ports).frame(width: 286)
             }
         } else {
             VStack(spacing: 10) {
@@ -533,32 +534,33 @@ struct MonitorView: View {
             } else {
                 Table(rows, selection: $model.portSelection, sortOrder: $model.portSortOrder) {
                     TableColumn("Protocol", value: \.protocolName) { Text($0.protocolName) }
-                        .width(min: 50, ideal: 60)
+                        .width(48)
                     TableColumn("Address", value: \.address) { port in
                         Text(port.address).lineLimit(1).truncationMode(.middle)
                             .help(port.address + " — " + MonitorText.reach(port.address))
                     }
-                    .width(min: 70, ideal: 110)
+                    .width(min: 60, ideal: 84)
                     TableColumn("Port", value: \.port) { Text(String($0.port)).monospacedDigit() }
-                        .width(min: 40, ideal: 56)
+                        .width(48)
                     TableColumn("PID", value: \.pidOrder) { port in
-                        Text(port.pids.isEmpty ? "—" : port.pids.map(String.init).joined(separator: ", "))
+                        Text(port.pids.first.map { String($0) + (port.pids.count > 1 ? " +\(port.pids.count - 1)" : "") } ?? "—")
                             .monospacedDigit().lineLimit(1)
-                            .help(port.pids.isEmpty ? MonitorText.unseen(ports) : "The processes that have this port open")
+                            .help(port.pids.isEmpty ? MonitorText.unseen(ports)
+                                  : "The processes that have this port open: " + port.pids.map(String.init).joined(separator: ", "))
                     }
-                    .width(min: 44, ideal: 70)
+                    .width(72)
                     TableColumn("Process", value: \.process) { port in
                         Text(port.process.isEmpty ? "—" : port.process).lineLimit(1)
                             .help(port.command.isEmpty ? MonitorText.unseen(ports) : port.command)
                     }
-                    .width(min: 60, ideal: 130)
+                    .width(min: 60, ideal: 80)
                     TableColumn("User", value: \.user) { Text($0.user).lineLimit(1) }
-                        .width(min: 44, ideal: 70)
+                        .width(min: 40, ideal: 56)
                     TableColumn("Connections", value: \.connectionOrder) { port in
                         Text(port.connections.map(String.init) ?? "—").monospacedDigit()
                             .help(port.isTCP ? "Open connections to this port" : "UDP keeps no connections")
                     }
-                    .width(min: 60, ideal: 80)
+                    .width(80)
                 }
                 .washed()
                 .accessibilityIdentifier("monitor.ports")
@@ -625,16 +627,16 @@ struct MonitorView: View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
                 Table(shown, selection: $connectionSelection, sortOrder: $connectionSort) {
-                    TableColumn("Remote address", value: \.address) { connection in
+                    TableColumn("From", value: \.address) { connection in
                         Text(connection.address).lineLimit(1).truncationMode(.middle).help(connection.address)
                     }
-                        .width(min: 90, ideal: 220)
-                    TableColumn("Remote port", value: \.port) { Text(String($0.port)).monospacedDigit() }
-                        .width(min: 60, ideal: 90)
+                    .width(min: 70, ideal: 100)
+                    TableColumn("Port", value: \.port) { Text(String($0.port)).monospacedDigit() }
+                        .width(56)
                     TableColumn("State", value: \.state) { connection in
                         Text(connection.state).help(MonitorText.explain(connection.state))
                     }
-                    .width(min: 70, ideal: 120)
+                    .width(88)
                 }
                 .washed()
                 .accessibilityIdentifier("monitor.connections")
@@ -904,7 +906,7 @@ enum MonitorText {
         return "Only this address of the server"
     }
 
-    static let othersHidden = "Some ports belong to other users' processes, which this account can't see: connect as root to see them."
+    static let othersHidden = "Other users' processes aren't shown to this account: connect as root to see them."
 
     /// Why a port's process isn't known.
     static func unseen(_ ports: MonitorPorts?) -> String {

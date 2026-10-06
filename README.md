@@ -23,7 +23,7 @@
 - **Synchronize** two folders with a preview first; **Find Files** on a server by name or pattern.
 - **Every way in**: keys, passwords, 2FA codes, jump hosts, HTTP proxies. Your `~/.ssh/config` just works.
 - **Remote Desktop for Windows** built in, with the clipboard and files both ways.
-- **Monitor** a Linux server (CPU, memory, disks, processes), open **tunnels**, run commands and snippets.
+- **Monitor** a Linux server (CPU, memory, disks, processes, ports), open **tunnels**, run commands and snippets.
 - **Keys**: make any key type, put it on a server, import and export PuTTY `.ppk`.
 - **AI agents can drive it** over MCP when you allow it, and they never see your passwords.
 - Uses the `ssh`, `scp` and `sftp` built into macOS, shows every command it runs. No account. macOS 13.1+.

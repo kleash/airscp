@@ -246,20 +246,21 @@ public final class Monitor {
     /// /proc/net tables there are, "L <table> <address:port> <uid> <inode>" for each listening TCP socket and bound UDP
     /// one, and "N <table> <port> <count>" for each such TCP port with open connections (not those in TIME-WAIT, which
     /// are closed already); "none" without the tables. "@@owners": "/proc/<pid>/fd: socket:[<inode>]" for each process
-    /// with one of those sockets open (an account sees its own processes, root every one). "@@users": /etc/passwd's
-    /// "name:uid". "@@connections" (`connectionsOf`, a TCP port): its first `connectionLimit` connections, "<local>
-    /// <remote> <state>". Addresses and ports in hex, as the kernel prints them.
+    /// with one of those sockets open (an account sees its own processes, root every one). "@@users": "name:uid" from
+    /// /etc/passwd for those sockets' owners. "@@connections" (`connectionsOf`, a TCP port): its first `connectionLimit`
+    /// connections, "<local> <remote> <state>". Addresses and ports in hex, as the kernel prints them.
     static func portsScript(connectionsOf port: MonitorPort?) -> String {
         // From each table's header line on, `t` is its name: "tcp6".
         let listening = #"FNR == 1 {t = FILENAME; sub(".*/", "", t); next} {split($2, a, ":"); k = t " " a[2]} "#
             + #"t ~ /tcp/ && $4 == "0A" || t ~ /udp/ && $4 == "07" {print "L", t, $2, $8, $10; s[k] = 1; next} "#
             + #"t ~ /udp/ || $4 == "06" || $4 == "07" {next} {c[k]++} END {for (k in c) if (k in s) print "N", k, c[k]}"#
-        // The L lines first, then ls's: "/proc/<pid>/fd:" before each process's files.
+        // The L lines first, then ls's ("/proc/<pid>/fd:" before each process's files), or /etc/passwd's.
         let owners = #"$1 == "L" {k["socket:[" $5 "]"] = 1; next} /^.proc/ {p = $1; next} ($NF in k) {print p, $NF}"#
+        let users = #"$1 == "L" {u[$4] = 1; next} {split($0, f, ":"); if (f[3] in u) print f[1] ":" f[3]}"#
         var script = "echo @@uid; id -u; echo @@ports; f=; for n in tcp tcp6 udp udp6; do [ -r /proc/net/$n ] && "
             + "f=\"$f /proc/net/$n\"; done; [ -n \"$f\" ] || echo none; l=; [ -n \"$f\" ] && l=$(awk '\(listening)' $f); "
             + "echo \"$l\"; echo @@owners; [ -n \"$l\" ] && { echo \"$l\"; ls -l /proc/[0-9]*/fd 2>/dev/null; } "
-            + "| awk '\(owners)'; echo @@users; cut -d: -f1,3 /etc/passwd; "
+            + "| awk '\(owners)'; echo @@users; [ -n \"$l\" ] && { echo \"$l\"; cat /etc/passwd; } | awk '\(users)'; "
         if let port, port.isTCP {
             script += "echo @@connections; awk -v p=\(String(format: "%04X", port.port)) "
                 + #"'FNR == 1 || $4 == "0A" || $4 == "06" || $4 == "07" {next} {split($2, a, ":"); "#
@@ -375,7 +376,8 @@ public final class Monitor {
             owners[parts[1].dropFirst(8).dropLast(), default: []].append(pid)
         }
         var counts: [String: Int] = [:]
-        var rows: [MonitorPort] = [], uids: [MonitorPort.ID: Int] = [:]
+        // Each row's place in `rows`, and its socket's uid.
+        var rows: [MonitorPort] = [], places: [MonitorPort.ID: (index: Int, uid: Int)] = [:]
         for line in lines {
             let parts = line.split(separator: " ")
             if parts.count == 4, parts[0] == "N", let port = Int(parts[2], radix: 16), let count = Int(parts[3]) {
@@ -385,12 +387,12 @@ public final class Monitor {
                   let uid = Int(parts[3]) else { continue }
             let pids = owners[parts[4]] ?? []
             var row = MonitorPort(table: String(parts[1]), address: address, port: port, user: users[uid] ?? String(uid))
-            if let index = rows.firstIndex(where: { $0.id == row.id }) {
-                rows[index].pids += pids
+            if let place = places[row.id] {
+                rows[place.index].pids += pids
             } else {
                 row.pids = pids
+                places[row.id] = (rows.count, uid)
                 rows.append(row)
-                uids[row.id] = uid
             }
         }
         let names = Dictionary(processes.map { ($0.pid, $0) }) { first, _ in first }
@@ -403,7 +405,7 @@ public final class Monitor {
         }
         ports.listening = rows.sorted { ($0.port, $0.table, $0.address) < ($1.port, $1.table, $1.address) }
         let me = text("uid").first.flatMap { Int($0) }
-        ports.othersHidden = me != 0 && rows.contains { $0.pids.isEmpty && uids[$0.id] != me }
+        ports.othersHidden = me != 0 && rows.contains { $0.pids.isEmpty && places[$0.id]?.uid != me }
         for line in text("connections") {
             let parts = line.split(separator: " ")
             guard parts.count == 3, let (address, port) = endpoint(parts[1]) else { continue }

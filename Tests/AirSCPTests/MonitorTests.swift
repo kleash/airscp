@@ -829,3 +829,19 @@ private func row(_ ports: MonitorPorts, _ table: String, _ port: Int) -> Monitor
     // Not asked for: none at all.
     #expect(Monitor.parse("Linux 6.12\n@@df\n").snapshot.ports == nil)
 }
+
+/// Plan S: a busy server's thousands of sockets must not make the Ports view slow. 10 000 listening sockets, each with
+/// its process, and 2 000 connections: well under a second in the tests' debug build.
+@Test func tenThousandPortsParseQuickly() {
+    var lines = ["Linux 6.12", "@@uid", "0", "@@ports"]
+    lines += (1...10_000).map { "L udp 00000000:\(String(format: "%04X", $0)) 0 \(100_000 + $0)" }
+    lines.append("@@owners")
+    lines += (1...10_000).map { "/proc/\($0 % 50 + 1)/fd: socket:[\(100_000 + $0)]" }
+    lines += ["@@users", "root:0", "@@connections"]
+    lines += (0..<2000).map { "00000000:0050 0500000A:\(String(format: "%04X", 1024 + $0)) 01" }
+    let output = lines.joined(separator: "\n") + "\n"
+    var ports: MonitorPorts?
+    let elapsed = ContinuousClock().measure { ports = Monitor.parse(output).snapshot.ports }
+    #expect(ports?.listening.count == 10_000 && ports?.connections.count == 2000 && ports?.listening.last?.pids == [1])
+    #expect(elapsed < .milliseconds(2000), "parsing 10 000 ports took \(elapsed)")
+}

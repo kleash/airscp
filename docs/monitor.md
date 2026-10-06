@@ -5,7 +5,8 @@ nav_order: 9
 
 # Watch a Linux server
 
-The **Monitor** tab shows what a Linux server is doing: CPU, memory, disks and processes. You can also stop a process.
+The **Monitor** tab shows what a Linux server is doing: CPU, memory, disks, processes and the ports it listens on. You can
+also stop a process.
 
 ## Steps
 
@@ -36,6 +37,25 @@ there for servers that aren't Linux.
 
 {% include shot.html name="monitor-kill" alt="The question: Kill python3? The process is asked to quit" %}
 
+## See which ports a server listens on
+
+1. In the **Monitor** tab, click **Ports** above the list of processes.
+2. Read the list: each port the server listens on, with the program that listens and how many connections it has.
+3. Click a port to see who is connected to it, and how many connections come from each address.
+
+{% include shot.html name="monitor-ports" alt="Ports: the ports web-01 listens on, and the connections to its website on port 8080" %}
+
+| Part | What it shows |
+|---|---|
+| **Protocol** | TCP or UDP. |
+| **Address** | Where the port can be reached. 0.0.0.0 and :: mean every address of the server (open to the network); 127.0.0.1 and ::1 mean only the server itself. |
+| **PID** and **Process** | The program that listens (+1: one more process shares the port). A dash means another user's program: connect as root to see it. |
+| **User** | The account the port belongs to. |
+| **Connections** | How many connections are open to it. UDP has no connections. |
+
+To stop the program that has a port, select the port and click **Kill** or **Force Kill**. **Show Process** shows the
+program in the list of processes.
+
 ## Tips
 
 - Click a column heading to sort the processes, for example by CPU.
@@ -43,6 +63,10 @@ there for servers that aren't Linux.
   Terminal**, where sudo can ask for your password (on servers that have sudo).
 - The list of processes isn't read while the tab isn't shown. The figures at the top of the window still refresh
   every 10 seconds.
+- Reading the ports takes some work on the server, so AirSCP reads them only while **Ports** is shown: at once, then
+  every 5 seconds. Click **Pause** to keep the list as it is, and **Refresh** to read it again now.
+- Type a port, program or address in the search field above the ports to see only those.
+- Right-click a port, or a connection, to copy its address.
 
 ## If something goes wrong
 
