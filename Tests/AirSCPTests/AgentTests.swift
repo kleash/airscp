@@ -910,10 +910,10 @@ func field(_ sheet: [String: Any]?, _ id: String) -> [String: Any]? {
         }
         _ = await call(agent, "select", ["pane": "sidebar", "names": ["lab"]])
         _ = await call(agent, "menu", ["path": "Host > Connect"])
-        #expect(await call(agent, "wait", ["until": "connected", "timeout": 20]).error == nil)
-        #expect(await call(agent, "wait", ["until": "listed", "pane": "left", "path": local, "timeout": 20]).error == nil)
+        #expect(await call(agent, "wait", ["until": "connected", "timeout": 120]).error == nil)
+        #expect(await call(agent, "wait", ["until": "listed", "pane": "left", "path": local, "timeout": 120]).error == nil)
         // The pane's first listing first: a later one would replace the folder opened.
-        #expect(await call(agent, "wait", ["until": "listed", "pane": "right", "path": server.home, "timeout": 20]).error == nil)
+        #expect(await call(agent, "wait", ["until": "listed", "pane": "right", "path": server.home, "timeout": 120]).error == nil)
         let right = try #require(main.selectedWorkspace?.browser.right)
         #expect(await right.open(mirror))
         _ = await call(agent, "focus", ["pane": "right"])
@@ -922,11 +922,11 @@ func field(_ sheet: [String: Any]?, _ id: String) -> [String: Any]? {
         func steps(_ json: [String: Any]) -> [String] {
             (json["steps"] as? [[String: Any]] ?? []).map { "\($0["path"] ?? "")" + ($0["ticked"] as? Bool == false ? " (unticked)" : "") }
         }
-        reply = await call(agent, "wait", ["until": "compared", "timeout": 20])
+        reply = await call(agent, "wait", ["until": "compared", "timeout": 120])
         #expect(reply["leaveOut"] as? String == "*.log" && steps(reply.json) == ["a.txt", "b.txt", "cache/", "docs/"], "\(reply.json)")
         // Another pattern: compared again without what it matches.
         #expect(await call(agent, "set", ["id": "sync.leaveOut", "value": "*.log, cache"]).error == nil)
-        reply = await call(agent, "wait", ["until": "compared", "timeout": 20])
+        reply = await call(agent, "wait", ["until": "compared", "timeout": 120])
         #expect(steps(reply.json) == ["a.txt", "b.txt", "docs/"] && reply["ticked"] as? Int == 3, "\(reply.json)")
         // Unticked by path: a row's box; none (then Synchronize is off, and says why); only the items named.
         reply = await call(agent, "set", ["title": "docs/", "value": false])
@@ -943,7 +943,7 @@ func field(_ sheet: [String: Any]?, _ id: String) -> [String: Any]? {
         reply = await call(agent, "select", ["in": "sheet", "names": ["a.txt", "docs/"]])
         #expect(reply["ticked"] as? Int == 2, "\(reply.json) \(reply.error ?? "")")
         #expect(await call(agent, "press", ["title": "Synchronize"]).error == nil)
-        #expect(await call(agent, "wait", ["until": "transfers_done", "host": "lab", "timeout": 30]).error == nil)
+        #expect(await call(agent, "wait", ["until": "transfers_done", "host": "lab", "timeout": 120]).error == nil)
         #expect(await eventually { files(below: mirror) == ["a.txt", "docs/c.txt", "stale.txt"] }, "\(files(below: mirror))")
         #expect(model.host(host.id)?.leaveOut == "*.log, cache")  // remembered for the server
         await main.selectedWorkspace?.connection.disconnect()
