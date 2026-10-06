@@ -178,8 +178,7 @@ jobs:
           Install with Homebrew:
 
           \`\`\`sh
-          brew tap kleash/tap
-          brew install --cask airscp
+          brew install --cask kleash/tap/airscp
           \`\`\`
 
           Or download **AirSCP-$VERSION.zip** below, unzip it and drag AirSCP to Applications. macOS 13.1 or later, Apple silicon and Intel.
@@ -204,8 +203,7 @@ jobs:
             version "$VERSION"
             sha256 "$sha"
 
-            url "https://github.com/kleash/airscp/releases/download/v#{version}/AirSCP-#{version}.zip",
-                verified: "github.com/kleash/airscp/"
+            url "https://github.com/kleash/airscp/releases/download/v#{version}/AirSCP-#{version}.zip"
             name "AirSCP"
             desc "SCP and SFTP client with a two-pane browser and Remote Desktop"
             homepage "https://kleash.github.io/airscp/"
@@ -215,7 +213,7 @@ jobs:
               strategy :github_latest
             end
 
-            depends_on macos: ">= :ventura"
+            depends_on macos: :ventura
 
             app "AirSCP.app"
 

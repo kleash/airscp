@@ -65,7 +65,7 @@ gh release view vX.Y.Z                         # zip, .sha256, airscp.mcpb, .sha
 shasum -a 256 -c AirSCP-X.Y.Z.zip.sha256       # in the download folder
 spctl -a -vvv -t exec /Applications/AirSCP.app # "accepted, source=Notarized Developer ID"
 gh attestation verify airscp.mcpb --repo kleash/airscp --bundle AirSCP-X.Y.Z.intoto.jsonl   # and sbom.spdx.json
-brew tap kleash/tap && brew install --cask airscp --appdir="$(mktemp -d)"   # then uninstall and untap
+brew install --cask kleash/tap/airscp --appdir="$(mktemp -d)"   # then uninstall and untap
 brew audit --cask --online kleash/tap/airscp
 curl -s "https://registry.modelcontextprotocol.io/v0.1/servers?search=io.github.kleash/airscp"
 ```
@@ -312,8 +312,7 @@ cask "airscp" do
   version "X.Y.Z"
   sha256 "<the zip's SHA-256>"
 
-  url "https://github.com/kleash/airscp/releases/download/v#{version}/AirSCP-#{version}.zip",
-      verified: "github.com/kleash/airscp/"
+  url "https://github.com/kleash/airscp/releases/download/v#{version}/AirSCP-#{version}.zip"
   name "AirSCP"
   desc "SCP and SFTP client with a two-pane browser and Remote Desktop"
   homepage "https://kleash.github.io/airscp/"
@@ -323,7 +322,7 @@ cask "airscp" do
     strategy :github_latest
   end
 
-  depends_on macos: ">= :ventura"
+  depends_on macos: :ventura
 
   app "AirSCP.app"
 

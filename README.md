@@ -1,9 +1,9 @@
 <p align="center">
-  <img src="docs/assets/shots/main-window-light.png" width="49%" alt="AirSCP's window: saved servers on the left, files on this Mac and on a server side by side, uploads running in the Transfers queue below">
-  <img src="docs/assets/shots/main-window-dark.png" width="49%" alt="The same window in dark mode">
+  <img src="https://raw.githubusercontent.com/kleash/airscp/main/docs/assets/shots/main-window-light.png" width="49%" alt="AirSCP's window: saved servers on the left, files on this Mac and on a server side by side, uploads running in the Transfers queue below">
+  <img src="https://raw.githubusercontent.com/kleash/airscp/main/docs/assets/shots/main-window-dark.png" width="49%" alt="The same window in dark mode">
 </p>
 
-<h1 align="center"><img src="docs/assets/icon.png" width="40" alt=""> AirSCP</h1>
+<h1 align="center"><img src="https://raw.githubusercontent.com/kleash/airscp/main/docs/assets/icon.png" width="40" alt=""> AirSCP</h1>
 
 <p align="center"><b>SCP/SFTP file transfer, SSH and Windows Remote Desktop in one native Mac app. Free and open source.</b></p>
 
@@ -29,20 +29,19 @@
 
 <table>
   <tr>
-    <td width="50%"><img src="docs/assets/shots/rdp-desktop-light.png" alt="A Windows desktop inside AirSCP, with the bar for the shared folder and the clipboard"><br><b>Remote Desktop</b>: Windows in the window, files and clipboard both ways</td>
-    <td width="50%"><img src="docs/assets/shots/synchronize-light.png" alt="The Synchronize sheet listing what it would copy"><br><b>Synchronize</b>: see what will be copied before anything changes</td>
+    <td width="50%"><img src="https://raw.githubusercontent.com/kleash/airscp/main/docs/assets/shots/rdp-desktop-light.png" alt="A Windows desktop inside AirSCP, with the bar for the shared folder and the clipboard"><br><b>Remote Desktop</b>: Windows in the window, files and clipboard both ways</td>
+    <td width="50%"><img src="https://raw.githubusercontent.com/kleash/airscp/main/docs/assets/shots/synchronize-light.png" alt="The Synchronize sheet listing what it would copy"><br><b>Synchronize</b>: see what will be copied before anything changes</td>
   </tr>
   <tr>
-    <td width="50%"><img src="docs/assets/shots/monitor-light.png" alt="The Monitor tab: CPU, memory, disks and processes of a Linux server"><br><b>Monitor</b>: CPU, memory, disks and processes, with Kill</td>
-    <td width="50%"><img src="docs/assets/shots/agent-activity-light.png" alt="The agent control popover listing what an AI agent just did in AirSCP"><br><b>AI agents</b>: they drive AirSCP, and you see every action</td>
+    <td width="50%"><img src="https://raw.githubusercontent.com/kleash/airscp/main/docs/assets/shots/monitor-light.png" alt="The Monitor tab: CPU, memory, disks and processes of a Linux server"><br><b>Monitor</b>: CPU, memory, disks and processes, with Kill</td>
+    <td width="50%"><img src="https://raw.githubusercontent.com/kleash/airscp/main/docs/assets/shots/agent-activity-light.png" alt="The agent control popover listing what an AI agent just did in AirSCP"><br><b>AI agents</b>: they drive AirSCP, and you see every action</td>
   </tr>
 </table>
 
 ## Install
 
 ```sh
-brew tap kleash/tap
-brew install --cask airscp
+brew install --cask kleash/tap/airscp
 ```
 
 Or download the zip from [Releases](https://github.com/kleash/airscp/releases).
