@@ -394,7 +394,7 @@ extension AgentServer {
         }
         // The Tunnels tab's switches (named after their tunnels).
         json["tunnels"] = workspace.host.tunnels.map { tunnel -> [String: Any] in
-            ["title": TunnelsModel.title(tunnel), "on": state == .connected && workspace.session.activeTunnels.contains(tunnel.id)]
+            ["title": TunnelsModel.title(tunnel, server: workspace.host.displayName), "on": state == .connected && workspace.session.activeTunnels.contains(tunnel.id)]
         }
         return json
     }

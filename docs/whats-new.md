@@ -5,6 +5,12 @@ nav_order: 18
 
 # What's new
 
+## AirSCP 1.0.1
+
+- **Tunnels say where they lead**: **Add Tunnel…** reads as a sentence (open port 8080 on this Mac, through your
+  server, to the server itself, port 80), and the whole route shows as you type and in the list. The second port is
+  the same as the first until you change it.
+
 ## AirSCP 1.0
 
 The first release.

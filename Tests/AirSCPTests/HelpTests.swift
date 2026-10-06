@@ -166,7 +166,15 @@ extension FeatureRoundAppTests {
             }) { main.showProxies() }
             await sheet("new group") { main.newGroup() }
             await sheet("Run Command", close: "Close") { _ = await call(agent, "menu", ["path": "Host > Run Command…"]) }
-            await sheet("tunnel editor") {
+            await sheet("tunnel editor", then: {
+                // Another machine's field, then Remote's and the SOCKS proxy's sentences.
+                for (id, value) in [("tunnelEditor.destination", "Another machine"), ("tunnelEditor.type", "Remote"),
+                                    ("tunnelEditor.type", "SOCKS proxy")] {
+                    _ = await call(agent, "set", ["id": id, "value": value])
+                    try? await Task.sleep(nanoseconds: 300_000_000)
+                    check("tunnel editor, " + value, window, sheetsOnly: true)
+                }
+            }) {
                 _ = await call(agent, "press", ["title": "Tunnels"])
                 _ = await call(agent, "press", ["title": "Add Tunnel…"])
             }

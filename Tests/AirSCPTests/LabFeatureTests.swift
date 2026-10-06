@@ -305,4 +305,74 @@ struct LabFeatureTests {
             }
         }
     }
+
+    /// Tunnels as the editor saves them carry traffic through a real server: Local to the server itself ("localhost",
+    /// looked up on the server: its own sshd) and to a machine only the server reaches ("private", inside the lab), and
+    /// Remote from a port on the server back to this Mac ("localhost" here).
+    @Test func localAndRemoteTunnelsCarryTraffic() async throws {
+        try await withLab { lab in
+            let session = try await lab.connected(Lab.target())
+            let targetBanner = try banner(port: Lab.targetPort)
+            for host in ["localhost", "private"] {
+                let tunnel = try await startedTunnel(session, to: 22, host: host)
+                let line = try banner(port: tunnel.listenPort)
+                #expect(host == "localhost" ? line == targetBanner : line.hasPrefix("SSH-2.0-"), "\(host): \(line)")
+                try await session.stopTunnel(tunnel)
+            }
+
+            // Remote: a port on the server that leads to a listener on this Mac, which answers.
+            let mac = try listener()
+            defer {
+                close(mac.fd)
+                close(mac.fd6)
+            }
+            answerOnce(mac, with: "hello from the Mac")
+            var remote: Tunnel?, failure: Error?
+            for _ in 0..<5 where remote == nil {
+                let tunnel = Tunnel(kind: .remote, listenPort: Int.random(in: 40_000..<60_000), targetHost: "localhost",
+                                    targetPort: mac.port)
+                do {
+                    try await session.startTunnel(tunnel)
+                    remote = tunnel
+                } catch {
+                    failure = error  // a port something else holds on the server: try another
+                }
+            }
+            let tunnel = try #require(remote, "\(String(describing: failure))")
+            let result = try await session.run("exec 3<>/dev/tcp/127.0.0.1/\(tunnel.listenPort) && head -c 18 <&3")
+            #expect(result.output.hasSuffix("hello from the Mac"), "\(result.output) \(result.stderr)")
+            try await session.stopTunnel(tunnel)
+        }
+    }
+}
+
+/// The first line a server sends on 127.0.0.1:`port` (an SSH server's version), within 30 s.
+private func banner(port: Int) throws -> String {
+    let fd = socket(AF_INET, SOCK_STREAM, 0)
+    defer { close(fd) }
+    var timeout = timeval(tv_sec: 30, tv_usec: 0)
+    setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &timeout, socklen_t(MemoryLayout<timeval>.size))
+    var address = sockaddr_in()
+    address.sin_family = sa_family_t(AF_INET)
+    address.sin_addr.s_addr = inet_addr("127.0.0.1")
+    address.sin_port = UInt16(port).bigEndian
+    let connected = withUnsafePointer(to: &address) {
+        $0.withMemoryRebound(to: sockaddr.self, capacity: 1) { connect(fd, $0, socklen_t(MemoryLayout<sockaddr_in>.size)) }
+    }
+    guard connected == 0 else { throw AirSCPError(.other, "Nothing listens on port \(port).") }
+    var line = Data(), byte: UInt8 = 0
+    while read(fd, &byte, 1) == 1 && byte != UInt8(ascii: "\n") { line.append(byte) }
+    return String(decoding: line, as: UTF8.self).trimmingCharacters(in: .whitespacesAndNewlines)
+}
+
+/// Answers the first connection to `listener` (on 127.0.0.1 or ::1) with `text`, on a thread of its own.
+private func answerOnce(_ listener: (port: Int, fd: Int32, fd6: Int32), with text: String) {
+    Thread.detachNewThread {
+        var fds = [pollfd(fd: listener.fd, events: Int16(POLLIN), revents: 0), pollfd(fd: listener.fd6, events: Int16(POLLIN), revents: 0)]
+        guard poll(&fds, 2, 120_000) > 0, let ready = fds.first(where: { $0.revents & Int16(POLLIN) != 0 }) else { return }
+        let connection = accept(ready.fd, nil, nil)
+        guard connection >= 0 else { return }
+        _ = Array(text.utf8).withUnsafeBytes { write(connection, $0.baseAddress, $0.count) }
+        close(connection)
+    }
 }

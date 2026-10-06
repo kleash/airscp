@@ -17,7 +17,7 @@ Files are under `Sources/` (`Core/` = `AirSCPCore`, `App/` = `AirSCP`); tests un
 | Other ssh options with examples, `ssh -G` validation [U.3] | App/HostEditor | HelpTests `otherSSHOptionsAreCheckedAsTyped` |
 | Automatic reconnect, keep-alive, wake and network triggers [L, R, S.2] | Core/Session; App/HostWorkspace (banner) | ReconnectTests (9); StreamTransferTests `jobsLostWithTheConnectionAreRetriedAfterReconnecting` |
 | Terminal hand-off, Run Command, snippets, command log [3, 6] | App/Terminal, RunCommand, CommandLog | AppTests; ShellTests `terminalScriptsExportTheAskpassEnvironment`; S2Tests `theCommandLogLeavesOutRunCommandsMarker` |
-| Tunnels [6] | App/Tunnels; Core/Session | SessionTests `tunnelsForwardCancelAndBusyPort`; AgentTests `agentTestsAConnectionAndSwitchesATunnel` |
+| Tunnels: the editor as a sentence, routes in the list [6] | App/Tunnels; Core/Session | SessionTests `tunnelsForwardCancelAndBusyPort`; AppTests `tunnelTitlesAndChecks`; AgentTests `agentTestsAConnectionAndSwitchesATunnel`; lab `localAndRemoteTunnelsCarryTraffic` |
 | Keys window, New Key Pair (all types/formats) [7, K.1] | App/KeysWindow, KeySheet; Core/Keys | KeysTests; KeyFormatTests (every type/size/format round trip, passphrase never on a command line); KeyFlowAppTests |
 | PuTTY .ppk import v2/v3, export v3 [K.2] | Core/PuTTYKey; CRDP/airscp_crypto.c (Argon2id) | PuTTYKeyTests (PuTTY's own test vectors byte for byte; `AIRSCP_PUTTY=1`: interop with puttygen) |
 | Files tab: two panes, listing, sort, filter, hidden, path bar, columns [4, H] | App/BrowserContent, FilePane, FileList, FileActions; Core/RemoteFS | WorkspaceTests; ListingTests; RemoteOpsTests `listingAFolderOf50000Entries`; lab listing, sftp-only chroot, login noise |

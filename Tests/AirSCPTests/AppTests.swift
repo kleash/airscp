@@ -188,15 +188,30 @@ func testModel(_ hosts: [SSHHost] = [], groups: [HostGroup] = [], saved: Recorde
     #expect(host.port == nil)
 }
 
+/// A tunnel's route says where each end is: "localhost" is the far end itself, looked up there (ssh -L, -R).
 @Test func tunnelTitlesAndChecks() {
     let local = Tunnel(kind: .local, listenPort: 8080, targetHost: "db", targetPort: 5432)
-    #expect(TunnelsModel.title(local) == "Local 8080 → db:5432")
-    #expect(TunnelsModel.title(Tunnel(kind: .dynamic, listenPort: 1080)) == "SOCKS proxy on port 1080")
+    #expect(TunnelsModel.title(local, server: "web") == "localhost:8080 on this Mac → web → db:5432")
+    #expect(TunnelsModel.title(Tunnel(kind: .local, listenPort: 8649, targetPort: 8649), server: "web")
+            == "localhost:8649 on this Mac → web → localhost:8649 on web (the server itself)")
+    #expect(TunnelsModel.title(Tunnel(kind: .remote, listenPort: 9000, targetHost: "127.0.0.1", targetPort: 3000), server: "web")
+            == "localhost:9000 on web → this Mac → 127.0.0.1:3000 on this Mac")
+    #expect(TunnelsModel.title(Tunnel(kind: .remote, listenPort: 9000, targetHost: "fe80::1", targetPort: 22), server: "web")
+            == "localhost:9000 on web → this Mac → [fe80::1]:22")
+    #expect(TunnelsModel.title(Tunnel(kind: .dynamic, listenPort: 1080), server: "web")
+            == "localhost:1080 on this Mac (SOCKS proxy) → web → any address web can reach")
+    // The editor's preview before anything is typed.
+    #expect(TunnelsModel.title(Tunnel(kind: .local, listenPort: 0, targetHost: ""), server: "web") == "localhost:… on this Mac → web → …:…")
+    #expect(["localhost", "LOCALHOST", "127.0.0.1", "::1"].allSatisfy(TunnelsModel.isItself) && !TunnelsModel.isItself("db"))
     #expect(TunnelsModel.validationError(local) == nil)
     #expect(TunnelsModel.validationError(Tunnel(kind: .dynamic, listenPort: 1080)) == nil)
     #expect(TunnelsModel.validationError(Tunnel(kind: .local, listenPort: 0)) != nil)
     #expect(TunnelsModel.validationError(Tunnel(kind: .remote, listenPort: 9000, targetHost: "", targetPort: 80)) != nil)
     #expect(TunnelsModel.validationError(Tunnel(kind: .remote, listenPort: 9000, targetPort: 70000)) != nil)
+    // Below 1024 on this Mac AirSCP can't listen (Session.startTunnel); on the server a root login can.
+    #expect(TunnelsModel.validationError(Tunnel(kind: .local, listenPort: 80, targetPort: 80)) != nil)
+    #expect(TunnelsModel.validationError(Tunnel(kind: .dynamic, listenPort: 1023)) != nil)
+    #expect(TunnelsModel.validationError(Tunnel(kind: .remote, listenPort: 80, targetPort: 8080)) == nil)
 }
 
 @Test func newKeyNamesNeverOverwrite() throws {

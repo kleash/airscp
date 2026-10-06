@@ -390,15 +390,14 @@ import Testing
     }
 }
 
-/// A TCP listener on 127.0.0.1 and ::1 at the same free port.
-/// A local tunnel to `targetPort`, started on a port that was free a moment before: on a busy Mac another socket may
-/// take such a port meanwhile (the start then says "in use"), and another is tried.
-func startedTunnel(_ session: Session, to targetPort: Int) async throws -> Tunnel {
+/// A local tunnel to `host`:`targetPort` (as the server sees it), started on a port that was free a moment before: on
+/// a busy Mac another socket may take such a port meanwhile (the start then says "in use"), and another is tried.
+func startedTunnel(_ session: Session, to targetPort: Int, host: String = "127.0.0.1") async throws -> Tunnel {
     for _ in 0..<5 {
         let free = try listener()
         close(free.fd)
         close(free.fd6)
-        let tunnel = Tunnel(kind: .local, listenPort: free.port, targetHost: "127.0.0.1", targetPort: targetPort)
+        let tunnel = Tunnel(kind: .local, listenPort: free.port, targetHost: host, targetPort: targetPort)
         do {
             try await session.startTunnel(tunnel)
             return tunnel
@@ -409,6 +408,7 @@ func startedTunnel(_ session: Session, to targetPort: Int) async throws -> Tunne
     throw AirSCPError(.portInUse, "No free port for the test's tunnel.")
 }
 
+/// A TCP listener on 127.0.0.1 and ::1 at the same free port.
 func listener() throws -> (port: Int, fd: Int32, fd6: Int32) {
     for _ in 0..<20 {
         let fd = socket(AF_INET, SOCK_STREAM, 0)

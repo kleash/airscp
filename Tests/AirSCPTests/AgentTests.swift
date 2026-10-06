@@ -581,7 +581,7 @@ func field(_ sheet: [String: Any]?, _ id: String) -> [String: Any]? {
             agent.close()
             main.window?.orderOut(nil)
         }
-        let tunnel = "Local \(free.port) → 127.0.0.1:\(server.port)"
+        let tunnel = "localhost:\(free.port) on this Mac → lab → 127.0.0.1:\(server.port) on lab (the server itself)"
 
         // Test Connection: the new key's question is a sheet on the editor, the result is in the editor's text.
         _ = await call(agent, "select", ["pane": "sidebar", "names": ["lab"]])
@@ -616,15 +616,42 @@ func field(_ sheet: [String: Any]?, _ id: String) -> [String: Any]? {
         #expect(await eventually { await call(agent, "set", ["title": tunnel, "value": false]).error == nil })
         #expect(await eventually { await on() == false })
         #expect(await eventually { !canConnect(to: free.port) })
-        // Its own Edit… and Remove, named after it too.
+        // Its own Edit… and Remove, named after it too. Saved to 127.0.0.1, it goes to the server itself.
         #expect(await eventually { await call(agent, "press", ["title": "Edit \(tunnel)"]).error == nil })
         reply = await call(agent, "wait", ["until": "sheet", "text": "tunnelEditor", "timeout": 5])
         #expect(field(reply.json, "tunnelEditor.listenPort")?["value"] as? String == String(free.port), "\(reply.json)")
+        #expect(field(reply.json, "tunnelEditor.destination")?["value"] as? String == "The server itself", "\(reply.json)")
+        #expect(field(reply.json, "tunnelEditor.targetHost") == nil, "\(reply.json)")
+        #expect(field(reply.json, "tunnelEditor.targetPort")?["value"] as? String == String(server.port), "\(reply.json)")
         #expect(reply["title"] as? String == "Edit Tunnel", "\(reply.json)")  // a headline, as the other editors have
         _ = await call(agent, "press", ["title": "Cancel"])
         #expect(await call(agent, "wait", ["until": "no_sheet", "timeout": 5]).error == nil)
         #expect(await call(agent, "press", ["title": "Remove \(tunnel)"]).error == nil)
         #expect(await eventually { model.host(host.id)?.tunnels.isEmpty == true })
+
+        // Add Tunnel…: the port to reach is the port to open until it is typed in; another machine is the one named.
+        #expect(await call(agent, "press", ["title": "Add Tunnel…"]).error == nil)
+        #expect(await call(agent, "wait", ["until": "sheet", "text": "tunnelEditor", "timeout": 5]).error == nil)
+        #expect(await call(agent, "set", ["id": "tunnelEditor.listenPort", "value": "18649"]).error == nil)
+        #expect(await eventually {
+            let sheet = await call(agent, "wait", ["until": "sheet", "timeout": 5])
+            return field(sheet.json, "tunnelEditor.targetPort")?["value"] as? String == "18649"
+        })
+        #expect(await call(agent, "set", ["id": "tunnelEditor.destination", "value": "Another machine"]).error == nil)
+        #expect(await eventually { await call(agent, "set", ["id": "tunnelEditor.targetHost", "value": "db.internal"]).error == nil })
+        #expect(await call(agent, "set", ["id": "tunnelEditor.targetPort", "value": "5432"]).error == nil)
+        #expect(await call(agent, "press", ["title": "Save"]).error == nil)
+        #expect(await eventually {
+            model.host(host.id)?.tunnels.map { "\($0.kind) \($0.listenPort) \($0.targetHost) \($0.targetPort)" } == ["local 18649 db.internal 5432"]
+        })
+        // It opens again as saved.
+        let saved = "localhost:18649 on this Mac → lab → db.internal:5432"
+        #expect(await eventually { await call(agent, "press", ["title": "Edit \(saved)"]).error == nil })
+        reply = await call(agent, "wait", ["until": "sheet", "text": "tunnelEditor", "timeout": 5])
+        #expect(field(reply.json, "tunnelEditor.destination")?["value"] as? String == "Another machine the server can reach", "\(reply.json)")
+        #expect(field(reply.json, "tunnelEditor.targetHost")?["value"] as? String == "db.internal", "\(reply.json)")
+        _ = await call(agent, "press", ["title": "Cancel"])
+        #expect(await call(agent, "wait", ["until": "no_sheet", "timeout": 5]).error == nil)
 
         _ = await call(agent, "menu", ["path": "Host > Disconnect"])
         #expect(await call(agent, "wait", ["until": "disconnected", "timeout": 20]).error == nil)
