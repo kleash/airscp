@@ -521,6 +521,19 @@ struct AgentLabTests {
             try await app.call("wait", ["until": "connected", "host": "lab", "timeout": 60])
             var reply = try await app.call("go", ["path": dir])
             #expect(listed(reply).dir == dir && Set(listed(reply).names) == ["reports", "many"], "\(reply)")
+            // A click on a file row or a host is refused, with what takes them by name.
+            let elements = try await app.call("snapshot", ["include": ["elements"]])["elements"] as? [[String: Any]] ?? []
+            var refused = 0
+            for element in elements where element["id"] as? String == "right.table"
+                || (element["help"] as? String)?.hasPrefix("lab (dev@") == true {  // the sidebar's host
+                guard let frame = element["frame"] as? [Double], frame.count == 4 else { continue }
+                // The table's first row, near its left end (a table is wider than the pane shows); a host's name.
+                let id = element["id"] as? String == "right.table"
+                text = await failure("click", ["x": frame[0] + (id ? 20 : frame[2] / 2), "y": frame[1] + (id ? 10 : frame[3] / 2)])
+                #expect(text.contains("Never click in the sidebar or the file panes"), "\(element): \(text)")
+                refused += 1
+            }
+            #expect(refused >= 2, "\(refused)")
             #expect(listed(try await app.call("go", ["path": "~"])).dir == "/home/dev")
             text = await failure("go", ["path": dir + "/missing"])
             #expect(text.contains("No such folder: \(dir)/missing (the pane stays in /home/dev)"), "\(text)")

@@ -611,14 +611,11 @@ func field(_ sheet: [String: Any]?, _ id: String) -> [String: Any]? {
                 && row?["modified"] as? String != nil, "\(row ?? [:])")
         #expect(right.dir == data && (reply["pane"] as? [String: Any])?["focused"] as? Bool == true
                 && (reply["pane"] as? [String: Any])?["more"] == nil)
-        // A click on a file row or in the sidebar is refused, with what takes them by name instead.
-        let window = try #require(main.window)
-        let sidebar = try #require((window.contentViewController as? NSSplitViewController)?.splitViewItems.first?.viewController.view)
-        for view in [right.table, sidebar] {
-            let point = view.convert(NSPoint(x: view.visibleRect.midX, y: view.visibleRect.midY), to: nil)
-            let clicked = await call(agent, "click", ["x": point.x, "y": window.frame.height - point.y])
-            #expect(clicked.error?.hasPrefix("Never click in the sidebar or the file panes") == true, "\(clicked.error ?? "")")
-        }
+        // A click in a file pane or the sidebar is refused (the bridge's test clicks there): what is there is taken by name.
+        let sidebar = try #require((main.window?.contentViewController as? NSSplitViewController)?.splitViewItems.first?.viewController.view)
+        let cell = try #require(right.table.view(atColumn: 0, row: 0, makeIfNecessary: true))
+        #expect([cell, right.statusLabel, right.filterField, sidebar.subviews.first ?? sidebar].allSatisfy(AgentServer.takenByName))
+        #expect(!AgentServer.takenByName(try #require(main.window?.contentView)))
         // ~ is the server's home, and relative paths start in the folder shown; the Back list follows as for a person.
         #expect(listed(await call(agent, "go", ["path": "~"])).dir == server.home)
         #expect(listed(await call(agent, "go", ["path": "~/data"])).dir == data && right.back.last == server.home)

@@ -960,10 +960,7 @@ final class AgentServer {
         let location = NSPoint(x: point.x - window.frame.minX, y: point.y - window.frame.minY)
         let right = (arguments["button"] as? String)?.lowercased() == "right"
         let hit = window.contentView?.hitTest(window.contentView!.convert(location, from: nil))
-        // Hosts, folders and file rows are taken by name: a click there is never needed (and behind other apps it may not
-        // even select, AppKit taking it for the click that activates the window).
-        let sidebar = (main?.window?.contentViewController as? NSSplitViewController)?.splitViewItems.first?.viewController.view
-        if let hit, sidebar.map(hit.isDescendant) == true || sequence(first: hit, next: \.superview).contains(where: { $0 is FileTableView }) {
+        if let hit, Self.takenByName(hit) {
             throw Failure("Never click in the sidebar or the file panes: hosts, folders and rows are taken by name. A host: "
                           + "select pane=sidebar names=[\"web\"]; a folder: go path=/var/log; a row: open name=… (a folder, "
                           + "..) or select pane=right names=[\"a.txt\"], then menu path=\"File > …\".")
@@ -998,6 +995,13 @@ final class AgentServer {
         bringToFront(window)
         let count = max(1, min(arguments["count"] as? Int ?? 1, 3))
         return await perform { Self.click(at: location, in: window, right: right, modifiers: modifiers, count: count) }
+    }
+
+    /// Whether `view` is in the sidebar or a file pane, whose hosts, folders and files are taken by name (and controls by
+    /// id): a click there is never needed, and behind other apps it may not even select (AppKit takes it for the click
+    /// that activates the window).
+    static func takenByName(_ view: NSView) -> Bool {
+        sequence(first: view, next: \.superview).contains { $0.nextResponder is FilePane || $0.nextResponder is NSHostingController<Sidebar> }
     }
 
     /// Mouse down and up at `location`, `count` times, as a person clicks.
@@ -1114,6 +1118,10 @@ final class AgentServer {
     /// Lists `path` in `pane` as Go to Folder does (its Back list and path bar follow) and gives the pane the focus, as
     /// Return in that field does. A folder that can't be listed is this request's error, not a sheet left to close.
     private func go(_ pane: FilePane, to path: String, select: [String] = []) async throws -> [String: Any] {
+        // Just connected, the pane lists its start folder a moment after the state changed: that listing would take this
+        // one's place, so it goes first (as a person sees the first folder before typing another).
+        let deadline = Date().addingTimeInterval(30)
+        while pane.dir == nil && Date() < deadline { try await Task.sleep(nanoseconds: 50_000_000) }
         let before = pane.dir
         var failure: Error?
         guard await pane.open(path, select: select, quiet: true, failed: { failure = $0 }) else {
@@ -1122,7 +1130,9 @@ final class AgentServer {
             case .noSuchFile?: throw Failure("No such folder: \(path)\(stays).")
             case .permissionDenied?: throw Failure("Permission denied: this account may not list \(path)\(stays).")
             default:
-                guard let failure else { throw Failure("The pane went to another folder meanwhile: \(pane.dir ?? "none").") }
+                guard let failure else {
+                    throw Failure("Another listing took this one's place (the pane shows \(pane.dir ?? "no folder")): go again.")
+                }
                 throw Failure("Can't open \(path)\(stays): " + ((failure as? AirSCPError)?.message ?? failure.localizedDescription))
             }
         }
