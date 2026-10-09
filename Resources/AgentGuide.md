@@ -26,9 +26,8 @@ How to work with AirSCP:
 - Other windows (Settings, Keys, Snippets, file editors): add `in="window:<title>"` to `press`, `set`, `select`,
   `menu`, `key`, `type`, `click` and `snapshot` (its elements). Without it, menus and keys act on the main window.
 - Hosts and desktops are chosen in the sidebar: `select pane=sidebar names=["web"]`, then `menu path="Host > Connect"`.
-- Never click in the file panes or the sidebar: `go`, `open`, `select`, `menu` take folders, rows and hosts by name;
-  `click` is for the Windows desktop. `screenshot` only to see how something looks (it is large; the snapshot has the
-  facts).
+  Never click in the file panes or the sidebar (`go`, `open`, `select`, `menu` take them by name). `screenshot` only to
+  see how something looks (it is large; the snapshot has the facts).
 - A Windows desktop (Remote Desktop) is driven by keys first: `key target=rdp` "win+e" (File Explorer), "alt+d" (its
   address bar: `type target=rdp` a path such as D:\Data, then "return"), "win+r" (Run). Click only where no key does
   it: `click target=rdp` takes pixels of `screenshot target=rdp` as they are. More: `guide topic=rdp`.
@@ -39,12 +38,10 @@ How to work with AirSCP:
   `files=[…]`), which is chosen instead, e.g. `menu path="File > Export Hosts…" file=/tmp/hosts.json`; the reply's
   `panelFolder` is where the panel would have opened (one that opened anyway: `press title=Cancel`). Quick Look is
   refused. Commands that hand over to another app (Terminal, Finder, the default app, the clipboard) run, unseen.
-- Agent control is off unless the user turned it on: AirSCP ▸ Settings ▸ "Allow AI agents to control AirSCP (MCP)".
-  The sidebar's "Agent control on" then shows the user your name (your MCP client's), your actions as you act and a
-  way to turn it off. `snapshot` → agent: client, actions (how many).
-- A first run with no hosts greets with the "Welcome to AirSCP" sheet: press Start (or one of its buttons) first.
-  Help ▸ Welcome to AirSCP… shows it again; Help ▸ AirSCP Tips and Help ▸ Agent Guide open windows with short texts;
-  the Help menu's other items and a sheet's "?" button (id `help`) open AirSCP Help in the browser, outside AirSCP.
+- Agent control is off unless the user turned it on (AirSCP ▸ Settings ▸ "Allow AI agents to control AirSCP (MCP)");
+  the sidebar then shows the user your name, your actions and a way to turn it off. `snapshot` → agent: client, actions.
+- A first run with no hosts shows the "Welcome to AirSCP" sheet: press Start first. The Help menu's AirSCP Help items
+  and a sheet's "?" button (id `help`) open the browser, outside AirSCP; Tips and Agent Guide open short texts.
 
 ## tools
 Each tool takes a JSON object. From a shell: `AirSCP --agent <tool> key=value …` (values are text, except for
