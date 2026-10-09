@@ -24,15 +24,6 @@ private func contents(_ folder: String) -> [String: String] {
     return result
 }
 
-/// Writes `bytes` of zeros (real blocks, not a sparse file, so that tar reads them all).
-private func writeZeros(bytes: Int, to path: String) throws {
-    FileManager.default.createFile(atPath: path, contents: nil)
-    let handle = try FileHandle(forWritingTo: URL(fileURLWithPath: path))
-    defer { try? handle.close() }
-    let chunk = Data(count: 1 << 20)
-    for _ in 0..<(bytes >> 20) { handle.write(chunk) }
-}
-
 /// Starts a job, cancels it once bytes flow, and returns its final status.
 private func cancelOnceUnderWay(_ queue: TransferQueue, _ start: () -> UUID) async -> TransferJob.Status? {
     let id = start()

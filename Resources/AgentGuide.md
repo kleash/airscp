@@ -208,12 +208,24 @@ AirSCP was installed with `./install.sh`).
 - Between two servers: show the other server in the left pane (its source menu: `set id=left.source value=<host>`),
   then `drop from=left to=right`.
 - `wait until=transfers_done` (optionally host), then `snapshot include=["transfers"]`: each job's id, host, name,
-  direction, size, percent, speed (or "stalled"), eta, status, problem. Cancel or retry: `select pane=transfers
+  direction, size, percent, speed (or "stalled"), eta, status, problem, note. Cancel or retry: `select pane=transfers
   names=[<name>]` (or `ids=[<id>]`) → `press id=transfers.cancel` / `transfers.retry` / `transfers.remove`, or its
   context menu: `menu path="context > Show in Finder" pane=transfers` (a finished download), `"context > Show
   Details…"` (a problem's output); `press id=transfers.clearFinished`, `press id=transfers.cancelAll` (asks). The
-  panel lists the queued and running jobs first, then the newest 100 finished ones (newest first); snapshot has every
-  unfinished job and the newest 500 finished ones of each host.
+  panel lists the queued, running and paused jobs first, then the newest 100 finished ones (newest first); snapshot has
+  every unfinished job and the newest 500 finished ones of each host.
+- Pause and resume: select the jobs (as above) → `menu path="context > Pause" pane=transfers` (queued or running ones)
+  or `"context > Resume"` (paused ones); every job at once: `press id=transfers.pauseAll` / `transfers.resumeAll`. A
+  paused job's status is "Paused" and its note says how it goes on: a single file keeps what it copied (`"resumable":
+  true`) and continues where it stopped (then `"resumed": true`); folders, archives and server-to-server copies start
+  again. Paused jobs wait through a lost connection and its reconnect (Resume is off while their host reconnects by
+  itself); Cancel, Cancel All and Disconnect throw a paused job's part away. `wait until=transfers_done` doesn't wait
+  for paused jobs.
+- Check a copy against the original (SHA-256, single files): `menu path="context > Verify with Checksum"
+  pane=transfers` on a finished job, or every file as it arrives with `set id=settings.verifyTransfers value=true
+  in=window:Settings`. `wait until=transfers_done` waits for the checks too; then the status is "Verified" (with
+  `sha256`), "Mismatch" (problem, and details with both checksums: `transfers.retry` copies the file again in place of
+  the bad copy and checks it again) or "Not verified" (the note says why: an sftp-only account runs no checksum tool).
 - A lost connection: a single file cut off keeps what arrived, and its job shows `"resumable": true` (problem "The
   connection to the server was lost."). Retry, or the automatic retry once the host has reconnected, continues it
   where it stopped (while the host reconnects by itself, transfers.retry is off: the job runs again by itself then): the job then shows `"resumed": true` and its percent goes on from there. Remove, Clear Finished,

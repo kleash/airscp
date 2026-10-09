@@ -17,7 +17,8 @@
 </p>
 
 - **Two panes**: your Mac on the left, a server on the right. Drag to copy, also server to server.
-- **A transfer queue** that runs in the background, resumes after a dropped connection, and has a speed limit.
+- **A transfer queue** that runs in the background: pause and resume, go on after a dropped connection, check copies
+  with SHA-256, limit the speed.
 - **Folders as one fast stream**, with compression and "leave out" patterns (`node_modules, *.log`).
 - **Synchronize** two folders with a preview first; **Find Files** on a server by name or pattern.
 - **Every way in**: keys, passwords, 2FA codes, jump hosts, HTTP proxies. Your `~/.ssh/config` just works.

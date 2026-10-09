@@ -63,6 +63,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSMenu
         observers.append(model.$data.map(\.settings.transferSpeedLimit).removeDuplicates().sink { megabytes in
             TransferCenter.shared.speedLimit = megabytes > 0 ? megabytes * 1_048_576 : nil
         })
+        // Settings ▸ Verify transfers with SHA-256, for every single file that arrives from then on.
+        observers.append(model.$data.map(\.settings.verifyTransfers).removeDuplicates().sink {
+            TransferCenter.shared.verifyTransfers = $0
+        })
         do {
             askpass = try AskpassServer(helperPath: Bundle.main.executablePath ?? CommandLine.arguments[0])
         } catch {

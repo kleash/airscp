@@ -294,10 +294,10 @@ struct StatusPill: View {
 }
 
 /// A progress bar: a 6 pt capsule over labelColor at 10 %. Running, it fills with Night Harbor's systemBlue →
-/// systemPurple (Paper: labelColor) and a soft shimmer passes over it (not with Reduce Motion); done is green, failed
-/// red.
+/// systemPurple (Paper: labelColor) and a soft shimmer passes over it (not with Reduce Motion); done is green, paused
+/// grey, failed red.
 struct CapsuleBar: View {
-    enum State { case running, done, failed }
+    enum State { case running, done, paused, failed }
     let fraction: Double
     let state: State
     @Environment(\.colorScheme) private var scheme
@@ -328,6 +328,7 @@ struct CapsuleBar: View {
     private var fill: AnyShapeStyle {
         switch state {
         case .done: return AnyShapeStyle(Color(nsColor: .systemGreen))
+        case .paused: return AnyShapeStyle(Color(nsColor: .systemGray))
         case .failed: return AnyShapeStyle(Color(nsColor: .systemRed))
         case .running:
             return scheme == .dark ? AnyShapeStyle(LinearGradient(colors: [Color(nsColor: .systemBlue), Color(nsColor: .systemPurple)],

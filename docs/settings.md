@@ -32,6 +32,7 @@ still apply. With Increase contrast on, the dark look drops its blue tint.
 | **Downloads folder** | Where **Download To…** starts, and where **Download as .tar.gz** puts the archive when the other pane isn't this Mac. Drags and the Download button go to the folder shown. |
 | **Show hidden files in new panes** | Off by default. Each pane can still switch with <kbd>⇧⌘.</kbd>. |
 | **Copied files keep their original date** | Off by default: copies are dated now. On: they keep the file's own date (`scp -p`). |
+| **Verify transfers with SHA-256** | Off by default. On: each copied file is compared with the original once it arrives. See [Check a copy with its checksum](transfers/verify-checksums.md). |
 | **Ask before deleting on a server** | On by default. |
 | **Always calculate folder sizes** | Off by default: folders show “—” until you click **Σ**. |
 

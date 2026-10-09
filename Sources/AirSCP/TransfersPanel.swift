@@ -3,9 +3,10 @@ import AppKit
 import SwiftUI
 
 /// The global Transfers queue at the bottom of the main window: every host's jobs from `TransferCenter.shared`
-/// (host, name, direction, size, progress, speed, ETA, status) with Cancel, Retry, Remove, Clear Finished and
-/// Cancel All. It redraws at most four times a second however fast the transfers report (TransferCenter publishes
-/// no more often). The main window shows it below the selected workspace.
+/// (host, name, direction, size, progress, speed, ETA, status) with Cancel, Retry, Remove, Clear Finished, Pause All,
+/// Resume All and Cancel All; Pause, Resume and Verify with Checksum in the jobs' context menu. It redraws at most four
+/// times a second however fast the transfers report (TransferCenter publishes no more often). The main window shows it
+/// below the selected workspace.
 struct TransfersPanel: View {
     @ObservedObject var model: AppModel
     @ObservedObject private var list = TransferCenter.shared
@@ -41,12 +42,14 @@ struct TransfersPanel: View {
 
     private var header: some View {
         let selected = list.jobs.filter { selection.contains($0.id) }
-        let active = list.jobs.filter { !$0.status.isFinished }
+        let unfinished = list.jobs.filter { !$0.status.isFinished }
+        let active = unfinished.filter(\.status.isActive).count, paused = unfinished.count - active
         return HStack(spacing: 8) {
             Text("Transfers").font(.system(size: 12.5, weight: .bold)).fixedSize()
                 .help("Uploads and downloads of every host run here, one at a time per host")
-            if !active.isEmpty {
-                StatusPill(text: "\(active.count) active", style: scheme == .dark ? .tinted(.controlAccentColor) : .pill)
+            if !unfinished.isEmpty {
+                StatusPill(text: active > 0 ? "\(active) active" : "\(paused) paused",
+                           style: active == 0 ? .neutral : scheme == .dark ? .tinted(.controlAccentColor) : .pill)
                     .fixedSize()
                     .help(TransferText.summary(list.jobs))
             }
@@ -70,13 +73,14 @@ struct TransfersPanel: View {
             Button("Cancel") { selected.forEach { center.cancel($0.id) } }
                 .disabled(!cancellable)
                 .accessibilityIdentifier("transfers.cancel")
-                .help(cancellable ? "Stop the selected transfers; partly copied files are removed" : "Select a running or queued transfer")
-            Button("Retry") { selected.forEach { center.retry($0.id) } }
+                .help(cancellable ? "Stop the selected transfers; partly copied files are removed"
+                      : "Select a running, queued or paused transfer")
+            Button("Retry") { selected.filter(TransferText.canRetry).forEach { center.retry($0.id) } }
                 .disabled(!retryable)
                 .accessibilityIdentifier("transfers.retry")
-                .help(retryable ? "Run the selected failed or cancelled transfers again; a cut-off file continues"
+                .help(retryable ? "Run the selected failed, cancelled or mismatched transfers again; a cut-off file continues"
                       : waiting ? "Their host is reconnecting: what the lost connection cut off runs again by itself then"
-                      : "Select a failed or cancelled transfer")
+                      : "Select a failed, cancelled or mismatched transfer")
             Button("Remove") { selected.forEach { center.remove($0.id) } }
                 .disabled(!removable)
                 .accessibilityIdentifier("transfers.remove")
@@ -85,10 +89,21 @@ struct TransfersPanel: View {
                 .disabled(!finished)
                 .accessibilityIdentifier("transfers.clearFinished")
                 .help(finished ? "Take every finished transfer off the list" : "Nothing has finished yet")
-            Button("Cancel All") { cancelAll(active.count) }
-                .disabled(active.isEmpty)
+            let resumable = unfinished.contains(where: TransferText.canResume)
+            Button("Pause All") { center.pause(Set(center.currentJobs.map(\.id))) }
+                .disabled(active == 0)
+                .accessibilityIdentifier("transfers.pauseAll")
+                .help(active > 0 ? "Pause every running and queued transfer; single files continue where they stopped"
+                      : "Nothing is running or queued")
+            Button("Resume All") { center.resume(Set(center.currentJobs.filter(TransferText.canResume).map(\.id))) }
+                .disabled(!resumable)
+                .accessibilityIdentifier("transfers.resumeAll")
+                .help(resumable ? "Continue every paused transfer"
+                      : paused > 0 ? "Their host is reconnecting: resume them once it is back" : "Nothing is paused")
+            Button("Cancel All") { cancelAll(unfinished.count) }
+                .disabled(unfinished.isEmpty)
                 .accessibilityIdentifier("transfers.cancelAll")
-                .help(active.isEmpty ? "Nothing is running" : "Stop every running and queued transfer (asks first)")
+                .help(unfinished.isEmpty ? "Nothing is running" : "Stop every running, queued and paused transfer (asks first)")
         }
         .controlSize(.small)
         .padding(.horizontal, 10)
@@ -172,9 +187,12 @@ struct TransfersPanel: View {
     }
 
     static let actionTips = [
+        "Pause": "Stop the selected transfers for now; a single file continues where it stopped when resumed",
+        "Resume": "Continue the selected paused transfers",
         "Cancel": "Stop the selected transfers; partly copied files are removed",
-        "Retry": "Run the selected failed or cancelled transfers again; a cut-off file continues",
+        "Retry": "Run the selected failed, cancelled or mismatched transfers again; a cut-off file continues",
         "Remove": "Take the selected finished transfers off the list",
+        "Verify with Checksum": "Compare the SHA-256 checksum of each selected file's copy with the original's",
         "Show Details…": "Show the tools' output for this transfer",
         "Show in Finder": "Show the downloaded item in Finder",
     ]
@@ -185,10 +203,15 @@ struct TransfersPanel: View {
     /// The jobs' context menu (agents choose from it with `menu "context > …" pane=transfers`).
     static func actions(for jobs: [TransferJob]) -> [(title: String, enabled: Bool, run: () -> Void)] {
         let center = TransferCenter.shared
+        let ids = Set(jobs.map(\.id)), resumable = Set(jobs.filter(TransferText.canResume).map(\.id))
+        let retryable = jobs.filter(TransferText.canRetry)
         var actions: [(title: String, enabled: Bool, run: () -> Void)] = [
+            ("Pause", jobs.contains { $0.status.isActive }, { center.pause(ids) }),
+            ("Resume", !resumable.isEmpty, { center.resume(resumable) }),
             ("Cancel", jobs.contains { !$0.status.isFinished }, { jobs.forEach { center.cancel($0.id) } }),
-            ("Retry", jobs.contains { TransferText.canRetry($0) }, { jobs.forEach { center.retry($0.id) } }),
+            ("Retry", !retryable.isEmpty, { retryable.forEach { center.retry($0.id) } }),
             ("Remove", jobs.contains { $0.status.isFinished }, { jobs.forEach { center.remove($0.id) } }),
+            ("Verify with Checksum", jobs.contains(where: \.canVerify), { center.verify(ids) }),
         ]
         if jobs.count == 1, let job = jobs.first {
             if TransferText.problem(job) != nil { actions.append(("Show Details…", true, { showDetails(job) })) }
@@ -199,13 +222,14 @@ struct TransfersPanel: View {
         return actions
     }
 
-    /// A 6 pt capsule and the percentage: running, done (green) or failed where it stopped (red).
+    /// A 6 pt capsule and the percentage: running, done (green), paused (grey) or failed where it stopped (red).
     @ViewBuilder
     private func progress(_ job: TransferJob) -> some View {
         let failed = TransferText.problem(job) != nil && job.progress.percent > 0 && !job.progress.indeterminate
         if let fraction = TransferText.fraction(job) ?? (failed ? Double(min(job.progress.percent, 100)) / 100 : nil) {
             HStack(spacing: 8) {
-                CapsuleBar(fraction: fraction, state: job.status == .done ? .done : failed ? .failed : .running)
+                CapsuleBar(fraction: fraction, state: failed ? .failed : job.status == .done ? .done
+                           : job.status == .paused ? .paused : .running)
                 Text("\(Int(fraction * 100))%").font(.system(size: 11)).foregroundColor(.secondary).monospacedDigit().fixedSize()
             }
         } else {
@@ -217,7 +241,7 @@ struct TransfersPanel: View {
     private func status(_ job: TransferJob) -> some View {
         HStack(spacing: 4) {
             StatusPill(text: TransferText.status(job), symbol: Self.statusSymbol(job), style: statusStyle(job))
-                .help(TransferText.problem(job)?.message ?? TransferText.status(job))
+                .help(TransferText.problem(job)?.message ?? TransferText.note(job) ?? TransferText.status(job))
             if TransferText.problem(job) != nil {
                 Button { showDetails(job) } label: { Image(systemName: "info.circle") }
                     .buttonStyle(.borderless)
@@ -226,12 +250,15 @@ struct TransfersPanel: View {
         }
     }
 
-    /// Running: the pill (Paper) or the accent's tint; done green; problems red; queued and cancelled grey.
+    /// Running: the pill (Paper) or the accent's tint; done green (a copy that couldn't be checked orange); problems red;
+    /// queued, paused and cancelled grey.
     private func statusStyle(_ job: TransferJob) -> StatusPill.Style {
         if TransferText.problem(job) != nil { return .tinted(.systemRed) }
         switch job.status {
         case .running: return scheme == .dark ? .tinted(.controlAccentColor) : .pill
-        case .done: return .tinted(.systemGreen)
+        case .done:
+            if case .unchecked? = job.checksum { return .tinted(.systemOrange) }
+            return .tinted(.systemGreen)
         default: return .neutral
         }
     }
@@ -240,14 +267,21 @@ struct TransfersPanel: View {
         if TransferText.problem(job) != nil { return "exclamationmark.triangle" }
         switch job.status {
         case .queued: return "clock"
-        case .done: return "checkmark"
+        case .paused: return "pause.fill"
+        case .done:
+            switch job.checksum {
+            case nil: return "checkmark"
+            case .verified?: return "checkmark.seal.fill"
+            case .unchecked?: return "questionmark.circle"
+            default: return "clock"  // waiting for its check, or being checked
+            }
         default: return nil
         }
     }
 
     private func hostDot(_ job: TransferJob) -> Color {
         guard scheme == .dark else {
-            return job.status.isFinished ? Color.primary.opacity(0.3) : Color(nsColor: .systemGreen)
+            return job.status.isActive ? Color(nsColor: .systemGreen) : Color.primary.opacity(0.3)
         }
         return model.data.host(job.hostID).flatMap { tagColor($0.color) } ?? .blue
     }
@@ -281,13 +315,15 @@ final class TransferSelection: ObservableObject {
 
 /// What the Transfers panel shows for a job.
 enum TransferText {
-    /// "3 running, 2 queued, 1 failed".
+    /// "3 running, 2 queued, 1 paused, 1 with problems".
     static func summary(_ jobs: [TransferJob]) -> String {
         let running = jobs.filter { $0.status == .running }.count
         let queued = jobs.filter { $0.status == .queued }.count
+        let paused = jobs.filter { $0.status == .paused }.count
         let failed = jobs.filter { problem($0) != nil }.count
         return [running > 0 ? "\(running) running" : nil, queued > 0 ? "\(queued) queued" : nil,
-                failed > 0 ? "\(failed) with problems" : nil].compactMap { $0 }.joined(separator: ", ")
+                paused > 0 ? "\(paused) paused" : nil, failed > 0 ? "\(failed) with problems" : nil]
+            .compactMap { $0 }.joined(separator: ", ")
     }
 
     /// The item, or for an archive or server-to-server job its items ("3 items").
@@ -343,11 +379,12 @@ enum TransferText {
         return progress.bytes > 0 ? FileList.size(progress.bytes) : "—"
     }
 
-    /// 0…1, or nil for a streamed job (no percentage) and a job that hasn't started.
+    /// 0…1 (a paused job: where it stopped), or nil for a streamed job (no percentage) and a job that hasn't started.
     static func fraction(_ job: TransferJob) -> Double? {
         switch job.status {
         case .done: return 1
-        case .running where !job.progress.indeterminate: return Double(min(max(job.progress.percent, 0), 100)) / 100
+        case .running where !job.progress.indeterminate, .paused where !job.progress.indeterminate && job.progress.percent > 0:
+            return Double(min(max(job.progress.percent, 0), 100)) / 100
         default: return nil
         }
     }
@@ -372,21 +409,54 @@ enum TransferText {
         switch job.status {
         case .queued: return "Queued"
         case .running:
+            if job.checksum == .checking { return "Verifying" }
             switch job.direction {
             case .upload: return "Uploading"
             case .download: return "Downloading"
             case .relay: return "Copying"
             }
-        case .done: return "Done"
+        case .paused: return "Paused"
+        case .done:
+            switch job.checksum {
+            case nil: return "Done"
+            case .wanted?: return "Waiting to verify"
+            case .checking?: return "Verifying"
+            case .verified?: return "Verified"
+            case .mismatch?: return "Mismatch"
+            case .unchecked?: return "Not verified"
+            }
         case .completedWithErrors: return "Completed with errors"
         case .failed(let error): return "Failed: " + error.message
         case .cancelled: return "Cancelled"
         }
     }
 
+    /// What the status means, where it needs saying (the status pill's tooltip): how a paused job goes on, a check's
+    /// outcome.
+    static func note(_ job: TransferJob) -> String? {
+        switch (job.status, job.checksum) {
+        case (.paused, _):
+            return job.isSingleFile ? "Paused: Resume continues where it stopped"
+                : "Paused: Resume starts it again (only single files continue where they stopped)"
+        case (.running, .checking?), (.done, .checking?), (.done, .wanted?):
+            return "Comparing the SHA-256 checksum of the copy with the original's"
+        case (.done, .verified(let hash)?):
+            return "Verified: the copy and the original have the same SHA-256 checksum, " + hash
+        case (.done, .unchecked(let reason)?):
+            return "Not verified: " + reason
+        default:
+            return nil
+        }
+    }
+
     /// What went wrong, with the tools' output as details.
     static func problem(_ job: TransferJob) -> AirSCPError? {
         switch job.status {
+        case .done:
+            guard case .mismatch(let original, let copy)? = job.checksum else { return nil }
+            return AirSCPError(.other, "The copy's SHA-256 checksum differs from the original's: the copy is damaged, or "
+                               + "one of them changed since. Retry copies the file again, in place of this copy.",
+                               details: "Original: \(original)\nCopy:     \(copy)")
         case .completedWithErrors(let output):
             return AirSCPError(.other, "Some items couldn't be copied; the rest were. Details names them; Retry runs the "
                                + "transfer again.", details: output)
@@ -400,8 +470,17 @@ enum TransferText {
     static func canRetry(_ job: TransferJob) -> Bool {
         switch job.status {
         case .failed, .cancelled, .completedWithErrors: return !waitsForReconnect(job)
+        case .done:
+            guard case .mismatch? = job.checksum else { return false }
+            return !waitsForReconnect(job)
         default: return false
         }
+    }
+
+    /// A paused job whose host isn't reconnecting by itself (resumed then, it would fail at once: Resume it once the host
+    /// is back).
+    static func canResume(_ job: TransferJob) -> Bool {
+        job.status == .paused && !TransferCenter.shared.isReconnecting(job.hostID)
     }
 
     /// A finished job whose host is reconnecting by itself: a retry would fail at once ("Not connected"), and what the

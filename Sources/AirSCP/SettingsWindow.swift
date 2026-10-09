@@ -65,6 +65,11 @@ struct SettingsView: View {
                 Toggle("Copied files keep their original date", isOn: $model.data.settings.preserveTimes)
                     .accessibilityIdentifier("settings.preserveTimes")
                     .help("Off by default: copies are dated now. On, they keep the file's own date (scp -p)")
+                Toggle("Verify transfers with SHA-256", isOn: $model.data.settings.verifyTransfers)
+                    .accessibilityIdentifier("settings.verifyTransfers")
+                    .help("Off by default. On, each file's copy is compared with the original (SHA-256) once it arrives")
+                caption("Single files only, not folders or archives; big files take longer. Right-click a finished transfer "
+                        + "to check just that one (Verify with Checksum).")
                 Toggle("Ask before deleting on a server", isOn: $model.data.settings.confirmDelete)
                     .accessibilityIdentifier("settings.confirmDelete")
                     .help("On by default. Off deletes server items at once; items on this Mac always go to the Trash")

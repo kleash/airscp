@@ -450,6 +450,9 @@ a wait until=listed pane=left timeout=20
 
 # MARK: Transfers
 
+# Copies checked as they arrive (Settings ▸ Verify transfers with SHA-256): set before the steps the agent-activity
+# picture lists.
+a set id=settings.verifyTransfers value=true in=window:Settings
 a select pane=right names='["www"]'
 a menu path='Go > Open Selection'
 a wait until=listed pane=right path=/home/dev/www timeout=20
@@ -467,13 +470,19 @@ appearance Light
 a press id=agent.indicator
 echo "  agent-activity"
 crop agent-activity 0 236 640 464
-# The README's first picture, and its Transfers panel (the same moment: the uploads are still running).
+# The queued upload waits, paused (Transfers ▸ right-click ▸ Pause).
+a select pane=transfers names='["brochure.pdf"]'
+a menu path='context > Pause' pane=transfers
+a select pane=transfers none=true
+# The README's first picture, and its Transfers panel (the same moment: one upload running, one paused, one verified).
 shot main-window
 for mode in light dark; do cp "$T/raw/main-window-$mode.png" "$T/raw/transfers-$mode.png"; done
 crop transfers 218 "$(frame main transfers.speedLimit | awk '{ print $2 - 10 }')" 882 700
 a set id=transfers.speedLimit value=Unlimited
+a press id=transfers.resumeAll
 a wait until=transfers_done timeout=120
 a press id=transfers.clearFinished
+a set id=settings.verifyTransfers value=false in=window:Settings
 
 # MARK: Commands, tunnels, monitor
 

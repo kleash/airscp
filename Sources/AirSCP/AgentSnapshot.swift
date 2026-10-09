@@ -446,8 +446,11 @@ extension AgentServer {
             json["problem"] = problem.message
             json["details"] = problem.details
         }
-        // A file that a lost connection cut off: its retry continues it (resumable), and did (resumed).
-        if job.status.isFinished, main?.workspaces[job.hostID]?.session.transfers.isResumable(job.id) == true { json["resumable"] = true }
+        // How a paused job goes on, or a checksum check's outcome (Verified: its SHA-256).
+        if let note = TransferText.note(job) { json["note"] = note }
+        if case .verified(let hash)? = job.checksum { json["sha256"] = hash }
+        // A file that a lost connection or Pause cut off: its retry or Resume continues it (resumable), and did (resumed).
+        if !job.status.isActive, main?.workspaces[job.hostID]?.session.transfers.isResumable(job.id) == true { json["resumable"] = true }
         if job.resumed { json["resumed"] = true }
         return json
     }

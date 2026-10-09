@@ -18,7 +18,7 @@ Copy files between your Mac and a server by dragging them, like in Finder.
 
 The copies run in the **Transfers** list at the bottom of the window. You can keep working meanwhile.
 
-{% include shot.html name="main-window" alt="Files being uploaded: the Transfers list shows one done, one running and one waiting" %}
+{% include shot.html name="main-window" alt="Files being uploaded: the Transfers list shows one running, one paused and one done" %}
 
 ## Other ways to copy
 

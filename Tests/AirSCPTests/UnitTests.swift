@@ -659,7 +659,7 @@ final class MemoryDefaults: UserDefaults {
     #expect(host.hostname == "web" && host.port == 2222 && host.keyFile == "/k/id" && host.defaultRemoteDir == "/srv")
     #expect(host.proxyID == nil && host.serverAliveInterval == 15 && host.autoReconnect)
     #expect(data.settings.terminalApp == .iTerm && data.settings.preserveTimes)
-    #expect(data.settings.appearance == .system && !data.settings.alwaysCalculateFolderSizes)
+    #expect(data.settings.appearance == .system && !data.settings.alwaysCalculateFolderSizes && !data.settings.verifyTransfers)
     #expect(data.proxies.isEmpty && data.rdpEntries.isEmpty)
 
     // What this version writes reads back the same.
@@ -672,5 +672,6 @@ final class MemoryDefaults: UserDefaults {
     desktop.display = .fixed(width: 1440, height: 900)
     new.rdpEntries = [desktop]
     new.settings.appearance = .dark
+    new.settings.verifyTransfers = true
     #expect(try JSONDecoder().decode(AirSCPData.self, from: JSONEncoder().encode(new)) == new)
 }

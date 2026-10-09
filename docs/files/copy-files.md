@@ -22,7 +22,7 @@ Upload files from your Mac to a server, or download them from a server to your M
 2. Drag files from the server pane to the left pane, or onto your Desktop or a Finder window.
    Or select them and click **Download**, or choose **File ▸ Download To…** to pick a folder.
 
-{% include shot.html name="main-window" alt="Uploads in the Transfers list: two done, one running, one waiting" %}
+{% include shot.html name="main-window" alt="Uploads in the Transfers list: one running, one paused, one done" %}
 
 The copies run in the **Transfers** list. See [Transfers and the queue](../transfers/index.md).
 

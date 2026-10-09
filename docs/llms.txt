@@ -45,6 +45,8 @@
 - [When the connection drops during a transfer](https://kleash.github.io/airscp/transfers/resume.html): If the connection is lost in the middle of a transfer, AirSCP keeps what was copied. After reconnecting, a single file continues where it stopped instead of starting again.
 - [Limit the speed](https://kleash.github.io/airscp/transfers/speed-limit.html): Big transfers can fill a slow or shared connection. A speed limit leaves room for everything else.
 - [Download as one archive](https://kleash.github.io/airscp/transfers/download-as-archive.html): Download files and folders as one `.tar.gz` archive. The server packs it while it sends it, so it needs no free space on the server.
+- [Pause and resume transfers](https://kleash.github.io/airscp/transfers/pause-and-resume.html): Pause a transfer to free the connection for something else, and resume it later. A single file continues where it stopped.
+- [Check a copy with its checksum](https://kleash.github.io/airscp/transfers/verify-checksums.html): AirSCP can make sure that a copied file is exactly the same as the original. It compares their SHA-256 checksums: a fingerprint of every byte in the file.
 
 ## Remote Desktop (Windows)
 - [Remote Desktop (Windows)](https://kleash.github.io/airscp/remote-desktop/): AirSCP has a built-in Remote Desktop client. It opens a Windows computer's desktop right in AirSCP's window, with the clipboard and file copying both ways. Nothing else needs to be installed.
