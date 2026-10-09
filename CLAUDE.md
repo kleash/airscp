@@ -67,7 +67,7 @@ sections win). User docs: `docs/` (published at https://kleash.github.io/airscp/
 | `…/RemoteFS.swift`, `RemoteOps.swift` | Listing (`ls -lan` parser, sftp fallback), remote file operations, Find |
 | `…/Transfer.swift` | The transfer queue: scp, tar streams, `.airscp-<id>.part` files, resume, pause, SHA-256 checks, relays |
 | `…/Askpass.swift`, `ProxyConnect.swift` | The app binary as `SSH_ASKPASS` and as `ProxyCommand` (private socket + token) |
-| `…/Keychain.swift`, `Keys.swift`, `PuTTYKey.swift` | Saved passwords (one Keychain item), key pairs, PuTTY .ppk |
+| `…/Keychain.swift`, `Keys.swift`, `PuTTYKey.swift`, `WinSCP.swift` | Saved passwords (one Keychain item), key pairs, PuTTY .ppk, Import from WinSCP (WinSCP.ini) |
 | `…/Monitor.swift`, `RDP.swift`, `Models.swift`, `ErrorMapping.swift` | Linux monitor parser, the RDP session, `airscp.json` models (append-only fields), plain-language errors |
 | `…/AgentBridge.swift` | `AirSCP --mcp` (MCP over stdio) and `--agent` (one tool from a shell); the tool list and the guide |
 | `Sources/AirSCP/main.swift` | Helper modes first (`--proxy-connect`, `--mcp`, `--agent`, askpass when `AIRSCP_ASKPASS_SOCK` is set), then the app |

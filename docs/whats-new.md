@@ -7,6 +7,9 @@ nav_order: 18
 
 ## AirSCP 1.1.0
 
+- **Import your sites from WinSCP**: **File ▸ Import from WinSCP…** reads the WinSCP.ini that WinSCP exports and makes
+  hosts with their groups, keys (.ppk files), tunnels and HTTP proxies. Saved passwords stay behind. See
+  [Import your sites from WinSCP](connecting/import-from-winscp.md).
 - **AI agents click the right spot on a Windows desktop**: they click in the pixels of the desktop picture AirSCP
   gives them, see a close-up of each click, and can press the Windows key (<kbd>⊞</kbd> <kbd>E</kbd>,
   <kbd>⊞</kbd> <kbd>R</kbd>). Their guide tells them to use the keyboard first.

@@ -448,14 +448,55 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSMenu
         }
     }
 
+    /// File ▸ Import from WinSCP…: the sites in a WinSCP.ini (WinSCP's Tools ▸ Export/Backup Configuration). PuTTY keys
+    /// (.ppk) found beside the file become OpenSSH keys in the key folder; stored passwords are never read.
+    @objc func importWinSCP(_ sender: Any?) {
+        let panel = NSOpenPanel()
+        panel.allowedContentTypes = [UTType(filenameExtension: "ini") ?? .plainText, .plainText]
+        panel.message = "Choose WinSCP.ini (in WinSCP: Tools ▸ Export/Backup Configuration). Put its .ppk keys beside it."
+        main.showWindow(nil)
+        Panels.run(panel, on: main.window) { [self] urls in
+            guard let url = urls.first else { return }
+            Task { await importWinSCP(from: url) }
+        }
+    }
+
+    private func importWinSCP(from url: URL) async {
+        guard let text = (try? String(contentsOf: url, encoding: .utf8)) ?? (try? String(contentsOf: url, encoding: .windowsCP1252))
+        else { return showError(AirSCPError(.noSuchFile, "Can't read the file."), title: "Can't import “\(url.lastPathComponent)”", on: main.window) }
+        let sites = WinSCP.sites(in: text)
+        let usable = sites.filter { $0.leftOut == nil }
+        guard !usable.isEmpty else {
+            let alert = NSAlert()
+            alert.messageText = "No SSH sites in “\(url.lastPathComponent)”"
+            alert.informativeText = sites.isEmpty
+                ? "Choose the WinSCP.ini that WinSCP's Tools ▸ Export/Backup Configuration saves: it lists the sites."
+                : "Left out:\n" + sites.prefix(8).map { "\($0.name): \($0.leftOut ?? "")" }.joined(separator: "\n")
+            alert.addOK()
+            if let window = main.window { await alert.beginSheetModal(for: window) }
+            return
+        }
+        // Each .ppk the sites name, as an OpenSSH key: imported from beside the file when it has no passphrase.
+        let folder = model.data.settings.keyFolder.isEmpty ? sshDirectory : (model.data.settings.keyFolder as NSString).expandingTildeInPath
+        let (keys, notes) = await WinSCP.importKeys(of: usable, beside: url.deletingLastPathComponent().path, into: folder)
+        let file = WinSCP.data(sites, existing: model.data, key: { keys[$0] })
+        let known = usable.count - file.hosts.filter { host in usable.contains { $0.name == host.label } }.count
+        let left = sites.filter { $0.leftOut != nil }.map { "\($0.name) (\($0.leftOut!))" }
+        imported(file, notes: (left.isEmpty ? [] : ["Left out: " + left.joined(separator: "; ") + "."])
+                 + (known > 0 ? ["\(known == 1 ? "1 site is" : "\(known) sites are") in AirSCP already."] : []) + notes,
+                 passwords: "WinSCP's saved passwords stay behind: AirSCP asks for them when connecting.")
+    }
+
     /// Imports the file's hosts and says how many, and which were skipped.
-    private func imported(_ file: AirSCPData) {
+    private func imported(_ file: AirSCPData, notes: [String] = [],
+                          passwords: String = "Saved passwords aren't in the file: AirSCP asks for them when connecting.") {
         let (hosts, skipped) = model.importHosts(file)
         let alert = NSAlert()
         alert.messageText = hosts.count == 1 ? "Imported 1 host" : "Imported \(hosts.count) hosts"
-        alert.informativeText = "Saved passwords aren't in the file: AirSCP asks for them when connecting."
+        alert.informativeText = passwords
             + (skipped.isEmpty ? "" : "\n\nLeft out (a name starting with “-” can't be used: ssh would read it as an option): "
                 + skipped.map { "“\($0)”" }.joined(separator: ", ") + ".")
+            + notes.map { "\n\n" + $0 }.joined()
         alert.addOK()
         if let window = main.window { alert.beginSheetModal(for: window) }
     }
@@ -482,6 +523,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSMenu
         // a sheet behind it.
         let underSheet: Set<Selector?> = [#selector(selectConnected(_:)), #selector(newHost(_:)), #selector(newRemoteDesktop(_:)),
                                           #selector(newGroup(_:)), #selector(importSSHConfig(_:)), #selector(importHosts(_:)),
+                                          #selector(importWinSCP(_:)),
                                           #selector(showWelcome(_:))]
         var enabled = true, reason = "A sheet is open in AirSCP's window: answer or close it first."
         if underSheet.contains(item.action), main?.window?.attachedSheet != nil {
@@ -626,6 +668,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSMenu
                 item("New Group…", #selector(newGroup(_:))),
                 .separator(),
                 item("Import from ~/.ssh/config…", #selector(importSSHConfig(_:))),
+                item("Import from WinSCP…", #selector(importWinSCP(_:))),
                 item("Import Hosts…", #selector(importHosts(_:))),
                 item("Export Hosts…", #selector(exportHosts(_:))),
                 .separator(),
