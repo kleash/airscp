@@ -34,7 +34,7 @@ hosts and proxies, and its keep-alive. For a connected Linux server, three small
 ## The tabs
 
 - **Files**: two panes. The left pane is this Mac (or another server), the right pane is the selected server.
-- **Monitor**: CPU, memory, disks and processes of a Linux server. See [Monitor](../monitor.md).
+- **Monitor**: CPU, memory, disks, processes and ports of a Linux server. See [Monitor](../monitor.md).
 - **Tunnels**: port forwards through the connection. See [Tunnels](../tunnels.md).
 
 ## The Transfers list (bottom)

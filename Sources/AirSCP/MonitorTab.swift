@@ -5,8 +5,9 @@ import SwiftUI
 
 /// The host workspace's Monitor tab: CPU, load, memory and swap, uptime and system, the disks with usage bars, and
 /// the process list (sortable, searchable; Kill and Force Kill, or "Kill with sudo in Terminal" when the account may
-/// not). It refreshes every 3 s while it is on screen and the host is connected; while only the workspace is (its
-/// header's pulse strip), every 10 s without the processes; otherwise it runs nothing. Like
+/// not) or the ports the server listens on. It refreshes every 3 s while it is on screen and the host is connected,
+/// every 5 s with the ports while they are shown (reading them is costly: never otherwise); while only the workspace
+/// is (its header's pulse strip), every 10 s without the processes; otherwise it runs nothing. Like
 /// `BrowserContentController`, one is made per Session.
 @MainActor
 final class MonitorController: NSViewController {
@@ -14,16 +15,24 @@ final class MonitorController: NSViewController {
     let session: Session
     let model: MonitorModel
     private var timer: Timer?
-    private var timerInterval: TimeInterval = 0
+    private var current: Sampling?
     private var onScreen = false
-    private var agentWatch: AnyCancellable?
+    private var watches: [AnyCancellable] = []
     /// The workspace, and with it the header's pulse strip, is on screen.
     var showsPulse = false {
         didSet { update() }
     }
 
     static let interval: TimeInterval = 3
+    static let portsInterval: TimeInterval = 5
     static let pulseInterval: TimeInterval = 10
+
+    /// How often to refresh, and what.
+    private struct Sampling: Equatable {
+        var interval: TimeInterval
+        var processes = false
+        var ports = false
+    }
 
     /// `workspace` nil (tests): Kill with sudo has no Terminal to open.
     init(workspace: HostWorkspace?, session: Session) {
@@ -41,10 +50,12 @@ final class MonitorController: NSViewController {
         })
         NotificationCenter.default.addObserver(self, selector: #selector(windowOcclusionChanged(_:)),
                                                name: NSWindow.didChangeOcclusionStateNotification, object: nil)
-        // An agent at work reads the tab also while the window is covered (after the change: @Published tells before).
-        agentWatch = workspace?.model.$agentActive.removeDuplicates().sink { [weak self] _ in
-            DispatchQueue.main.async { self?.update() }
-        }
+        // An agent at work reads the tab also while the window is covered; Processes or Ports, and Pause, change what
+        // is read (after the change: @Published tells before).
+        let changes = [workspace?.model.$agentActive.removeDuplicates().map { _ in () }.eraseToAnyPublisher(),
+                       model.$shown.removeDuplicates().map { _ in () }.eraseToAnyPublisher(),
+                       model.$paused.removeDuplicates().map { _ in () }.eraseToAnyPublisher()]
+        watches = changes.compactMap { $0?.sink { [weak self] in DispatchQueue.main.async { self?.update() } } }
     }
 
     override func viewDidAppear() {
@@ -71,34 +82,48 @@ final class MonitorController: NSViewController {
         if notification.object as? NSWindow === workspace?.window { update() }
     }
 
-    /// What anyone can see, refreshed how often: the tab (everything) or only the header's pulse strip (no processes).
-    /// Nothing while the host isn't connected or the window is covered or minimised, unless an agent is at work (it
-    /// reads the tab whether or not it is covered).
-    private var sampling: (interval: TimeInterval, processes: Bool)? {
-        guard session.state == .connected,
-              workspace?.window?.occlusionState.contains(.visible) == true || workspace?.model.agentActive == true else { return nil }
-        if onScreen && !view.isHiddenOrHasHiddenAncestor { return (Self.interval, true) }
-        return showsPulse ? (Self.pulseInterval, false) : nil
+    /// Anyone can see the window (or an agent at work reads it, covered or not) of a connected host.
+    private var seen: Bool {
+        session.state == .connected
+            && (workspace?.window?.occlusionState.contains(.visible) == true || workspace?.model.agentActive == true)
+    }
+
+    /// The tab is the one shown in its window, not only the header's pulse strip (seen or not), on a connected host.
+    private var tabShown: Bool { session.state == .connected && onScreen && !view.isHiddenOrHasHiddenAncestor }
+
+    /// What anyone can see, refreshed how often: the tab (the figures and processes, or the figures and ports, which
+    /// Pause leaves as they are) or only the header's pulse strip (no processes). Nothing while the host isn't
+    /// connected or the window is covered or minimised, unless an agent is at work.
+    private var sampling: Sampling? {
+        guard seen else { return nil }
+        if tabShown {
+            if model.shown == .processes { return Sampling(interval: Self.interval, processes: true) }
+            return model.paused ? Sampling(interval: Self.interval) : Sampling(interval: Self.portsInterval, processes: true, ports: true)
+        }
+        return showsPulse ? Sampling(interval: Self.pulseInterval) : nil
     }
 
     /// Whether it samples now.
     var isVisible: Bool { sampling != nil }
 
     private func update() {
+        // First: no ports are read from the moment Ports isn't shown.
+        model.portsShown = tabShown && model.shown == .ports
         guard let sampling else {
             timer?.invalidate()
             timer = nil
+            current = nil
             return
         }
-        guard timer == nil || timerInterval != sampling.interval else { return }
+        guard timer == nil || current != sampling else { return }
         timer?.invalidate()
-        timerInterval = sampling.interval
-        model.refresh(processes: sampling.processes)
+        current = sampling
+        model.refresh(processes: sampling.processes, ports: sampling.ports)
         timer = Timer.scheduledTimer(withTimeInterval: sampling.interval, repeats: true) { [weak self] timer in
             Task { @MainActor in
                 guard let self else { return timer.invalidate() }
-                if let now = self.sampling, now.interval == self.timerInterval {
-                    self.model.refresh(processes: now.processes)
+                if let now = self.sampling, now == self.current {
+                    self.model.refresh(processes: now.processes, ports: now.ports)
                 } else {
                     self.update()
                 }
@@ -107,7 +132,7 @@ final class MonitorController: NSViewController {
     }
 
     /// Kill / Force Kill after asking; when the account may not, offers `sudo kill` in Terminal.
-    private func kill(_ processes: [MonitorProcess], force: Bool) {
+    private func kill(_ processes: [(pid: Int, name: String)], force: Bool) {
         guard !processes.isEmpty, let window = view.window else { return }
         let what = processes.count == 1 ? "“\(processes[0].name)” (\(processes[0].pid))" : "\(processes.count) processes"
         confirm("\(force ? "Force kill" : "Kill") \(what)?",
@@ -115,7 +140,7 @@ final class MonitorController: NSViewController {
                     : "The process is asked to quit (SIGTERM).",
                 button: force ? "Force Kill" : "Kill", destructive: true, on: window) { [self] in
             Task {
-                var denied: [MonitorProcess] = []
+                var denied: [(pid: Int, name: String)] = []
                 var failures: [(name: String, error: Error)] = []
                 for process in processes {
                     do {
@@ -128,7 +153,7 @@ final class MonitorController: NSViewController {
                 }
                 // One sheet for all of them.
                 workspace?.browser.showFailures(failures, verb: "kill")
-                model.refresh()
+                model.refresh(ports: true)
                 guard !denied.isEmpty else { return }
                 let title = "You may not kill \(denied.count == 1 ? "“\(denied[0].name)”" : "\(denied.count) of them")"
                 guard await model.monitor.hasSudo() else {
@@ -140,7 +165,7 @@ final class MonitorController: NSViewController {
                         info: "The process belongs to another user. Kill it with sudo in Terminal? Terminal asks for "
                             + "your password on the server.",
                         button: "Kill with sudo in Terminal", on: view.window) { [self] in
-                    workspace?.openTerminal(command: Monitor.sudoKillCommand(denied.map(\.pid), force: force))
+                    workspace?.openTerminal(command: Monitor.sudoKillCommand(denied.map { $0.pid }, force: force))
                 }
             }
         }
@@ -160,16 +185,52 @@ final class MonitorModel: ObservableObject {
     @Published var connected = false
     /// Used shares (0…1) of CPU, memory and the root disk, oldest first: the pulse strip's sparklines.
     @Published private(set) var pulse: [(cpu: Double?, memory: Double?, disk: Double?)] = []
-    /// A refresh with the processes was asked for while one without them ran.
-    private var processesWanted = false
+    /// What was asked for while a refresh ran: one more refresh reads it.
+    private var wanted: (processes: Bool, ports: Bool)?
+    /// The refresh under way, and whether it reads the ports.
+    private var running: (task: Task<Void, Never>, ports: Bool)?
     /// The process list's search, selection and sort, as the table shows them (agents set them too).
     @Published var search = ""
     @Published var selection = Set<MonitorProcess.ID>()
     @Published var sortOrder = [KeyPathComparator(\MonitorProcess.cpuOrder, order: .reverse)]
 
+    /// The list under the figures: the processes, or the ports (read only while they are shown). Back to the processes,
+    /// the ports go: the next time, they are read afresh.
+    enum Shown: String { case processes = "Processes", ports = "Ports" }
+    @Published var shown = Shown.processes {
+        didSet {
+            guard shown != oldValue else { return }
+            paused = false
+            if shown == .processes { snapshot?.ports = nil }
+        }
+    }
+    /// Ports isn't read every 5 s while paused (a person or an agent can still refresh it, or pick a port).
+    @Published var paused = false
+    /// The Ports view's search, sort and port (whose connections are read with the ports).
+    @Published var portSearch = ""
+    @Published var portSortOrder = [KeyPathComparator(\MonitorPort.port)]
+    @Published var portSelection: MonitorPort.ID? {
+        didSet { if portSelection != oldValue && portSelection != nil { refresh(ports: true) } }
+    }
+    /// The Ports view is the one shown on a connected host (the controller says): ports are read only then, and while
+    /// anyone sees it. From the moment it isn't (Processes, another tab, disconnected), a read under way stops.
+    var portsShown = false {
+        didSet { if !portsShown && running?.ports == true { running?.task.cancel() } }
+    }
+
     /// The processes as the table lists them: those matching the search, in the table's order.
     var rows: [MonitorProcess] {
         MonitorText.filter(snapshot?.processes ?? [], search).sorted(using: sortOrder)
+    }
+
+    /// The ports as the table lists them: those matching the search (and the port picked, which stays), in its order.
+    var portRows: [MonitorPort] {
+        MonitorText.filter(snapshot?.ports?.listening ?? [], portSearch, keeping: portSelection).sorted(using: portSortOrder)
+    }
+
+    /// The port picked, as last read.
+    var selectedPort: MonitorPort? {
+        snapshot?.ports?.listening.first { $0.id == portSelection }
     }
 
     init(monitor: Monitor) {
@@ -177,19 +238,25 @@ final class MonitorModel: ObservableObject {
         connected = monitor.session.state == .connected
     }
 
-    func refresh(processes: Bool = true) {
-        guard !refreshing else {
-            processesWanted = processesWanted || processes
+    /// Reads the server: the figures, the processes unless `processes` is false (the pulse strip), the ports when
+    /// `ports` and the Ports view is shown (with the connections of the port picked).
+    func refresh(processes: Bool = true, ports: Bool = false) {
+        guard running == nil else {
+            wanted = (processes || wanted?.processes == true, ports || wanted?.ports == true)
             return
         }
+        let ports = ports && portsShown
+        let port = ports ? selectedPort : nil
         refreshing = true
-        Task {
+        let task = Task {
             do {
-                var fresh = try await monitor.refresh(processes: processes)
+                var fresh = try await monitor.refresh(processes: processes, ports: ports, connectionsOf: port)
                 if !processes {  // the processes listed last stay until the tab lists them again
                     fresh.processes = snapshot?.processes ?? []
                     fresh.processNote = snapshot?.processNote
                 }
+                // Not read now (paused, or not seen): the ports stay as they were, unless the view went back to processes.
+                if shown != .ports { fresh.ports = nil } else if !ports { fresh.ports = snapshot?.ports }
                 snapshot = fresh
                 failure = nil
                 let disk = fresh.disks.first { $0.mountPoint == "/" } ?? fresh.disks.first
@@ -200,12 +267,14 @@ final class MonitorModel: ObservableObject {
             } catch {
                 failure = error.localizedDescription
             }
+            running = nil
             refreshing = false
-            if processesWanted {
-                processesWanted = false
-                refresh()
+            if let next = wanted {
+                wanted = nil
+                refresh(processes: next.processes, ports: next.ports)
             }
         }
+        running = (task, ports)
     }
 
     private func share(_ used: Int64, _ total: Int64) -> Double? {
@@ -215,8 +284,11 @@ final class MonitorModel: ObservableObject {
 
 struct MonitorView: View {
     @ObservedObject var model: MonitorModel
-    let kill: ([MonitorProcess], Bool) -> Void
+    /// Kill or Force Kill (`true`) these processes, after asking.
+    let kill: ([(pid: Int, name: String)], Bool) -> Void
     @Environment(\.colorScheme) private var scheme
+    @State private var connectionSort = [KeyPathComparator(\MonitorConnection.address)]
+    @State private var connectionSelection = Set<MonitorConnection.ID>()
 
     var body: some View {
         if let snapshot = model.snapshot {
@@ -226,13 +298,13 @@ struct MonitorView: View {
                     .padding(.horizontal, 14)
                     .padding(.vertical, 10)
                 if scheme == .dark { Divider() }
-                processes(snapshot).card()
+                list(snapshot).card()
             }
         } else {
             VStack(spacing: 10) {
                 if model.refreshing { ProgressView().controlSize(.small) }
                 Text(model.failure.map(MonitorText.explained) ?? (model.connected ? (model.refreshing ? "Reading the system…" : "")
-                     : "Not connected. Connect to see CPU, memory, disks and processes."))
+                     : "Not connected. Connect to see CPU, memory, disks, processes and ports."))
                     .foregroundColor(.secondary)
                     .multilineTextAlignment(.center)
             }
@@ -247,7 +319,7 @@ struct MonitorView: View {
         HStack(alignment: .top, spacing: 24) {
             Grid(alignment: .leadingFirstTextBaseline, horizontalSpacing: 10, verticalSpacing: 7) {
                 GridRow {
-                    label("CPU").help("Share of all cores in use since the last refresh (every 3 s)")
+                    label("CPU").help("Share of all cores in use since the last refresh (every 3 s; 5 s while the ports are shown)")
                     usage(snapshot.cpu.map { $0 / 100 }, text: snapshot.cpu.map { String(format: "%.0f %%", $0) } ?? "…")
                 }
                 GridRow {
@@ -310,32 +382,54 @@ struct MonitorView: View {
         }
     }
 
-    // MARK: Processes
+    // MARK: Processes and ports
 
-    private func processes(_ snapshot: MonitorSnapshot) -> some View {
-        let rows = model.rows
-        let chosen = rows.filter { model.selection.contains($0.id) }
-        return VStack(spacing: 0) {
+    /// The processes or the ports, under a bar with the choice between them and their search and buttons.
+    private func list(_ snapshot: MonitorSnapshot) -> some View {
+        VStack(spacing: 0) {
             HStack(spacing: 8) {
-                Text("Processes").font(.subheadline.weight(.semibold))
-                Text(rows.count == snapshot.processes.count ? "\(rows.count)" : "\(rows.count) of \(snapshot.processes.count)")
-                    .font(.caption).foregroundColor(.secondary)
-                Spacer()
-                TextField("Search name, user, command or PID", text: $model.search)
-                    .textFieldStyle(.roundedBorder)
-                    .accessibilityIdentifier("monitor.search")
-                    .frame(maxWidth: 240)
-                    .help("Show only processes matching this")
-                Button("Kill") { kill(chosen, false) }.disabled(chosen.isEmpty)
-                    .help(chosen.isEmpty ? "Select processes first" : "Ask the selected processes to quit (SIGTERM); asks first")
-                Button("Force Kill") { kill(chosen, true) }.disabled(chosen.isEmpty)
-                    .help(chosen.isEmpty ? "Select processes first" : "Stop the selected processes at once (SIGKILL); asks first")
+                Picker("Show", selection: $model.shown) {
+                    Text("Processes").tag(MonitorModel.Shown.processes)
+                    Text("Ports").tag(MonitorModel.Shown.ports)
+                }
+                .pickerStyle(.segmented)
+                .primaryTint(Color(nsColor: .systemTeal))
+                .labelsHidden()
+                .fixedSize()
+                .accessibilityIdentifier("monitor.view")
+                .help("Show the processes, or the ports the server listens on (read only while they are shown)")
+                if model.shown == .processes { processBar(snapshot) } else { portBar(snapshot.ports) }
             }
             .controlSize(.small)
             .padding(.horizontal, 12)
             .padding(.vertical, 6)
             .background(Color(nsColor: .bar))
             Divider()
+            if model.shown == .processes { processes(snapshot) } else { ports(snapshot.ports) }
+        }
+    }
+
+    @ViewBuilder
+    private func processBar(_ snapshot: MonitorSnapshot) -> some View {
+        let rows = model.rows
+        let chosen = rows.filter { model.selection.contains($0.id) }
+        Text(rows.count == snapshot.processes.count ? "\(rows.count)" : "\(rows.count) of \(snapshot.processes.count)")
+            .font(.caption).foregroundColor(.secondary)
+        Spacer()
+        TextField("Search name, user, command or PID", text: $model.search)
+            .textFieldStyle(.roundedBorder)
+            .accessibilityIdentifier("monitor.search")
+            .frame(maxWidth: 240)
+            .help("Show only processes matching this")
+        Button("Kill") { kill(chosen.map { ($0.pid, $0.name) }, false) }.disabled(chosen.isEmpty)
+            .help(chosen.isEmpty ? "Select processes first" : "Ask the selected processes to quit (SIGTERM); asks first")
+        Button("Force Kill") { kill(chosen.map { ($0.pid, $0.name) }, true) }.disabled(chosen.isEmpty)
+            .help(chosen.isEmpty ? "Select processes first" : "Stop the selected processes at once (SIGKILL); asks first")
+    }
+
+    private func processes(_ snapshot: MonitorSnapshot) -> some View {
+        let rows = model.rows
+        return Group {
             if let note = snapshot.processNote, snapshot.processes.isEmpty {
                 Text(note).foregroundColor(.secondary).frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
@@ -367,12 +461,207 @@ struct MonitorView: View {
                     .width(min: 120, ideal: 420)
                 }
                 .washed()
+                .accessibilityIdentifier("monitor.processes")
                 .contextMenu(forSelectionType: MonitorProcess.ID.self) { ids in
-                    let picked = rows.filter { ids.contains($0.id) }
+                    let picked = rows.filter { ids.contains($0.id) }.map { ($0.pid, $0.name) }
                     Button("Kill") { kill(picked, false) }.help("Ask the selected processes to quit (SIGTERM); asks first")
                     Button("Force Kill") { kill(picked, true) }.help("Stop the selected processes at once (SIGKILL); asks first")
                 }
             }
+        }
+    }
+
+    @ViewBuilder
+    private func portBar(_ ports: MonitorPorts?) -> some View {
+        let all = ports?.listening.count ?? 0, rows = model.portRows.count
+        let port = model.selectedPort
+        let why = port == nil ? "Select a port first" : port?.pids.isEmpty == true ? MonitorText.unseen(ports) : nil
+        Text(ports == nil ? "" : (rows == all ? "\(all)" : "\(rows) of \(all)") + (model.paused ? " · paused" : ""))
+            .font(.caption).foregroundColor(.secondary)
+        Spacer()
+        TextField("Search port, process or address", text: $model.portSearch)
+            .textFieldStyle(.roundedBorder)
+            .accessibilityIdentifier("monitor.portSearch")
+            .frame(maxWidth: 220)
+            .help("Show only the ports, and the connections, matching this")
+        Button { model.refresh(ports: true) } label: { Image(systemName: "arrow.clockwise") }
+            .accessibilityIdentifier("monitor.refresh")
+            .accessibilityLabel("Refresh")
+            .help("Read the ports again now")
+        Toggle(isOn: $model.paused) { Image(systemName: model.paused ? "play.fill" : "pause.fill") }
+            .toggleStyle(.button)
+            .accessibilityIdentifier("monitor.pause")
+            .accessibilityLabel("Pause")
+            .help(model.paused ? "Read the ports every 5 s again" : "Stop reading the ports every 5 s, to look at them as they are")
+        Button("Show Process") { show(port) }.disabled(why != nil)
+            .help(why ?? "Show the process that has this port in the list of processes")
+        Button("Kill") { kill(targets(of: port), false) }.disabled(why != nil)
+            .help(why ?? "Ask the process that has this port to quit (SIGTERM); asks first")
+        Button("Force Kill") { kill(targets(of: port), true) }.disabled(why != nil)
+            .help(why ?? "Stop the process that has this port at once (SIGKILL); asks first")
+    }
+
+    @ViewBuilder
+    private func ports(_ ports: MonitorPorts?) -> some View {
+        if let ports {
+            // Side by side: the tab is wide and not tall.
+            HStack(spacing: 0) {
+                listening(ports)
+                Divider()
+                connections(ports).frame(width: 286)
+            }
+        } else {
+            VStack(spacing: 10) {
+                if model.failure == nil { ProgressView().controlSize(.small) }
+                Text(model.failure ?? "Reading the ports…").foregroundColor(.secondary).multilineTextAlignment(.center)
+            }
+            .padding(30)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+        }
+    }
+
+    /// What the server listens on, a row a port, and why some processes aren't known.
+    private func listening(_ ports: MonitorPorts) -> some View {
+        let rows = model.portRows
+        return VStack(spacing: 0) {
+            if rows.isEmpty {
+                Text(ports.note ?? (ports.listening.isEmpty ? "Nothing listens on TCP or UDP."
+                                    : "No port matches “\(model.portSearch)”."))
+                    .foregroundColor(.secondary)
+                    .multilineTextAlignment(.center)
+                    .padding()
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else {
+                Table(rows, selection: $model.portSelection, sortOrder: $model.portSortOrder) {
+                    TableColumn("Protocol", value: \.protocolName) { Text($0.protocolName) }
+                        .width(48)
+                    TableColumn("Address", value: \.address) { port in
+                        Text(port.address).lineLimit(1).truncationMode(.middle)
+                            .help(port.address + " — " + MonitorText.reach(port.address))
+                    }
+                    .width(min: 60, ideal: 84)
+                    TableColumn("Port", value: \.port) { Text(String($0.port)).monospacedDigit() }
+                        .width(48)
+                    TableColumn("PID", value: \.pidOrder) { port in
+                        Text(port.pids.first.map { String($0) + (port.pids.count > 1 ? " +\(port.pids.count - 1)" : "") } ?? "—")
+                            .monospacedDigit().lineLimit(1)
+                            .help(port.pids.isEmpty ? MonitorText.unseen(ports)
+                                  : "The processes that have this port open: " + port.pids.map(String.init).joined(separator: ", "))
+                    }
+                    .width(72)
+                    TableColumn("Process", value: \.process) { port in
+                        Text(port.process.isEmpty ? "—" : port.process).lineLimit(1)
+                            .help(port.command.isEmpty ? MonitorText.unseen(ports) : port.command)
+                    }
+                    .width(min: 60, ideal: 80)
+                    TableColumn("User", value: \.user) { Text($0.user).lineLimit(1) }
+                        .width(min: 40, ideal: 56)
+                    TableColumn("Connections", value: \.connectionOrder) { port in
+                        Text(port.connections.map(String.init) ?? "—").monospacedDigit()
+                            .help(port.isTCP ? "Open connections to this port" : "UDP keeps no connections")
+                    }
+                    .width(80)
+                }
+                .washed()
+                .accessibilityIdentifier("monitor.ports")
+                .contextMenu(forSelectionType: MonitorPort.ID.self) { ids in
+                    if let port = rows.first(where: { ids.contains($0.id) }) {
+                        let why = port.pids.isEmpty ? MonitorText.unseen(ports) : nil
+                        Button("Show Process") { show(port) }.disabled(why != nil)
+                            .help(why ?? "Show the process that has this port in the list of processes")
+                        Button("Kill") { kill(targets(of: port), false) }.disabled(why != nil)
+                            .help(why ?? "Ask the process that has this port to quit (SIGTERM); asks first")
+                        Button("Force Kill") { kill(targets(of: port), true) }.disabled(why != nil)
+                            .help(why ?? "Stop the process that has this port at once (SIGKILL); asks first")
+                        Divider()
+                        Button("Copy Address") { MonitorText.copy(MonitorText.endpoint(port.address, port.port)) }
+                            .help("Copy \(MonitorText.endpoint(port.address, port.port))")
+                    }
+                }
+            }
+            if ports.othersHidden {
+                Divider()
+                Text(MonitorText.othersHidden)
+                    .font(.caption).foregroundColor(.secondary)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal, 12).padding(.vertical, 4)
+            }
+        }
+    }
+
+    /// Who is connected to the port picked: how many from each address, and each connection.
+    private func connections(_ ports: MonitorPorts) -> some View {
+        let port = model.selectedPort
+        let read = port != nil && ports.connectionsOf == port?.id
+        let all = read ? ports.connections : []
+        let shown = MonitorText.filter(all, to: port, model.portSearch).sorted(using: connectionSort)
+        let message: String? = port == nil ? "Select a port to see who is connected to it."
+            : port?.isTCP == false ? "UDP keeps no connections: each message comes on its own."
+            : !read ? nil
+            : all.isEmpty ? "Nobody is connected to port \(port?.port ?? 0) now."
+            : shown.isEmpty ? "No connection matches “\(model.portSearch)”." : nil
+        return VStack(spacing: 0) {
+            VStack(alignment: .leading, spacing: 1) {
+                Text(port.map { "Connections to port " + String($0.port) } ?? "Connections").font(.subheadline.weight(.semibold))
+                if let port, read, !all.isEmpty {
+                    let summary = MonitorText.from(shown)
+                    Text(MonitorText.count(shown: shown.count, read: all.count, total: port.connections ?? all.count)
+                         + (summary.isEmpty ? "" : " · " + summary))
+                        .font(.caption).foregroundColor(.secondary).lineLimit(1)
+                        .help(MonitorText.from(shown, most: 20, separator: "\n"))
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 5)
+            .background(Color(nsColor: .bar))
+            Divider()
+            if let message {
+                Text(message).foregroundColor(.secondary).multilineTextAlignment(.center).padding()
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else if !read {
+                VStack(spacing: 10) {
+                    ProgressView().controlSize(.small)
+                    Text("Reading who is connected…").foregroundColor(.secondary)
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else {
+                Table(shown, selection: $connectionSelection, sortOrder: $connectionSort) {
+                    TableColumn("From", value: \.address) { connection in
+                        Text(connection.address).lineLimit(1).truncationMode(.middle).help(connection.address)
+                    }
+                    .width(min: 70, ideal: 100)
+                    TableColumn("Port", value: \.port) { Text(String($0.port)).monospacedDigit() }
+                        .width(56)
+                    TableColumn("State", value: \.state) { connection in
+                        Text(connection.state).help(MonitorText.explain(connection.state))
+                    }
+                    .width(88)
+                }
+                .washed()
+                .accessibilityIdentifier("monitor.connections")
+                .contextMenu(forSelectionType: MonitorConnection.ID.self) { ids in
+                    if let connection = shown.first(where: { ids.contains($0.id) }) {
+                        Button("Copy Address") { MonitorText.copy(connection.address) }.help("Copy \(connection.address)")
+                    }
+                }
+            }
+        }
+    }
+
+    /// The Processes list with the port's process picked: only it is listed (its PID searched for).
+    private func show(_ port: MonitorPort?) {
+        guard let pid = port?.pids.first else { return }
+        model.search = String(pid)
+        model.selection = [pid]
+        model.shown = .processes
+    }
+
+    /// The processes that have `port` open, named as ps lists them.
+    private func targets(of port: MonitorPort?) -> [(pid: Int, name: String)] {
+        guard let port else { return [] }
+        return port.pids.map { pid in
+            (pid, model.snapshot?.processes.first { $0.pid == pid }?.name ?? (port.process.isEmpty ? "PID \(pid)" : port.process))
         }
     }
 }
@@ -554,6 +843,13 @@ extension MonitorProcess {
     var elapsedOrder: Double { elapsed ?? -1 }
 }
 
+/// The ports table's columns and sort keys (a process this account can't see, and UDP's connections, go last).
+extension MonitorPort {
+    var protocolName: String { isTCP ? "TCP" : "UDP" }
+    var pidOrder: Int { pids.first ?? .max }
+    var connectionOrder: Int { connections ?? -1 }
+}
+
 enum MonitorText {
     /// A failure with what still works: an sftp-only account can't be read, but its Files tab works.
     static func explained(_ failure: String) -> String {
@@ -570,6 +866,94 @@ enum MonitorText {
                 $0.range(of: term, options: [.caseInsensitive, .diacriticInsensitive]) != nil
             }
         }
+    }
+
+    /// The ports numbered `search`, or whose address, process, command or user contains it (any case); `keeping` (the
+    /// port picked) stays, so that its connections can be searched.
+    static func filter(_ ports: [MonitorPort], _ search: String, keeping: MonitorPort.ID? = nil) -> [MonitorPort] {
+        let term = search.trimmingCharacters(in: .whitespaces)
+        guard !term.isEmpty else { return ports }
+        return ports.filter { $0.id == keeping || matches($0, term) }
+    }
+
+    private static func matches(_ port: MonitorPort, _ term: String) -> Bool {
+        String(port.port) == term || [endpoint(port.address, port.port), port.process, port.command, port.user].contains {
+            $0.range(of: term, options: [.caseInsensitive, .diacriticInsensitive]) != nil
+        }
+    }
+
+    /// The connections from an address or port, or in a state, matching `search`; all of them when `port`, the one they
+    /// are to, matches it (search for a port: who is connected to it).
+    static func filter(_ connections: [MonitorConnection], to port: MonitorPort?, _ search: String) -> [MonitorConnection] {
+        let term = search.trimmingCharacters(in: .whitespaces)
+        guard !term.isEmpty, !(port.map { matches($0, term) } ?? false) else { return connections }
+        return connections.filter { connection in
+            String(connection.port) == term
+                || [connection.address, connection.state].contains { $0.range(of: term, options: .caseInsensitive) != nil }
+        }
+    }
+
+    /// "203.0.113.5:443", "[2001:db8::1]:443".
+    static func endpoint(_ address: String, _ port: Int) -> String {
+        (address.contains(":") ? "[\(address)]" : address) + ":\(port)"
+    }
+
+    /// Who can reach a listening address.
+    static func reach(_ address: String) -> String {
+        if address == "0.0.0.0" { return "Every IPv4 address of the server: open to the network" }
+        if address == "::" { return "Every address of the server (IPv6, and IPv4 unless the program chose not): open to the network" }
+        if address.hasPrefix("127.") || address == "::1" { return "Only the server itself (loopback): not open to the network" }
+        return "Only this address of the server"
+    }
+
+    static let othersHidden = "Other users' processes aren't shown to this account: connect as root to see them."
+
+    /// Why a port's process isn't known.
+    static func unseen(_ ports: MonitorPorts?) -> String {
+        ports?.othersHidden == true ? "Another user's process, which this account can't see (connect as root to see it)"
+            : "No process on this server has it open (the system's own, or another container's)"
+    }
+
+    /// "15", "3 of 15", "the first 2,000 of 12,345" (only so many are read).
+    static func count(shown: Int, read: Int, total: Int) -> String {
+        let all = total > read ? "the first \(read.formatted()) of \(total.formatted())" : read.formatted()
+        return shown == read ? all : "\(shown.formatted()) of \(all)"
+    }
+
+    /// How many of the connections come from each address, the most first.
+    static func addresses(_ connections: [MonitorConnection]) -> [(address: String, count: Int)] {
+        var counts: [String: Int] = [:]
+        for connection in connections { counts[connection.address, default: 0] += 1 }
+        return counts.map { (address: $0.key, count: $0.value) }.sorted { (a: (address: String, count: Int), b: (address: String, count: Int)) in
+            a.count == b.count ? a.address < b.address : a.count > b.count
+        }
+    }
+
+    /// "12 from 10.0.0.5, 3 from 10.0.0.7 and 4 more addresses": the addresses with the most connections first.
+    static func from(_ connections: [MonitorConnection], most: Int = 2, separator: String = ", ") -> String {
+        let ranked = addresses(connections)
+        let named = ranked.prefix(most).map { "\($0.count) from \($0.address)" }
+        let rest = ranked.count - named.count
+        guard rest > 0 else { return named.joined(separator: separator) }
+        return named.joined(separator: separator) + (separator == ", " ? " and " : separator)
+            + "\(rest) more address\(rest == 1 ? "" : "es")"
+    }
+
+    /// What a TCP state means.
+    static func explain(_ state: String) -> String {
+        ["Established": "Open: data goes both ways",
+         "SYN sent": "Opening: this server asked to connect",
+         "SYN received": "Opening: the other side asked to connect, and waits for this server's answer",
+         "FIN wait 1": "Closing: this server closed its end",
+         "FIN wait 2": "Closing: this server closed its end and waits for the other side to close",
+         "Close wait": "The other side closed; the program on this server hasn't closed its end yet",
+         "Last ACK": "Closing: both ends closed, and the last acknowledgement is under way",
+         "Closing": "Closing: both ends closed at the same time"][state] ?? "TCP state \(state)"
+    }
+
+    static func copy(_ text: String) {
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(text, forType: .string)
     }
 
     /// "12 days, 3:04", "3:04", "4 min".

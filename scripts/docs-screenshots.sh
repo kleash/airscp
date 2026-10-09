@@ -534,6 +534,16 @@ shot monitor-kill target=sheet
 a press title=Cancel
 closed
 a set id=monitor.search value=''
+# Its ports, and who is connected to the website: two visits from the server itself and one from its own address,
+# held open for the pictures.
+"$docker" exec -d -u dev porter-docs-web python3 -c 'import socket, time; me = socket.gethostbyname(socket.gethostname()); held = [socket.create_connection((to, 8080)) for to in ("127.0.0.1", "127.0.0.1", me)]; time.sleep(300)'
+a press title=Ports
+a wait until=monitor text=8080 timeout=30
+a select pane=ports names='["8080"]'
+a wait until=monitor text=127.0.0.1 timeout=30
+sleep 3
+shot monitor-ports
+a press title=Processes
 a press title=Files
 
 # A dropped connection: reconnecting by itself (the server holds new logins back meanwhile).

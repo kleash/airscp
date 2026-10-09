@@ -54,8 +54,8 @@ AirSCP was installed with `./install.sh`).
   hiddenColumns, favourites), transfers (summary, speedLimit, jobs with their ids), rdp, sheets, and while their sheet
   is open find (Find Files' results) and sync (Synchronize's plan); always debugLog (on, path: the debug log's file,
   see troubleshooting). Add "log" (command log), "monitor" (connected, the figures, and the processes as the table
-  lists them: its search, sort and selection), "menus", "elements", "settings"; `in="window:Keys"` makes "elements"
-  that window's. Example: `snapshot {"include": ["panes", "transfers"], "rows": 50}`.
+  lists them: its search, sort and selection; the ports while Monitor ▸ Ports is shown), "menus", "elements",
+  "settings"; `in="window:Keys"` makes "elements" that window's. Example: `snapshot {"include": ["panes", "transfers"], "rows": 50}`.
 - `screenshot {target?, scale?}` — a PNG drawn by AirSCP: target "main" (default; sheets and panels composited),
   "sheet", "rdp" (the Windows desktop alone, at its own pixel size, which the reply gives: `click target=rdp` takes
   its pixels as they are), "window:Settings", "element:right.table"; scale 1 or 2. Example: `screenshot {"target":
@@ -105,9 +105,10 @@ AirSCP was installed with `./install.sh`).
   Mac (outside AirSCP: you can't see it; download a file to read it). Example: `open {"name": "reports"}`.
 - `select {pane | in, names | ids | all | none}` — rows: pane "left"/"right" (file names, byte for byte: "café" in
   its two Unicode forms are two names), "sidebar" (names: one host or desktop), "processes" (a process name, PID or part
-  of its command, among those the Monitor lists with its search), "transfers" (a job's name, or `ids` from snapshot);
-  with `in` instead of pane, a list in that window or sheet (keys, snippets, the Proxies sheet, Find Files' results;
-  Synchronize's list: the items ticked, by path).
+  of its command, among those the Monitor lists with its search), "ports" (one port of Monitor ▸ Ports: its number,
+  address:port or process name), "transfers" (a job's name, or `ids` from snapshot); with `in` instead of pane, a list
+  in that window or sheet (keys, snippets, the Proxies sheet, Find Files' results; Synchronize's list: the items
+  ticked, by path).
   Example: `select {"pane": "right", "names": ["a.txt", "b"]}`, `select {"in": "window:Keys", "names": ["id_lab"]}`.
 - `sort {pane, column, ascending?}` — a file pane: name, size, modified, permissions, owner, group, kind; pane
   "processes": pid, user, cpu, mem (% of RAM), memory (its size: RSS), time (running time), state, command. Example:
@@ -123,8 +124,9 @@ AirSCP was installed with `./install.sh`).
   "no_sheet", "listed" (pane done listing and filtering; optional path, or text = a row name), "transfers_done",
   "rdp_connected", "rdp_drawn" (the desktop shows a picture, not the blank frame Windows starts with), "text" (anywhere
   in the snapshot, incl. monitor and log, and in AirSCP's other windows), "monitor" (the Monitor has read the server;
-  with text, it lists a process with that in its name or command; it fails at once with the Monitor's failure, e.g. on
-  an sftp-only account), "found" (Find Files' search ended: its results), "compared" (Synchronize's comparison ended:
+  with text, it lists a process with that in its name or command; showing Ports, the ports and the picked port's
+  connections are read, and text is in a port's row or a connection; it fails at once with the Monitor's failure, e.g.
+  on an sftp-only account), "found" (Find Files' search ended: its results), "compared" (Synchronize's comparison ended:
   its plan). Timeout 30 s by default; a wait ends when the agent that asked has gone. Example: `wait {"until":
   "connected", "host": "chain target"}`.
 - `guide {topic?}` — this guide.
@@ -316,6 +318,17 @@ AirSCP was installed with `./install.sh`).
   `press title=Kill` (or "Force Kill") → the confirmation → press the same title again. When the account may not, a
   sheet offers "Kill with sudo in Terminal" on a server that has sudo (it runs in Terminal: its result isn't visible
   here); without sudo, it says the process can't be killed from this account.
+- Ports (what the server listens on, and who is connected): `press title=Ports` (`monitor.view`: Processes | Ports) →
+  `wait until=monitor` (or `text=8080`: a port, process, address or remote address) → `snapshot include=["monitor"]`:
+  `view` "Ports" and `ports`: `listening` as the table lists them (protocol, address, port, pids, process, command,
+  user, connections: open TCP connections; UDP has none), `othersHidden` (some ports are other users' processes,
+  which this account can't see: their pids are empty; root sees them), `note`, `paused`, `search`
+  (`monitor.portSearch`). `select pane=ports names=["8080"]` picks a port (by number, address:port or process name)
+  → `wait until=monitor` → `selected`, its `connections` (address, port, state; the first 2000) and `from` (how many
+  from each address). With a port picked, `press title=Kill` / "Force Kill" (as above) and "Show Process" (Processes,
+  with its PID searched for and selected). The ports are read only while Ports is shown: every 5 s, `press
+  title=Pause` stops that, `press id=monitor.refresh` reads them now; `press title=Processes` goes back (`ports` is
+  then left out of the snapshot).
 
 ## tunnels
 - `press title=Tunnels` (tab) → `press title="Add Tunnel…"` → a sheet that reads as a sentence: `set

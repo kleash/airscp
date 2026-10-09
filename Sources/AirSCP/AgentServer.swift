@@ -269,7 +269,7 @@ final class AgentServer {
         func quoted(_ text: String) -> String { "“" + (text.count > 40 ? text.prefix(40) + "…" : text) + "”" }
         let desktop = ["rdp", "desktop"].contains(string("target")?.lowercased() ?? "")
         let panes = ["left": "the left pane", "right": "the right pane", "sidebar": "the sidebar",
-                     "processes": "the Monitor's processes", "transfers": "the Transfers list"]
+                     "processes": "the Monitor's processes", "ports": "the Monitor's ports", "transfers": "the Transfers list"]
         let pane = string("pane").map { panes[$0.lowercased()] ?? $0 }
         let text: String?
         switch tool {
@@ -563,7 +563,7 @@ final class AgentServer {
         case nil:
             let focused = browser.view.window?.firstResponder
             return focused === browser.left.table ? browser.left : browser.right
-        default: throw Failure("pane is left or right (sidebar, processes or transfers for select; processes for sort).")
+        default: throw Failure("pane is left or right (sidebar, processes, ports or transfers for select; processes for sort).")
         }
     }
 
@@ -1317,6 +1317,22 @@ final class AgentServer {
             }
             monitor.selection = chosen
             return await acted(["selected": rows.filter { chosen.contains($0.pid) }.map(\.pid)])
+        case "ports"?:
+            // One port, as the Ports table lists it: by number, address:port, or its process's name.
+            guard let monitor = main?.selectedWorkspace?.monitor.model, monitor.portsShown, monitor.snapshot?.ports != nil else {
+                throw Failure("The Monitor tab shows no ports (press title=Monitor, press title=Ports, then wait until=monitor).")
+            }
+            let rows = monitor.portRows
+            guard let name = names.first, !none else {
+                monitor.portSelection = nil
+                return await acted(["selected": NSNull()])
+            }
+            guard let port = rows.first(where: { String($0.port) == name || MonitorText.endpoint($0.address, $0.port) == name })
+                    ?? rows.first(where: { $0.process == name }) else {
+                throw Failure("No port listed is \(name)" + (monitor.portSearch.isEmpty ? "." : " (the search “\(monitor.portSearch)” is on)."))
+            }
+            monitor.portSelection = port.id
+            return await acted(["selected": ["protocol": port.protocolName, "address": port.address, "port": port.port]])
         case "transfers"?:
             // The Transfers panel's selection (its model: no cells are made): jobs by id, else by their name.
             let jobs = TransferCenter.shared.jobs
@@ -1621,6 +1637,15 @@ final class AgentServer {
                 // Never read (sftp only, not Linux): no figures will come.
                 if monitor.snapshot == nil, let failure = monitor.failure { throw Failure(failure) }
                 guard monitor.connected, let data = monitor.snapshot else { return nil }
+                if monitor.shown == .ports {
+                    // The ports read, and the connections of the port picked; `text` in a port's row or a connection.
+                    guard monitor.portsShown, let ports = data.ports else { return nil }
+                    if let port = monitor.selectedPort, port.isTCP, ports.connectionsOf != port.id { return nil }
+                    guard let text, !text.isEmpty else { return monitorJSON(monitor) }
+                    let rows = ports.listening.map { [String($0.port), MonitorText.endpoint($0.address, $0.port), $0.process, $0.command, $0.user] }
+                        + ports.connections.map { [$0.address, MonitorText.endpoint($0.address, $0.port), $0.state] }
+                    return rows.contains { $0.contains { $0.contains(text) } } ? monitorJSON(monitor) : nil
+                }
                 guard let text, !text.isEmpty else { return monitorJSON(monitor) }
                 return data.processes.contains { $0.name.contains(text) || $0.command.contains(text) } ? monitorJSON(monitor) : nil
             }

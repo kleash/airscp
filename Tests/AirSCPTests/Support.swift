@@ -97,6 +97,9 @@ final class TestServer {
         /// Password logins allowed. sshd, run as this user, can't check a password: each one is refused, and ssh asks
         /// again (the prompts are what such a test is after).
         var passwords = false
+        /// `uname -sr` says Linux (a script first in PATH): the Monitor reads this Mac as a Linux server, which has no
+        /// /proc, so its figures and ports stay empty, but every refresh runs its command.
+        var linux = false
     }
 
     static let passphrase = "airscp test passphrase"
@@ -151,6 +154,13 @@ final class TestServer {
             try "Hello from the banner\n".write(toFile: root + "/banner", atomically: true, encoding: .utf8)
             environment += " BASH_ENV=\(home)/.zshenv"
             extra += "Banner \(root)/banner\n"
+        }
+        if options.linux {
+            try FileManager.default.createDirectory(atPath: root + "/bin", withIntermediateDirectories: true)
+            try "#!/bin/sh\n[ \"$*\" = -sr ] && exec echo Linux 6.12.0-test\nexec /usr/bin/uname \"$@\"\n"
+                .write(toFile: root + "/bin/uname", atomically: true, encoding: .utf8)
+            chmod(root + "/bin/uname", 0o755)
+            environment += " PATH=\(root)/bin:/usr/bin:/bin:/usr/sbin:/sbin"
         }
         if let maxSessions = options.maxSessions { extra += "MaxSessions \(maxSessions)\n" }
         if options.sftpOnly { extra += "ForceCommand internal-sftp -d \(home)\n" }

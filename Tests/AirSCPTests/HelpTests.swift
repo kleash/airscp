@@ -141,6 +141,26 @@ extension FeatureRoundAppTests {
                 try await Task.sleep(nanoseconds: 300_000_000)
                 check(tab + " tab", window)
             }
+            // The Monitor's processes and ports with figures (this Mac's sshd isn't Linux: they are set here), a port picked.
+            _ = await call(agent, "press", ["title": "Monitor"])
+            let monitor = try #require(main.selectedWorkspace?.monitor.model)
+            let ssh = MonitorPort(table: "tcp", address: "0.0.0.0", port: 22, pids: [1], process: "sshd", command: "sshd -D",
+                                  user: "root", connections: 1)
+            monitor.snapshot = MonitorSnapshot(processes: [MonitorProcess(pid: 1, ppid: 0, user: "root", cpu: 0, memory: 0, rss: 0, elapsed: 5,
+                                                                          state: "Ss", name: "sshd", command: "sshd -D")],
+                                               ports: MonitorPorts(listening: [ssh, MonitorPort(table: "udp", address: "::", port: 53, user: "nobody")],
+                                                                   connections: [MonitorConnection(id: "c", address: "203.0.113.5", port: 50000,
+                                                                                                   state: "Established")],
+                                                                   connectionsOf: ssh.id, othersHidden: true))
+            try await Task.sleep(nanoseconds: 300_000_000)
+            check("Monitor tab, processes", window)
+            _ = await call(agent, "press", ["title": "Ports"])
+            monitor.portSelection = ssh.id
+            try await Task.sleep(nanoseconds: 300_000_000)
+            check("Monitor tab, ports", window)
+            #expect(AXNode.flatten(window).contains { $0.id == "monitor.connections" })
+            _ = await call(agent, "press", ["title": "Processes"])
+            _ = await call(agent, "press", ["title": "Files"])
 
             // The sheets on the main window.
             await sheet("new host", then: {

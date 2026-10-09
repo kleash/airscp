@@ -464,19 +464,42 @@ extension AgentServer {
         let sort = monitor.sortOrder.first.map { order -> [String: Any] in
             ["column": Self.processColumns.first { $0.path == order.keyPath }?.name ?? "", "ascending": order.order == .forward]
         }
-        return [
+        var json: [String: Any] = [
             "connected": monitor.connected, "search": monitor.search, "sort": sort ?? NSNull(),
             "selected": top.filter { monitor.selection.contains($0.id) }.map(\.pid),
             "cpu": snapshot.cpu ?? NSNull(), "load": snapshot.load, "memory": ["used": snapshot.memoryUsed, "total": snapshot.memoryTotal],
             "swap": ["used": snapshot.swapUsed, "total": snapshot.swapTotal], "uptime": snapshot.uptime, "system": snapshot.system,
             "disks": snapshot.disks.map { ["mount": $0.mountPoint, "size": $0.size, "used": $0.used, "available": $0.available] },
             "processCount": snapshot.processes.count, "processNote": snapshot.processNote ?? NSNull(),
-            "failure": monitor.failure ?? NSNull(),
+            "failure": monitor.failure ?? NSNull(), "view": monitor.shown.rawValue,
             "processes": top.map { process -> [String: Any] in
                 ["pid": process.pid, "user": process.user, "cpu": process.cpu ?? NSNull(), "memory": process.memory ?? NSNull(),
                  "name": process.name, "command": process.command, "state": process.state]
             },
         ]
+        // Only while the Ports view is shown: they aren't read otherwise.
+        if monitor.portsShown, let ports = snapshot.ports { json["ports"] = portsJSON(monitor, ports) }
+        return json
+    }
+
+    /// The ports as the table lists them (search and sort applied), the port picked and who is connected to it.
+    func portsJSON(_ monitor: MonitorModel, _ ports: MonitorPorts) -> [String: Any] {
+        func row(_ port: MonitorPort) -> [String: Any] {
+            ["protocol": port.protocolName, "address": port.address, "port": port.port, "pids": port.pids,
+             "process": port.process, "command": port.command, "user": port.user, "connections": port.connections ?? NSNull()]
+        }
+        let selected = monitor.selectedPort
+        var json: [String: Any] = [
+            "search": monitor.portSearch, "paused": monitor.paused, "othersHidden": ports.othersHidden,
+            "note": ports.note ?? NSNull(), "count": ports.listening.count, "listening": monitor.portRows.map(row),
+            "selected": selected.map(row) ?? NSNull(),
+        ]
+        if let selected, selected.isTCP, ports.connectionsOf == selected.id {
+            let shown = MonitorText.filter(ports.connections, to: selected, monitor.portSearch)
+            json["connections"] = shown.map { ["address": $0.address, "port": $0.port, "state": $0.state] }
+            json["from"] = MonitorText.addresses(shown).map { ["address": $0.address, "count": $0.count] }
+        }
+        return json
     }
 
     /// The process table's columns as `sort` names them.

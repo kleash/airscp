@@ -20,6 +20,52 @@ public struct MonitorSnapshot: Equatable {
     public var processes: [MonitorProcess] = []
     /// Why `processes` is empty, e.g. "The server has no ps command."
     public var processNote: String?
+    /// The ports, read only while Monitor ▸ Ports is shown (`refresh(ports:)`): nil otherwise.
+    public var ports: MonitorPorts?
+}
+
+/// Monitor ▸ Ports: what the server listens on, from the kernel's own tables (/proc/net/tcp, tcp6, udp and udp6, which
+/// every Linux has, unlike ss and netstat), and who is connected to one of those ports.
+public struct MonitorPorts: Equatable {
+    public var listening: [MonitorPort] = []
+    /// The connections to `connectionsOf`, at most `Monitor.connectionLimit` (its `connections` says how many there are).
+    public var connections: [MonitorConnection] = []
+    public var connectionsOf: MonitorPort.ID?
+    /// Some ports belong to processes of other users, which this account (not root) can't see.
+    public var othersHidden = false
+    /// Why nothing is listed although something may listen: the server has no /proc/net tables.
+    public var note: String?
+}
+
+/// A listening TCP socket or a bound UDP one; several on one address and port (SO_REUSEPORT) are one.
+public struct MonitorPort: Equatable, Identifiable {
+    public var id: String { "\(table) \(address) \(port)" }
+    /// The /proc/net table it is in: tcp, tcp6, udp or udp6.
+    public var table: String
+    /// "0.0.0.0" or "::" (every address of the server), "127.0.0.1", "::1"…
+    public var address: String
+    public var port: Int
+    /// The processes that have it open, lowest first (a server that forks shares it); none when they are other
+    /// users' and this account isn't root.
+    public var pids: [Int] = []
+    /// The first of `pids` that ps listed: its name and command line.
+    public var process = ""
+    public var command = ""
+    /// The socket's owner: the name of its uid, else the number.
+    public var user: String
+    /// Open connections to it (TCP; nil for UDP, which has none).
+    public var connections: Int?
+
+    public var isTCP: Bool { table.hasPrefix("tcp") }
+}
+
+/// A connection to a listening port: the other end and the TCP state ("Established", "Close wait"…).
+public struct MonitorConnection: Equatable, Identifiable {
+    /// Both ends, as /proc/net prints them.
+    public var id: String
+    public var address: String
+    public var port: Int
+    public var state: String
 }
 
 /// A mounted file system (`df -kP`), sizes in bytes.
@@ -73,18 +119,23 @@ public final class Monitor {
     /// A snapshot from one sentinel-wrapped shell command: /proc/stat, meminfo, loadavg and uptime, /etc/os-release
     /// (else uname), `df -kP` and ps (GNU `ps -eo pid,ppid,user,pcpu,pmem,rss,etime,stat,comm,args`, else BusyBox
     /// `ps -o pid,ppid,user,rss,etime,stat,comm,args`). `processes` false leaves ps out (the workspace header's pulse
-    /// strip). Throws `.sftpOnly` without a shell, and an error saying so on a server that isn't Linux. Cancelling the
-    /// calling task stops the command (`.cancelled`).
-    public func refresh(processes: Bool = true) async throws -> MonitorSnapshot {
+    /// strip). `ports` adds what the server listens on (`portsScript`), and the connections to `connectionsOf`.
+    /// Throws `.sftpOnly` without a shell, and an error saying so on a server that isn't Linux. Cancelling the calling
+    /// task stops the command (`.cancelled`).
+    public func refresh(processes: Bool = true, ports: Bool = false, connectionsOf port: MonitorPort? = nil)
+        async throws -> MonitorSnapshot {
         let (ps, unsupported) = lock.locked { (self.ps, self.unsupported) }
         if let unsupported { throw unsupported }
         let cancellation = Cancellation()
         let output = try await withTaskCancellationHandler {
-            try await session.shell(Monitor.script(processes ? ps : .none), cancellation: cancellation)
+            try await session.shell(Monitor.script(processes ? ps : .none, ports: ports, connectionsOf: port),
+                                    cancellation: cancellation)
         } onCancel: {
             cancellation.cancel()
         }
-        return try record(Monitor.parse(output), processes: processes)
+        var snapshot = try record(Monitor.parse(output), processes: processes)
+        snapshot.ports?.connectionsOf = port?.id
+        return snapshot
     }
 
     /// Takes in a refresh's output: the CPU % against the previous refresh, and (when it listed `processes`) which ps
@@ -173,7 +224,7 @@ public final class Monitor {
     /// ($$), so that the process list can leave out this shell and the ps it runs. The C locale keeps the numbers and
     /// columns plain ASCII (ps keeps its names in UTF-8: the parser reads bytes). df comes last: a mount point is the only
     /// text in the output that a user could fill with lines of their own, and only the first "@@<name>" line counts.
-    static func script(_ ps: PSKind) -> String {
+    static func script(_ ps: PSKind, ports: Bool = false, connectionsOf port: MonitorPort? = nil) -> String {
         let list: String
         switch ps {
         case .unknown: list = "echo @@ps; \(gnuPS) || \(busyboxPS); "
@@ -183,11 +234,43 @@ public final class Monitor {
         }
         return "LC_ALL=C; export LC_ALL; s=$(uname -sr); echo \"$s\"; case $s in Linux*) echo @@sh; echo $$; "
             + "echo @@stat; head -n 1 /proc/stat; echo @@loadavg; cat /proc/loadavg; echo @@uptime; cat /proc/uptime; "
-            + "echo @@meminfo; cat /proc/meminfo; echo @@os; cat /etc/os-release; " + list + "echo @@df; df -kP;; "
-            + "esac 2>/dev/null; true"
+            + "echo @@meminfo; cat /proc/meminfo; echo @@os; cat /etc/os-release; " + list
+            + (ports ? portsScript(connectionsOf: port) : "") + "echo @@df; df -kP;; esac 2>/dev/null; true"
     }
 
-    private static let sections: Set<String> = ["sh", "stat", "loadavg", "uptime", "meminfo", "os", "ps", "df"]
+    /// The most connections to one port that are read (a busy server has tens of thousands).
+    public static let connectionLimit = 2000
+
+    /// Monitor ▸ Ports' part of `script`, run only while it is shown: reading every process's open files (`ls -l` of
+    /// /proc/<pid>/fd, as ss -p and netstat -p do) is the costly part. "@@uid": this account's. "@@ports": from the
+    /// /proc/net tables there are, "L <table> <address:port> <uid> <inode>" for each listening TCP socket and bound UDP
+    /// one, and "N <table> <port> <count>" for each such TCP port with open connections (not those in TIME-WAIT, which
+    /// are closed already); "none" without the tables. "@@owners": "/proc/<pid>/fd: socket:[<inode>]" for each process
+    /// with one of those sockets open (an account sees its own processes, root every one). "@@users": "name:uid" from
+    /// /etc/passwd for those sockets' owners. "@@connections" (`connectionsOf`, a TCP port): its first `connectionLimit`
+    /// connections, "<local> <remote> <state>". Addresses and ports in hex, as the kernel prints them.
+    static func portsScript(connectionsOf port: MonitorPort?) -> String {
+        // From each table's header line on, `t` is its name: "tcp6".
+        let listening = #"FNR == 1 {t = FILENAME; sub(".*/", "", t); next} {split($2, a, ":"); k = t " " a[2]} "#
+            + #"t ~ /tcp/ && $4 == "0A" || t ~ /udp/ && $4 == "07" {print "L", t, $2, $8, $10; s[k] = 1; next} "#
+            + #"t ~ /udp/ || $4 == "06" || $4 == "07" {next} {c[k]++} END {for (k in c) if (k in s) print "N", k, c[k]}"#
+        // The L lines first, then ls's ("/proc/<pid>/fd:" before each process's files), or /etc/passwd's.
+        let owners = #"$1 == "L" {k["socket:[" $5 "]"] = 1; next} /^.proc/ {p = $1; next} ($NF in k) {print p, $NF}"#
+        let users = #"$1 == "L" {u[$4] = 1; next} {split($0, f, ":"); if (f[3] in u) print f[1] ":" f[3]}"#
+        var script = "echo @@uid; id -u; echo @@ports; f=; for n in tcp tcp6 udp udp6; do [ -r /proc/net/$n ] && "
+            + "f=\"$f /proc/net/$n\"; done; [ -n \"$f\" ] || echo none; l=; [ -n \"$f\" ] && l=$(awk '\(listening)' $f); "
+            + "echo \"$l\"; echo @@owners; [ -n \"$l\" ] && { echo \"$l\"; ls -l /proc/[0-9]*/fd 2>/dev/null; } "
+            + "| awk '\(owners)'; echo @@users; [ -n \"$l\" ] && { echo \"$l\"; cat /etc/passwd; } | awk '\(users)'; "
+        if let port, port.isTCP {
+            script += "echo @@connections; awk -v p=\(String(format: "%04X", port.port)) "
+                + #"'FNR == 1 || $4 == "0A" || $4 == "06" || $4 == "07" {next} {split($2, a, ":"); "#
+                + "if (a[2] == p && n++ < \(connectionLimit)) print $2, $3, $4}' /proc/net/\(port.table); "
+        }
+        return script
+    }
+
+    private static let sections: Set<String> = ["sh", "stat", "loadavg", "uptime", "meminfo", "os", "ps", "uid", "ports",
+                                                "owners", "users", "connections", "df"]
 
     static func parse(_ output: String) -> Reading {
         // Bytes, not Characters: ps's columns are byte positions, and it is the bulk of the output.
@@ -265,8 +348,100 @@ public final class Monitor {
         } else {
             (reading.ps, snapshot.processNote) = (.none, noPS)
         }
+        if section("ports") != nil { snapshot.ports = ports(text, processes: snapshot.processes) }
         reading.snapshot = snapshot
         return reading
+    }
+
+    static let noPortTables = "This server has no /proc/net tables, so AirSCP can't list what it listens on."
+    private static let tables: Set<Substring> = ["tcp", "tcp6", "udp", "udp6"]
+
+    /// `portsScript`'s sections: the listening sockets with their processes (`processes`: ps's of the same refresh),
+    /// users and connection counts, and the connections read.
+    static func ports(_ text: (String) -> [String], processes: [MonitorProcess]) -> MonitorPorts {
+        var ports = MonitorPorts()
+        let lines = text("ports")
+        if lines.contains("none") { ports.note = noPortTables }
+        var users: [Int: String] = [:]
+        for line in text("users") {
+            let parts = line.split(separator: ":", omittingEmptySubsequences: false)
+            if parts.count == 2, let uid = Int(parts[1]), users[uid] == nil { users[uid] = String(parts[0]) }
+        }
+        // "/proc/123/fd: socket:[4567]"
+        var owners: [Substring: [Int]] = [:]
+        for line in text("owners") {
+            let parts = line.split(separator: " ")
+            guard parts.count == 2, parts[0].hasPrefix("/proc/"), parts[1].hasPrefix("socket:["), parts[1].hasSuffix("]"),
+                  let pid = Int(parts[0].dropFirst(6).prefix { $0 != "/" }) else { continue }
+            owners[parts[1].dropFirst(8).dropLast(), default: []].append(pid)
+        }
+        var counts: [String: Int] = [:]
+        // Each row's place in `rows`, and its socket's uid.
+        var rows: [MonitorPort] = [], places: [MonitorPort.ID: (index: Int, uid: Int)] = [:]
+        for line in lines {
+            let parts = line.split(separator: " ")
+            if parts.count == 4, parts[0] == "N", let port = Int(parts[2], radix: 16), let count = Int(parts[3]) {
+                counts["\(parts[1]) \(port)"] = count
+            }
+            guard parts.count == 5, parts[0] == "L", tables.contains(parts[1]), let (address, port) = endpoint(parts[2]),
+                  let uid = Int(parts[3]) else { continue }
+            let pids = owners[parts[4]] ?? []
+            var row = MonitorPort(table: String(parts[1]), address: address, port: port, user: users[uid] ?? String(uid))
+            if let place = places[row.id] {
+                rows[place.index].pids += pids
+            } else {
+                row.pids = pids
+                places[row.id] = (rows.count, uid)
+                rows.append(row)
+            }
+        }
+        let names = Dictionary(processes.map { ($0.pid, $0) }) { first, _ in first }
+        for index in rows.indices {
+            rows[index].pids = Array(Set(rows[index].pids)).sorted()
+            if let process = rows[index].pids.lazy.compactMap({ names[$0] }).first {
+                (rows[index].process, rows[index].command) = (process.name, process.command)
+            }
+            if rows[index].isTCP { rows[index].connections = counts["\(rows[index].table) \(rows[index].port)"] ?? 0 }
+        }
+        ports.listening = rows.sorted { ($0.port, $0.table, $0.address) < ($1.port, $1.table, $1.address) }
+        let me = text("uid").first.flatMap { Int($0) }
+        ports.othersHidden = me != 0 && rows.contains { $0.pids.isEmpty && places[$0.id]?.uid != me }
+        for line in text("connections") {
+            let parts = line.split(separator: " ")
+            guard parts.count == 3, let (address, port) = endpoint(parts[1]) else { continue }
+            ports.connections.append(MonitorConnection(id: "\(parts[0]) \(parts[1])", address: address, port: port,
+                                                       state: state(parts[2])))
+        }
+        return ports
+    }
+
+    /// /proc/net's "0100007F:1F90" → ("127.0.0.1", 8080). The address is the kernel's 32-bit words as hex numbers, so
+    /// each word's bytes come in the CPU's order: little-endian on the x86 and ARM servers of today. An IPv4 address in
+    /// an IPv6 table (::ffff:10.0.0.5: IPv4 on a socket that takes both) shows as IPv4.
+    static func endpoint(_ text: Substring) -> (address: String, port: Int)? {
+        let parts = text.split(separator: ":", omittingEmptySubsequences: false)
+        guard parts.count == 2, [8, 32].contains(parts[0].count), parts[1].count == 4,
+              (parts[0] + parts[1]).allSatisfy(\.isHexDigit), let port = Int(parts[1], radix: 16) else { return nil }
+        var bytes: [UInt8] = []
+        var start = parts[0].startIndex
+        while start < parts[0].endIndex {
+            let end = parts[0].index(start, offsetBy: 8)
+            guard let word = UInt32(parts[0][start..<end], radix: 16) else { return nil }
+            bytes += [UInt8(word & 0xff), UInt8(word >> 8 & 0xff), UInt8(word >> 16 & 0xff), UInt8(word >> 24)]
+            start = end
+        }
+        if bytes.count == 16 && bytes.prefix(10).allSatisfy({ $0 == 0 }) && bytes[10] == 0xff && bytes[11] == 0xff {
+            bytes.removeFirst(12)
+        }
+        var name = [CChar](repeating: 0, count: Int(INET6_ADDRSTRLEN))
+        guard inet_ntop(bytes.count == 4 ? AF_INET : AF_INET6, bytes, &name, socklen_t(name.count)) != nil else { return nil }
+        return (String(cString: name), port)
+    }
+
+    /// A TCP state as /proc/net numbers it, in words.
+    static func state(_ code: Substring) -> String {
+        ["01": "Established", "02": "SYN sent", "03": "SYN received", "04": "FIN wait 1", "05": "FIN wait 2",
+         "08": "Close wait", "09": "Last ACK", "0B": "Closing", "0C": "SYN received"][String(code)] ?? String(code)
     }
 
     private static let newline = UInt8(ascii: "\n"), space = UInt8(ascii: " "), at = UInt8(ascii: "@")

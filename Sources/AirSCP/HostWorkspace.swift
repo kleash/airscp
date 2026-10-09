@@ -283,7 +283,7 @@ final class HostWorkspace: NSViewController {
             let item = NSTabViewItem(viewController: controller)
             item.label = label
             item.toolTip = ["Files": "Browse and copy files between this Mac and the host",
-                            "Monitor": "CPU, memory, disks and processes of the host (Linux)",
+                            "Monitor": "CPU, memory, disks, processes and ports of the host (Linux)",
                             "Tunnels": "Port forwards through this connection"][label]
             return item
         }

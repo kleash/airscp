@@ -571,3 +571,278 @@ private func idleMonitor() throws -> (Monitor, AskpassServer) {
         + "tmpfs 4062512 1024 4061488 1% /mnt/sp ace dir\n"
     #expect(Monitor.parse(output).snapshot.disks.map(\.mountPoint) == ["/", "/etc/hosts", "/mnt/@@ps", "/mnt/café ✓", "/mnt/sp ace dir"])
 }
+
+// MARK: Ports
+
+// What `Monitor.script(_, ports: true, connectionsOf:)` printed on the Docker lab's servers (the figures, meminfo,
+// df, most processes and users, and BusyBox ps's usage text left out), with throwaway listeners of the lab's dev
+// account. On the Debian target python3 listens on [::]:47801 (IPv4 too: its two IPv4 connections are IPv6 ones,
+// ::ffff:127.0.0.1) and 127.0.0.1:47802 and is bound to UDP 0.0.0.0:47803, forked so that two processes share the
+// sockets, with three connections to 47801 (::1 and 127.0.0.1 twice) and one to 47802; on the Alpine server BusyBox nc
+// listens on [::]:47811, with two connections whose clients closed their end (CLOSE-WAIT), and on UDP [::]:47812.
+// sshd's sockets are root's, and Docker's DNS (127.0.0.11) has no process in the container at all. dev sees its own
+// processes only; root, with the ptrace capability a server's root has (Docker's root lacks it), every one.
+
+/// debian:stable-slim as dev, the connections of [::]:47801 read.
+private let debianPortsAsDev = """
+    Linux 7.0.12-linuxkit
+    @@sh
+    85859
+    @@ps
+        PID    PPID USER     %CPU %MEM   RSS     ELAPSED STAT COMMAND         COMMAND
+          1       0 root      0.0  0.0   508    11:01:25 Ss   docker-init     /sbin/docker-init -- /usr/local/sbin/lab-start
+          7       1 root      0.0  0.0  7516    11:01:25 S    sshd            sshd: /usr/sbin/sshd -D -e [listener] 0 of 100-100 startups
+      85844       0 dev       2.9  0.1  9548       00:02 Ss   python3         python3 web.py
+      85850   85844 dev       0.0  0.0  6492       00:02 S    python3         python3 web.py
+      85852       0 dev       4.0  0.1 10372       00:01 Ss   python3         python3 clients.py
+      85859       0 dev      33.3  0.0  1552       00:00 Ss   sh              sh -s
+      85871   85859 dev       0.0  0.0  3444       00:00 R    ps              ps -ww -eo pid,ppid,user,pcpu,pmem,rss,etime,stat,comm,args
+    @@uid
+    1000
+    @@ports
+    L tcp 0100007F:BABA 1000 7369824
+    L tcp 0B00007F:9D19 0 5864996
+    L tcp 00000000:0016 0 5862009
+    L tcp6 00000000000000000000000000000000:BAB9 1000 7369823
+    L tcp6 00000000000000000000000000000000:0016 0 5862010
+    L udp 00000000:BABB 1000 7369825
+    L udp 0B00007F:C24F 0 5864995
+    N tcp6 BAB9 3
+    N tcp BABA 1
+    @@owners
+    /proc/85844/fd: socket:[7369823]
+    /proc/85844/fd: socket:[7369824]
+    /proc/85844/fd: socket:[7369825]
+    /proc/85850/fd: socket:[7369823]
+    /proc/85850/fd: socket:[7369824]
+    /proc/85850/fd: socket:[7369825]
+    @@users
+    root:0
+    www-data:33
+    nobody:65534
+    sshd:997
+    dev:1000
+    sftponly:1001
+    @@connections
+    00000000000000000000000001000000:BAB9 00000000000000000000000001000000:C3EE 01
+    0000000000000000FFFF00000100007F:BAB9 0000000000000000FFFF00000100007F:A988 01
+    0000000000000000FFFF00000100007F:BAB9 0000000000000000FFFF00000100007F:A992 01
+    @@df
+
+    """
+
+/// The same as root: sshd's process too.
+private let debianPortsAsRoot = debianPortsAsDev
+    .replacingOccurrences(of: "@@uid\n1000\n", with: "@@uid\n0\n")
+    .replacingOccurrences(of: "@@owners\n", with: "@@owners\n/proc/7/fd: socket:[5862009]\n/proc/7/fd: socket:[5862010]\n")
+
+/// alpine:latest (BusyBox 1.37.0) as dev, the connections of [::]:47811 read.
+private let alpinePortsAsDev = """
+    Linux 7.0.12-linuxkit
+    @@sh
+    4235
+    @@ps
+    ps: unrecognized option: w
+    PID   PPID  USER     RSS  ELAPSED STAT COMMAND          COMMAND
+        1     0 root      392 11h01   S    docker-init      /sbin/docker-init -- /usr/sbin/sshd -D -e
+        7     1 root     4520 11h01   S    sshd             sshd: /usr/sbin/sshd -D -e [listener] 0 of 100-100 startups
+     4089     0 dev       848  6:52   S    nc               nc -lk -p 47811 -e sleep 900
+     4096     0 dev       896  6:52   S    nc               nc -u -l -p 47812
+     4102     0 dev       896  6:51   S    nc               nc 127.0.0.1 47811
+     4108  4089 dev       900  6:50   S    sleep            sleep 900
+     4109     0 dev       868  6:50   S    nc               nc 127.0.0.1 47811
+     4115  4089 dev       900  6:50   S    sleep            sleep 900
+     4235     0 dev       864  0:01   S    sh               sh -s
+     4248  4235 dev       972  0:01   R    ps               ps -o pid,ppid,user,rss,etime,stat,comm,args
+    @@uid
+    1000
+    @@ports
+    L tcp 00000000:0016 0 5864255
+    L tcp 0B00007F:9A75 0 5865115
+    L tcp6 00000000000000000000000000000000:0016 0 5864256
+    L tcp6 00000000000000000000000000000000:BAC3 1000 7358219
+    L udp 0B00007F:CF71 0 5865114
+    L udp6 00000000000000000000000000000000:BAC4 1000 7359009
+    N tcp6 BAC3 2
+    @@owners
+    /proc/4089/fd: socket:[7358219]
+    /proc/4096/fd: socket:[7359009]
+    @@users
+    root:0
+    sshd:22
+    nobody:65534
+    dev:1000
+    @@connections
+    0000000000000000FFFF00000100007F:BAC3 0000000000000000FFFF00000100007F:A95B 08
+    0000000000000000FFFF00000100007F:BAC3 0000000000000000FFFF00000100007F:9D89 08
+    @@df
+
+    """
+
+/// The same as root (BusyBox's ls lists /proc/4089 before /proc/7).
+private let alpinePortsAsRoot = alpinePortsAsDev
+    .replacingOccurrences(of: "@@uid\n1000\n", with: "@@uid\n0\n")
+    .replacingOccurrences(of: "@@users\n", with: "/proc/7/fd: socket:[5864255]\n/proc/7/fd: socket:[5864256]\n@@users\n")
+
+private func row(_ ports: MonitorPorts, _ table: String, _ port: Int) -> MonitorPort? {
+    ports.listening.first { $0.table == table && $0.port == port }
+}
+
+@Test func portsOfADebianServerAsAUser() throws {
+    let ports = try #require(Monitor.parse(debianPortsAsDev).snapshot.ports)
+    #expect(ports.note == nil && ports.othersHidden)
+    // By port; IPv4 before IPv6.
+    #expect(ports.listening.map(\.id) == ["tcp 0.0.0.0 22", "tcp6 :: 22", "tcp 127.0.0.11 40217", "tcp6 :: 47801",
+                                          "tcp 127.0.0.1 47802", "udp 0.0.0.0 47803", "udp 127.0.0.11 49743"])
+    // Two processes share python3's sockets: its first is named, from ps.
+    #expect(row(ports, "tcp6", 47801) == MonitorPort(table: "tcp6", address: "::", port: 47801, pids: [85844, 85850],
+                                                     process: "python3", command: "python3 web.py", user: "dev", connections: 3))
+    #expect(row(ports, "tcp", 47802)?.connections == 1 && row(ports, "tcp", 47802)?.pids == [85844, 85850])
+    #expect(row(ports, "udp", 47803)?.connections == nil && row(ports, "udp", 47803)?.isTCP == false)
+    // root's sshd: its owner is known (the socket's), not its process; Docker's DNS has none.
+    #expect(row(ports, "tcp", 22) == MonitorPort(table: "tcp", address: "0.0.0.0", port: 22, user: "root", connections: 0))
+    #expect(row(ports, "tcp", 40217)?.pids == [] && row(ports, "udp", 49743)?.user == "root")
+    // The connections to [::]:47801: over IPv6, and over IPv4 (shown as IPv4).
+    #expect(ports.connections == [
+        MonitorConnection(id: "00000000000000000000000001000000:BAB9 00000000000000000000000001000000:C3EE", address: "::1",
+                          port: 50158, state: "Established"),
+        MonitorConnection(id: "0000000000000000FFFF00000100007F:BAB9 0000000000000000FFFF00000100007F:A988",
+                          address: "127.0.0.1", port: 43400, state: "Established"),
+        MonitorConnection(id: "0000000000000000FFFF00000100007F:BAB9 0000000000000000FFFF00000100007F:A992",
+                          address: "127.0.0.1", port: 43410, state: "Established"),
+    ])
+    // The processes are listed as usual, without the probe.
+    #expect(Monitor.parse(debianPortsAsDev).snapshot.processes.map(\.pid) == [1, 7, 85844, 85850, 85852])
+}
+
+@Test func portsOfADebianServerAsRoot() throws {
+    let ports = try #require(Monitor.parse(debianPortsAsRoot).snapshot.ports)
+    #expect(!ports.othersHidden)
+    #expect(row(ports, "tcp", 22)?.pids == [7] && row(ports, "tcp6", 22)?.process == "sshd")
+    #expect(row(ports, "tcp", 22)?.command == "sshd: /usr/sbin/sshd -D -e [listener] 0 of 100-100 startups")
+    // Docker's DNS: no process, even for root.
+    #expect(row(ports, "tcp", 40217)?.pids == [] && row(ports, "tcp6", 47801)?.pids == [85844, 85850])
+}
+
+@Test func portsOfABusyBoxServer() throws {
+    let ports = try #require(Monitor.parse(alpinePortsAsDev).snapshot.ports)
+    #expect(ports.othersHidden)
+    #expect(ports.listening.map(\.id) == ["tcp 0.0.0.0 22", "tcp6 :: 22", "tcp 127.0.0.11 39541", "tcp6 :: 47811",
+                                          "udp6 :: 47812", "udp 127.0.0.11 53105"])
+    #expect(row(ports, "tcp6", 47811) == MonitorPort(table: "tcp6", address: "::", port: 47811, pids: [4089], process: "nc",
+                                                     command: "nc -lk -p 47811 -e sleep 900", user: "dev", connections: 2))
+    #expect(row(ports, "udp6", 47812)?.pids == [4096] && row(ports, "udp6", 47812)?.command == "nc -u -l -p 47812")
+    #expect(row(ports, "tcp", 22)?.pids == [] && row(ports, "tcp", 22)?.user == "root")
+    // Their clients closed their end; nc's children, which have the connections, haven't.
+    #expect(ports.connections.map { "\($0.address) \($0.port) \($0.state)" } == ["127.0.0.1 43355 Close wait",
+                                                                                  "127.0.0.1 40329 Close wait"])
+
+    let asRoot = try #require(Monitor.parse(alpinePortsAsRoot).snapshot.ports)
+    #expect(!asRoot.othersHidden && row(asRoot, "tcp", 22)?.pids == [7] && row(asRoot, "tcp6", 22)?.process == "sshd")
+}
+
+/// /proc/net prints each 32-bit word of an address as a number: on the little-endian CPUs of today its bytes come
+/// backwards. IPv4 in IPv6 shows as IPv4.
+@Test func portAddresses() {
+    func endpoint(_ text: String) -> String? { Monitor.endpoint(Substring(text)).map { "\($0.address) \($0.port)" } }
+    #expect(endpoint("0100007F:1F90") == "127.0.0.1 8080")
+    #expect(endpoint("00000000:0016") == "0.0.0.0 22")
+    #expect(endpoint("0501A8C0:01BB") == "192.168.1.5 443")
+    #expect(endpoint("00000000000000000000000000000000:0035") == ":: 53")
+    #expect(endpoint("00000000000000000000000001000000:FFFF") == "::1 65535")
+    #expect(endpoint("000080FE00000000FF270002010201FE:0222") == "fe80::200:27ff:fe01:201 546")
+    #expect(endpoint("B80D0120000000000000000001000000:0050") == "2001:db8::1 80")
+    #expect(endpoint("0000000000000000FFFF00000500000A:C350") == "10.0.0.5 50000")
+    for bad in ["", "0100007F", "0100007F:1F9", "0100007F:1F900", "100007F:1F90", "0100007G:1F90", "+100007F:1F90",
+                "0100007F:-1F9", "0100007F:1F90:1", "0000000000000000FFFF00000500000:C350", "0100007F 1F90"] {
+        #expect(endpoint(bad) == nil, "\(bad)")
+    }
+    #expect(Monitor.state("01") == "Established" && Monitor.state("08") == "Close wait" && Monitor.state("03") == "SYN received")
+    #expect(Monitor.state("7F") == "7F")
+}
+
+/// Only Monitor ▸ Ports reads the ports: the processes' refresh and the pulse strip's run no part of it.
+@Test func portsAreReadOnlyWhenAskedFor() {
+    let tcp = MonitorPort(table: "tcp6", address: "::", port: 47801, user: "dev")
+    for kind in [Monitor.PSKind.unknown, .gnu, .busybox, .none] {
+        for script in [Monitor.script(kind), Monitor.script(kind, ports: false, connectionsOf: tcp)] {
+            #expect(!script.contains("@@ports") && !script.contains("/proc/net") && !script.contains("ls -l"))
+        }
+        let ports = Monitor.script(kind, ports: true)
+        #expect(ports.contains("echo @@uid; id -u; echo @@ports;") && !ports.contains("@@connections"))
+        // Before df, the last section; one line, no backslashes or "!", ending in success.
+        #expect(ports.range(of: "@@users")!.lowerBound < ports.range(of: "@@df")!.lowerBound)
+        #expect(!ports.contains("\n") && !ports.contains("\\") && !ports.contains("!") && ports.hasSuffix("; true"))
+        // The connections of one TCP port, at most 2000, from its own table; UDP has none to read.
+        let connections = Monitor.script(kind, ports: true, connectionsOf: tcp)
+        #expect(connections.contains("echo @@connections; awk -v p=BAB9 ") && connections.contains("n++ < 2000")
+                && connections.contains("' /proc/net/tcp6; echo @@df"))
+        #expect(!connections.contains("\\") && !connections.contains("!"))
+        let udp = MonitorPort(table: "udp", address: "0.0.0.0", port: 53, user: "root")
+        #expect(!Monitor.script(kind, ports: true, connectionsOf: udp).contains("@@connections"))
+    }
+}
+
+/// A server can print anything: odd lines are passed over, sockets on one address and port (SO_REUSEPORT) are one
+/// row, an owner not in /etc/passwd shows as a number, and a server without /proc/net says so.
+@Test func oddPortOutput() throws {
+    let output = """
+        Linux 6.12
+        @@uid
+        1000
+        @@ports
+        L tcp 00000000:0050 33 101
+        L tcp 00000000:0050 33 102
+        L tcp 00000000:0051 4242 103
+        L unix 00000000:0052 0 104
+        L tcp ZZ:0053 0 105
+        L tcp 00000000:0054 x 106
+        L tcp 00000000:0055 0
+        N tcp 0050 12
+        N tcp 0050
+        N tcp ZZZZ 3
+        @@owners
+        /proc/300/fd: socket:[101]
+        /proc/301/fd: socket:[102]
+        /proc/300/fd: socket:[102]
+        /proc/x/fd: socket:[103]
+        /proc/302/fd: pipe:[103]
+        socket:[103]
+        @@users
+        www-data:33
+        broken
+        :
+        @@connections
+        00000000:0050 0500000A:C350 01
+        00000000:0050 0500000A:C351
+        00000000:0050 nonsense 01
+        """
+    let ports = try #require(Monitor.parse(output).snapshot.ports)
+    #expect(ports.listening.map(\.id) == ["tcp 0.0.0.0 80", "tcp 0.0.0.0 81"])
+    #expect(ports.listening.first == MonitorPort(table: "tcp", address: "0.0.0.0", port: 80, pids: [300, 301], user: "www-data",
+                                                 connections: 12))
+    #expect(ports.listening.last?.user == "4242" && ports.listening.last?.pids == [] && ports.othersHidden)
+    #expect(ports.connections.map(\.address) == ["10.0.0.5"])
+    // No tables at all: why, rather than "nothing listens".
+    let none = try #require(Monitor.parse("Linux 6.12\n@@uid\n0\n@@ports\nnone\n\n@@owners\n@@users\n").snapshot.ports)
+    #expect(none.listening.isEmpty && none.note == Monitor.noPortTables && !none.othersHidden)
+    // Not asked for: none at all.
+    #expect(Monitor.parse("Linux 6.12\n@@df\n").snapshot.ports == nil)
+}
+
+/// Plan S: a busy server's thousands of sockets must not make the Ports view slow. 10 000 listening sockets, each with
+/// its process, and 2 000 connections: well under a second in the tests' debug build (0.2 s alone; the bound leaves room
+/// for the whole suite running beside it, which made it 2.1 s).
+@Test func tenThousandPortsParseQuickly() {
+    var lines = ["Linux 6.12", "@@uid", "0", "@@ports"]
+    lines += (1...10_000).map { "L udp 00000000:\(String(format: "%04X", $0)) 0 \(100_000 + $0)" }
+    lines.append("@@owners")
+    lines += (1...10_000).map { "/proc/\($0 % 50 + 1)/fd: socket:[\(100_000 + $0)]" }
+    lines += ["@@users", "root:0", "@@connections"]
+    lines += (0..<2000).map { "00000000:0050 0500000A:\(String(format: "%04X", 1024 + $0)) 01" }
+    let output = lines.joined(separator: "\n") + "\n"
+    var ports: MonitorPorts?
+    let elapsed = ContinuousClock().measure { ports = Monitor.parse(output).snapshot.ports }
+    #expect(ports?.listening.count == 10_000 && ports?.connections.count == 2000 && ports?.listening.last?.pids == [1])
+    #expect(elapsed < .seconds(5), "parsing 10 000 ports took \(elapsed)")
+}

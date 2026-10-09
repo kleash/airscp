@@ -306,6 +306,48 @@ struct LabFeatureTests {
         }
     }
 
+    /// Monitor ▸ Ports on the Debian server (neither ss nor netstat) and the BusyBox one: a listener of this account's
+    /// with a connection to it (python3; BusyBox nc) is listed with its process, user and connection, from 127.0.0.1;
+    /// root's sshd with its user but not its process; Kill stops the listener.
+    @Test func portsOnDebianAndBusyBox() async throws {
+        try await withLab { lab in
+            for host in [Lab.target(), Lab.minimal()] {
+                let session = try await lab.connected(host)
+                let monitor = Monitor(session: session)
+                let number = 47900 + Int.random(in: 0..<90)
+                let debian = host.port == Lab.targetPort
+                // Each ends by itself in 5 minutes.
+                _ = try await session.run(debian
+                    ? "python3 -c 'import socket, time; s = socket.socket(); s.bind((\"0.0.0.0\", \(number))); s.listen(); "
+                        + "c = socket.create_connection((\"127.0.0.1\", \(number))); a = s.accept(); time.sleep(300)' "
+                        + "</dev/null >/dev/null 2>&1 &"
+                    : "nc -lk -p \(number) -e sleep 300 </dev/null >/dev/null 2>&1 & sleep 1; "
+                        + "timeout 300 nc 127.0.0.1 \(number) </dev/null >/dev/null 2>&1 &")
+                var ports = MonitorPorts()
+                #expect(await eventually(timeout: 20) {
+                    ports = (try? await monitor.refresh(ports: true).ports) ?? MonitorPorts()
+                    return ports.listening.contains { $0.port == number && $0.connections ?? 0 > 0 }
+                }, "\(ports)")
+                let listener = try #require(ports.listening.first { $0.port == number })
+                #expect(listener.isTCP && listener.user == "dev" && listener.pids.count == 1)
+                #expect(listener.process == (debian ? "python3" : "nc") && listener.command.contains(String(number)))
+                // root's sshd: not this account's to see.
+                let ssh = try #require(ports.listening.first { $0.port == 22 })
+                #expect(ssh.user == "root" && ssh.pids.isEmpty && ports.othersHidden)
+
+                let connected = try #require(try await monitor.refresh(ports: true, connectionsOf: listener).ports)
+                #expect(connected.connectionsOf == listener.id && connected.connections.contains { $0.address == "127.0.0.1" },
+                        "\(connected.connections)")
+
+                try await monitor.kill(listener.pids[0], force: false)
+                #expect(await eventually(timeout: 20) {
+                    (try? await monitor.refresh(ports: true).ports?.listening.contains { $0.port == number }) == false
+                })
+                _ = try? await session.run("pkill -f '127.0.0.1 \(number)' || true")
+            }
+        }
+    }
+
     /// Tunnels as the editor saves them carry traffic through a real server: Local to the server itself ("localhost",
     /// looked up on the server: its own sshd) and to a machine only the server reaches ("private", inside the lab), and
     /// Remote from a port on the server back to this Mac ("localhost" here).

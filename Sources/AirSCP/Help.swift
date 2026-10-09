@@ -383,7 +383,7 @@ enum AirSCPTips {
         Commands and monitoring
         • Host ▸ Run Command… runs one command and shows its output; Run in Terminal for sudo and editors.
         • Window ▸ Snippets keeps commands you run often, to run on any host.
-        • The Monitor tab shows CPU, memory, disks and processes on Linux servers; Kill asks first.
+        • The Monitor tab shows CPU, memory, disks, processes and ports on Linux servers; Kill asks first.
         • The Tunnels tab opens ports through the connection: a database behind the server, an app on your Mac.
         • View ▸ Show Command Log shows every command AirSCP ran, as a line you can copy and run yourself.
 
