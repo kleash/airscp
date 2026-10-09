@@ -27,6 +27,7 @@
 - [Stay connected](https://kleash.github.io/airscp/connecting/stay-connected.html): Wi-Fi drops, a Mac goes to sleep, a VPN restarts. AirSCP notices, connects again by itself, and continues your transfers.
 - [Groups, colours and search](https://kleash.github.io/airscp/connecting/organise-hosts.html): Many servers? Sort them into groups, give them colours, and find them by typing.
 - [Move your hosts to another Mac](https://kleash.github.io/airscp/connecting/move-to-another-mac.html): Export your hosts, groups, proxies and Remote Desktop entries to a file, and import that file on another Mac.
+- [Import your sites from WinSCP](https://kleash.github.io/airscp/connecting/import-from-winscp.html): Coming from WinSCP on Windows? AirSCP can make a host for each of your WinSCP sites, with its folder, its key, its tunnel (as a jump host) and its HTTP proxy.
 
 ## Files
 - [Files](https://kleash.github.io/airscp/files/): The **Files** tab has two panes. The left pane shows this Mac (or another connected server). The right pane shows the selected server. Drag between them to copy.

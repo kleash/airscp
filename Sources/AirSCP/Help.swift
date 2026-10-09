@@ -19,6 +19,7 @@ enum MenuHelp {
         (#selector(AppDelegate.newRemoteDesktop(_:)), "Save a Windows computer to open with the built-in Remote Desktop client"),
         (#selector(AppDelegate.newGroup(_:)), "Make a group to sort hosts under in the sidebar"),
         (#selector(AppDelegate.importSSHConfig(_:)), "Make hosts from the aliases in your ~/.ssh/config; ssh keeps reading their settings there"),
+        (#selector(AppDelegate.importWinSCP(_:)), "Make hosts from WinSCP's sites (its exported WinSCP.ini) with their keys; passwords stay behind"),
         (#selector(AppDelegate.importHosts(_:)), "Load hosts, groups, proxies and desktops exported by AirSCP on another Mac"),
         (#selector(AppDelegate.exportHosts(_:)), "Save your hosts, groups, proxies and desktops to a file for another Mac (no passwords)"),
         (#selector(FilePane.newFolder(_:)), "Make a folder in the pane that has the focus"),

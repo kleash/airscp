@@ -14,6 +14,7 @@ How to save your servers and log in to them: with a key, a password, through a j
 
 - [Add a server](add-a-host.md): the host settings, one by one.
 - [Import hosts from ~/.ssh/config](import-from-ssh-config.md): reuse what you already have.
+- [Import your sites from WinSCP](import-from-winscp.md): sites, keys, tunnels and proxies from Windows.
 - [Log in with a password](log-in-with-a-password.md), and with two-factor codes.
 - [Log in with a key](log-in-with-a-key.md): no password to type.
 - [Trust a server the first time](trust-a-server.md): what the fingerprint question means.

@@ -174,6 +174,8 @@ AirSCP was installed with `./install.sh`).
   (titled "<alias>, <user@host>"): `set title=<alias> value=false` leaves one out → `press title=Import`.
   Hosts to and from a file: `menu path="File > Export Hosts…" file=/tmp/hosts.json`,
   `menu path="File > Import Hosts…" file=/tmp/hosts.json` (the reply's sheet says how many were imported).
+  WinSCP's sites: `menu path="File > Import from WinSCP…" file=/path/WinSCP.ini` (its .ppk keys beside it; the
+  reply's sheet says how many hosts were made and what was left out).
 - Terminal: `menu path="Host > Open Terminal"` opens Terminal.app, and "Copy ssh Command" fills the clipboard: their
   result is outside AirSCP. Run a command and read its output: `menu path="Host > Run Command…"` →
   `set id=runCommand.command value="uname -a"` (or a snippet: `set id=runCommand.snippet value=<its name>`) →
