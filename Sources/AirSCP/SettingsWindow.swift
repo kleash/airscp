@@ -111,6 +111,14 @@ struct SettingsView: View {
                 .help("Where New Key Pair and Import Key save keys; ~/.ssh by default")
                 caption("New Key Pair and Import Key save keys here; ~/.ssh by default, where ssh finds them by itself.")
             }
+            Section("Apple Intelligence") {
+                Toggle("Use Apple Intelligence for Ask AirSCP and Explain", isOn: $model.data.settings.appleIntelligence)
+                    .help("On by default, when this Mac has Apple Intelligence. Questions are answered on this Mac; nothing is sent anywhere")
+                    .accessibilityIdentifier("settings.appleIntelligence")
+                caption((model.data.settings.appleIntelligence ? AppleIntelligence.problem(model.data.settings).map { $0 + "." } : nil)
+                        ?? "Help ▸ Ask AirSCP… and the Explain… button of a failed connection, answered on this Mac with a "
+                        + "summary of the host in front (never passwords, keys or files).")
+            }
             Section("Agents") {
                 Toggle("Allow AI agents to control AirSCP (MCP)", isOn: $model.data.settings.agentControl)
                     .help("Off by default. Lets AI agents and scripts of your user account drive AirSCP as you would, "

@@ -85,6 +85,7 @@
 - [Tunnels](https://kleash.github.io/airscp/tunnels.html): A tunnel opens a port on your Mac that leads through the server: to the server itself, or to another machine only the server can reach, such as a database or an internal web page. Or the other way round. It goes through the host's connection, so nothing else needs to be open.
 - [Settings & appearance](https://kleash.github.io/airscp/settings.html): Choose light or dark mode, your terminal app, your downloads folder and a few defaults. Open **AirSCP ▸ Settings…** (<kbd>⌘,</kbd>). Every change applies at once.
 - [AI agents (MCP)](https://kleash.github.io/airscp/ai-agents.html): AI agents such as Claude Code, Codex CLI or Gemini CLI can drive AirSCP the way you do: the same menus, buttons and questions, and AirSCP's own screenshots. AirSCP is an MCP server for them. It is off until you turn it on.
+- [Shortcuts, Siri & Apple Intelligence](https://kleash.github.io/airscp/shortcuts-and-ai.html)
 - [Troubleshooting](https://kleash.github.io/airscp/troubleshooting.html): AirSCP explains each error in plain words and says what to do next. **Details** shows ssh's own words. Here are the common ones.
 - [FAQ](https://kleash.github.io/airscp/faq.html)
 - [Privacy & security](https://kleash.github.io/airscp/privacy-security.html): AirSCP keeps your servers, files and passwords on your Mac.

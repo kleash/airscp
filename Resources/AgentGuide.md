@@ -189,6 +189,9 @@ AirSCP was installed with `./install.sh`).
   "Save DER…", "Save Chain…", "PKCS#12…" (`certificates.p12Name`, `certificates.p12Password`, then "Save…" with
   `file=`), "Save Key…" (`certificates.keyPassphrase`), "Public Key…", all taking `file=`. A server's chain: `menu
   path="Tools > View Server Certificate…"`, `set id=certificates.server value=host:port`, `press title=View`.
+- The same actions are reachable three ways: the menus (a person), these tools (you), and App Intents (Shortcuts, Siri,
+  Spotlight: Connect to Host, Open a Shell on Host, Open Remote Desktop, Disconnect All, Get Transfer Status). Help >
+  Ask AirSCP… is the user's own Apple Intelligence: don't use it for them.
 - Terminal: `menu path="Host > Open Terminal"` opens Terminal.app, and "Copy ssh Command" fills the clipboard: their
   result is outside AirSCP. Run a command and read its output: `menu path="Host > Run Command…"` →
   `set id=runCommand.command value="uname -a"` (or a snippet: `set id=runCommand.snippet value=<its name>`) →

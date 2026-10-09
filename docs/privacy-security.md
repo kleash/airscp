@@ -34,6 +34,12 @@ AirSCP keeps your servers, files and passwords on your Mac.
 - Agents never see saved passwords, and AirSCP's questions (Delete, Trust) stay in the way.
 - The sidebar shows when an agent is connected and what it did. See [AI agents (MCP)](ai-agents.md).
 
+## Apple Intelligence
+
+- Ask AirSCP and Explain use Apple's on-device model: nothing is sent to Apple or anyone else.
+- The model gets your question and a short summary of the host in front, never passwords, keys or file contents.
+- **Settings ▸ Apple Intelligence** turns it off.
+
 ## Report a security problem
 
 Please don't open a public issue: follow the security policy (`SECURITY.md`) in

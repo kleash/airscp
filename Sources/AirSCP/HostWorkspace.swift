@@ -480,6 +480,12 @@ struct ConnectionBanner: View {
                 Text("Disconnected: \(error.message)").lineLimit(2)
                 Spacer()
                 if !error.details.isEmpty { Button("Details…") { details(error) }.help("Show ssh's own output for this failure") }
+                if AppleIntelligence.problem(model.data.settings) == nil {
+                    Button("Explain…") {
+                        (NSApp.delegate as? AppDelegate)?.ask(AssistantContext.explain(error.message + (error.details.isEmpty ? "" : "\n" + error.details.suffix(1500))))
+                    }
+                    .help("Ask Apple Intelligence (on this Mac) what this error means and what to try")
+                }
                 DebugLogButton(model: model, retry: connect)
                 Button("Reconnect", action: connect).help("Try to connect again (⌘K)")
             case .reconnecting(let nextTry):

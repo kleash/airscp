@@ -64,7 +64,7 @@ func unexplained(_ menu: NSMenu, path: [String] = []) -> [String] {
     print("section U: \(count(bar)) menu items, all with a tooltip")
     // Help has AirSCP's own pages; Edit's ⌘F says what it filters.
     let help = bar.item(withTitle: "Help")?.submenu?.items.map(\.title) ?? []
-    #expect(help == ["AirSCP Help", "Getting Started", "What's New", "", "Welcome to AirSCP…", "AirSCP Tips", "Agent Guide", "",
+    #expect(help == ["AirSCP Help", "Getting Started", "What's New", "", "Welcome to AirSCP…", "AirSCP Tips", "Agent Guide", "Ask AirSCP…", "",
                      "Turn On Debug Logging", "Show Debug Log in Finder", "Copy Diagnostics", "Report a Problem"])
     #expect(bar.item(withTitle: "Help")?.submenu?.item(withTitle: "AirSCP Help")?.keyEquivalent == "")  // ⌘? is macOS's
     #expect(bar.item(withTitle: "Edit")?.submenu?.item(withTitle: "Filter")?.keyEquivalent == "f")

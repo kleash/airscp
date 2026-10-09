@@ -24,6 +24,7 @@ enum MenuHelp {
         (#selector(AppDelegate.viewServerCertificate(_:)), "See the certificate chain a server sends for TLS (HTTPS, LDAPS, SMTPS…), and whether this Mac trusts it"),
         (#selector(AppDelegate.newKeyPair(_:)), "Make a new SSH key pair in the Keys window"),
         (#selector(AppDelegate.importPuTTYKey(_:)), "Turn a PuTTY key (.ppk) into an OpenSSH key, in the Keys window"),
+        (#selector(AppDelegate.askAirSCP(_:)), "Ask about AirSCP, a server or an error: Apple Intelligence answers on this Mac"),
         (#selector(AppDelegate.importHosts(_:)), "Load hosts, groups, proxies and desktops exported by AirSCP on another Mac"),
         (#selector(AppDelegate.exportHosts(_:)), "Save your hosts, groups, proxies and desktops to a file for another Mac (no passwords)"),
         (#selector(FilePane.newFolder(_:)), "Make a folder in the pane that has the focus"),

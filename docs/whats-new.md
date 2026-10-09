@@ -7,6 +7,10 @@ nav_order: 18
 
 ## AirSCP 1.1.0
 
+- **Shortcuts, Siri and Apple Intelligence**: AirSCP's actions (Connect to Host, Open a Shell, Open Remote Desktop,
+  Disconnect All, Transfer Status) are in Shortcuts and Spotlight. On a Mac with Apple Intelligence, **Help ▸ Ask
+  AirSCP…** answers questions on this Mac, and a failed connection has **Explain…**. See
+  [Shortcuts, Siri & Apple Intelligence](shortcuts-and-ai.md).
 - **Certificate Manager**: **Tools ▸ Certificate Manager…** opens certificates, keys, chains, PKCS#12 files and Java
   keystores, shows their details and expiry, and saves them as PEM, DER, chains, keys or PKCS#12, each with the
   `openssl` command that does the same. **Tools ▸ View Server Certificate…** shows what a TLS server sends. See
