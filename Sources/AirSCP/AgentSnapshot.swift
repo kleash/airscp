@@ -138,8 +138,9 @@ struct AXNode {
 /// The snapshot tool's sections, read from the controllers' own state (nothing secret: no Keychain reads, password
 /// fields as "•••(n)").
 extension AgentServer {
-    /// "find" and "sync" are there only while their sheet is open, "rdp" while a desktop is selected.
-    static let defaultSections: Set<String> = ["sidebar", "workspace", "panes", "transfers", "rdp", "sheets", "find", "sync"]
+    /// "find", "sync" and "configImport" are there only while their sheet is open, "rdp" while a desktop is selected.
+    static let defaultSections: Set<String> = ["sidebar", "workspace", "panes", "transfers", "rdp", "sheets", "find", "sync",
+                                               "configImport"]
 
     func snapshot(_ arguments: [String: Any]) -> [String: Any] {
         let include = (arguments["include"] as? [String]).map(Set.init) ?? Self.defaultSections
@@ -169,6 +170,7 @@ extension AgentServer {
         if include.contains("sheets") { result["sheets"] = sheetsJSON() }
         if include.contains("find"), let find = findModel { result["find"] = findJSON(find, rows: rows) }
         if include.contains("sync"), let sync = syncModel { result["sync"] = syncJSON(sync, rows: rows) }
+        if include.contains("configImport"), let importer = configImport { result["configImport"] = configImportJSON(importer, rows: rows) }
         if include.contains("menus") { result["menus"] = menusJSON() }
         if include.contains("elements"), let window = (arguments["in"] as? String).flatMap({ try? scopes($0).last }) ?? main?.window {
             result["elements"] = ([window] + sheets(of: window)).flatMap { AXNode.flatten($0) }
@@ -531,6 +533,24 @@ extension AgentServer {
     /// The open Synchronize sheet's comparison and plan.
     var syncModel: SyncModel? {
         openSheets().lazy.compactMap { ($0.contentViewController as? NSHostingController<SyncView>)?.rootView.model }.first
+    }
+
+    /// The open Import from ~/.ssh/config sheet's aliases.
+    var configImport: ConfigImport? {
+        openSheets().lazy.compactMap { ($0.contentViewController as? NSHostingController<ConfigImportView>)?.rootView.importer }.first
+    }
+
+    /// Every alias of the sheet, from its model (its list makes rows only where it shows them): chosen, in AirSCP
+    /// already ("added") or refused (with why), and what ssh makes of it.
+    func configImportJSON(_ importer: ConfigImport, rows limit: Int = 200) -> [String: Any] {
+        ["count": importer.rows.count, "chosen": importer.chosen.count,
+         "aliases": importer.rows.prefix(limit).map { row -> [String: Any] in
+             var json: [String: Any] = ["alias": row.alias, "chosen": row.chosen && !row.added && row.refused == nil]
+             if let summary = row.summary { json["resolved"] = summary }
+             if row.added { json["added"] = true }
+             if let refused = row.refused { json["refused"] = refused }
+             return json
+         }]
     }
 
     /// The search and its results, as the sheet lists them: paths below the folder searched.

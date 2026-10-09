@@ -412,17 +412,23 @@ func transfers(_ count: Int) -> String {
 }
 
 /// Copies the ssh command line for the host (a fresh connection, not riding AirSCP's).
-func copyCommand(_ host: SSHHost, jump: SSHHost?) {
-    guard copyCommandProblem(host, jump: jump) == nil else { return }
+func copyCommand(_ host: SSHHost, in data: AirSCPData) {
+    guard copyCommandProblem(host, in: data) == nil else { return }
+    let jump = data.jump(for: host)
     NSPasteboard.general.clearContents()
-    NSPasteboard.general.setString(Runner.shellLine(OpenSSH.interactive(host, jump: jump)), forType: .string)
+    NSPasteboard.general.setString(Runner.shellLine(OpenSSH.interactive(host, jump: jump, plain: data.proxy((jump ?? host).proxyID))),
+                                   forType: .string)
 }
 
 /// Why Copy ssh Command can't give a command that works in another terminal (its tooltip while it is off), else nil:
-/// an HTTP proxy is reached through AirSCP's own helper, and without its jump host the command would go direct.
-func copyCommandProblem(_ host: SSHHost, jump: SSHHost?) -> String? {
+/// without its jump host the command would go direct, and a proxy's password is given by AirSCP's own helper (a
+/// proxy without a login is reached with macOS's nc instead).
+func copyCommandProblem(_ host: SSHHost, in data: AirSCPData) -> String? {
+    let jump = data.jump(for: host)
     if OpenSSH.missingJump(host, jump: jump) != nil { return "Its jump host no longer exists: edit the host to choose another" }
-    if (jump ?? host).proxyID != nil { return "Its HTTP proxy is reached through AirSCP only: use Open Terminal (⌘T) instead" }
+    if let id = (jump ?? host).proxyID, data.proxy(id)?.username.isEmpty != true {
+        return "Its HTTP proxy's password is given through AirSCP only: use Open Terminal (⌘T) instead"
+    }
     return nil
 }
 
@@ -524,10 +530,13 @@ struct WorkspaceHeader: View {
                     StatusPill(text: MainWindowController.describe(connection.state), style: state)
                 }
                 (Text(host.address).fontWeight(.medium).foregroundColor(.primary)
-                    + Text(([route.map { "This Mac → " + $0.short.dropFirst("via ".count) + " → " + host.displayName }]
-                            + [host.serverAliveInterval > 0 ? "keep-alive \(host.serverAliveInterval) s" : nil])
-                        .compactMap { $0 }.map { " · " + $0 }.joined()).foregroundColor(.secondary))
-                    .font(.system(size: 11.5)).monospacedDigit().lineLimit(1).truncationMode(.middle)
+                    + Text(host.serverAliveInterval > 0 ? " · keep-alive \(host.serverAliveInterval) s" : "").foregroundColor(.secondary))
+                    .font(.system(size: 11.5)).monospacedDigit().lineLimit(1).truncationMode(.tail)
+                // The route on a line of its own: beside the address, the pulse strip's room cut both in the middle.
+                if let route {
+                    Text("This Mac → " + route.short.dropFirst("via ".count) + " → " + host.displayName)
+                        .font(.system(size: 11.5)).foregroundColor(.secondary).lineLimit(1).truncationMode(.middle)
+                }
             }
             .frame(minWidth: 240, alignment: .leading)
             .help(route?.full ?? "Connects to \(host.address) directly")

@@ -453,11 +453,29 @@ extension FeatureRoundAppTests {
     #expect(AppModel.sections(data, search: "corp-proxy").flatMap(\.hosts).map(\.label).sorted() == ["bastion", "proxied", "target"])
     #expect(AppModel.sections(data, search: "bastion").flatMap(\.hosts).map(\.label).sorted() == ["bastion", "target"])
     // Copy ssh Command is off, saying why, where its command couldn't work in another terminal.
-    #expect(copyCommandProblem(direct, jump: nil) == nil)
-    #expect(copyCommandProblem(lost, jump: data.jump(for: lost))?.hasPrefix("Its jump host no longer exists") == true)
+    #expect(copyCommandProblem(direct, in: data) == nil)
+    #expect(copyCommandProblem(lost, in: data)?.hasPrefix("Its jump host no longer exists") == true)
     for host in [proxied, bastion, target] {
-        #expect(copyCommandProblem(host, jump: data.jump(for: host))?.hasPrefix("Its HTTP proxy is reached through AirSCP") == true)
+        #expect(copyCommandProblem(host, in: data)?.hasPrefix("Its HTTP proxy's password is given through AirSCP") == true)
     }
+    // A proxy without a login: the command reaches it with macOS's nc, also nested in a jump host's ProxyCommand.
+    data.proxies[0].username = ""
+    for host in [proxied, target] { #expect(copyCommandProblem(host, in: data) == nil) }
+    let line = Runner.shellLine(OpenSSH.interactive(proxied, jump: nil, plain: data.proxies[0]))
+    #expect(line.contains("ProxyCommand=/usr/bin/nc -X connect -x proxy.example.com:8080 %h %p") && !line.contains("AIRSCP_HELPER"), "\(line)")
+    let nested = Runner.shellLine(OpenSSH.interactive(target, jump: bastion, plain: data.proxies[0]))
+    #expect(nested.contains("nc -X connect -x proxy.example.com:8080") && !nested.contains("AIRSCP_HELPER"), "\(nested)")
+    // AirSCP's own connections keep its helper.
+    #expect(OpenSSH.options(proxied, jump: nil).joined(separator: " ").contains("--proxy-connect"))
+    // A route from the host's Other options shows too, not as direct.
+    var command = SSHHost(label: "cmd", hostname: "c.example.com")
+    command.extraOptions = ["Compression=yes", "ProxyCommand=nc -x corp:1080 %h %p"]
+    #expect(data.route(for: command)?.short == "via a proxy command")
+    #expect(data.route(for: command)?.full.hasSuffix("ProxyCommand nc -x corp:1080 %h %p") == true)
+    command.extraOptions = ["ProxyJump jump@gw.example.com"]
+    #expect(data.route(for: command)?.short == "via jump@gw.example.com")
+    command.extraOptions = ["ProxyCommand=none"]
+    #expect(data.route(for: command) == nil)
 }
 
 // MARK: U.2 the agent indicator

@@ -65,7 +65,8 @@ struct Sidebar: View {
                         .fixedSize(horizontal: false, vertical: true)
                     Button("New Host…") { controller.newHost() }
                         .help(MenuHelp.tips[#selector(AppDelegate.newHost(_:))] ?? "")
-                    Button("Import from ~/.ssh/config…") {
+                    // Short: the sidebar's narrowest width cut "Import from ~/.ssh/config…".
+                    Button("Import ~/.ssh/config…") {
                         NSApp.sendAction(#selector(AppDelegate.importSSHConfig(_:)), to: nil, from: nil)
                     }
                     .help(MenuHelp.tips[#selector(AppDelegate.importSSHConfig(_:))] ?? "")
@@ -212,8 +213,8 @@ struct Sidebar: View {
             Divider()
             Button("Edit…") { controller.edit(item) }.help(tip(#selector(MainWindowController.editHost(_:))))
             Button("Duplicate") { controller.duplicate(item) }.help(tip(#selector(MainWindowController.duplicateHost(_:))))
-            let problem = copyCommandProblem(host, jump: model.jump(for: host))
-            Button("Copy ssh Command") { copyCommand(host, jump: model.jump(for: host)) }
+            let problem = copyCommandProblem(host, in: model.data)
+            Button("Copy ssh Command") { copyCommand(host, in: model.data) }
                 .help(problem ?? tip(#selector(MainWindowController.copySSHCommand(_:))))
                 .disabled(problem != nil)
             Picker("Colour Tag", selection: Binding(get: { host.color }, set: { color in
@@ -254,7 +255,9 @@ struct HostRow: View {
 
     var body: some View {
         HStack(spacing: 9) {
-            Chip(symbol: "server.rack", hue: tagColor(host.color) ?? .blue, tagged: host.color != nil, selected: selected)
+            // Untagged: grey, so that a Blue tag stands out in Night Harbor too (Paper draws untagged chips in labelColor).
+            Chip(symbol: "server.rack", hue: tagColor(host.color) ?? Color(nsColor: .secondaryLabelColor),
+                 tagged: host.color != nil, selected: selected)
             VStack(alignment: .leading, spacing: 1) {
                 Text(host.displayName).fontWeight(.semibold).lineLimit(1)
                 if missingKey != nil {

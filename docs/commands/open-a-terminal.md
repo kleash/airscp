@@ -21,4 +21,5 @@ Open an ssh session to a host in Terminal or iTerm. It rides on AirSCP's open co
 
 - macOS asks once whether AirSCP may control iTerm. Click **Allow**.
 - **Host ▸ Copy ssh Command** (<kbd>⇧⌘C</kbd>) copies the ssh command line, to paste into any terminal. It is off for
-  a host behind an HTTP proxy (only AirSCP reaches the proxy): use **Host ▸ Open Terminal** for it.
+  a host behind an HTTP proxy that needs a password (only AirSCP gives it): use **Host ▸ Open Terminal** for it. A proxy
+  without a login is fine: the command reaches it with macOS's `nc`.

@@ -449,9 +449,9 @@ struct KeyFlowView: View {
                     Spacer()
                     Button("Show in Finder") { NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: pair.privateKey)]) }
                         .help("Show the key files in Finder")
-                    Button("Export as PuTTY Key (.ppk)…", action: flow.startExport)
+                    Button("Export .ppk…", action: flow.startExport)
                         .disabled(!KeysModel.canExportToPuTTY(pair))
-                        .help(KeysModel.canExportToPuTTY(pair) ? "Save a copy for PuTTY or WinSCP on Windows"
+                        .help(KeysModel.canExportToPuTTY(pair) ? "Save a copy as a PuTTY key (.ppk), for PuTTY or WinSCP on Windows"
                               : "PuTTY keys can be RSA, ECDSA or Ed25519 only")
                 }
                 HStack {

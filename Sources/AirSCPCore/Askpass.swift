@@ -197,6 +197,7 @@ public final class AskpassServer {
         arc4random_buf(&random, random.count)
         secret = random.map { String(format: "%02x", $0) }.joined()
         DebugLog.Secrets.add(secret)
+        Self.removeStaleFolders()
         var template = Array("/tmp/airscp-askpass.XXXXXX".utf8CString)
         guard let made = mkdtemp(&template) else {
             throw AirSCPError(.other, "Can't create the askpass folder: \(String(cString: strerror(errno)))")
@@ -223,6 +224,32 @@ public final class AskpassServer {
     }
 
     deinit { close() }
+
+    /// Folders that an AirSCP stopped without quitting (killed, or a test run cut off) left behind: this user's, whose
+    /// socket no one listens on any more. A running AirSCP's socket answers, so its folder stays.
+    static func removeStaleFolders() {
+        let names = (try? FileManager.default.contentsOfDirectory(atPath: "/tmp")) ?? []
+        for name in names where name.hasPrefix("airscp-askpass.") {
+            let directory = "/tmp/" + name, socketPath = directory + "/sock"
+            var info = stat()
+            // A minute old at least: a folder just made may not have its socket yet.
+            guard lstat(directory, &info) == 0, info.st_uid == getuid(), info.st_mode & S_IFMT == S_IFDIR,
+                  time(nil) - info.st_mtimespec.tv_sec > 60 else { continue }
+            if lstat(socketPath, &info) == 0 {
+                guard info.st_mode & S_IFMT == S_IFSOCK, var address = Askpass.unixAddress(socketPath) else { continue }
+                let fd = socket(AF_UNIX, SOCK_STREAM, 0)
+                guard fd >= 0 else { continue }
+                let answered = withUnsafePointer(to: &address) { pointer in
+                    pointer.withMemoryRebound(to: sockaddr.self, capacity: 1) { connect(fd, $0, socklen_t(MemoryLayout<sockaddr_un>.size)) }
+                } == 0
+                let refused = errno == ECONNREFUSED
+                Darwin.close(fd)
+                guard !answered, refused else { continue }
+                unlink(socketPath)
+            }
+            rmdir(directory)  // only when empty
+        }
+    }
 
     /// SSH_ASKPASS and friends for a command whose prompts should go to the handler for `id`.
     public func environment(for id: String) -> [String: String] {
