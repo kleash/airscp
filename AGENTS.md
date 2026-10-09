@@ -2,7 +2,7 @@
 
 AirSCP is a Mac app for SSH servers, SCP/SFTP file transfers and Windows Remote Desktop. Agents drive it over MCP.
 
-1. **Install** (macOS 13.1+): `brew install --cask kleash/tap/airscp`, then open AirSCP. 1.0.0 isn't notarized yet, so
+1. **Install** (macOS 13.1+): `brew install --cask kleash/tap/airscp`, then open AirSCP. AirSCP isn't notarized yet, so
    the first time the user clicks **Done**, then **System Settings ▸ Privacy & Security ▸ Open Anyway**.
 2. **Enable**: the user turns on **AirSCP ▸ Settings ▸ Allow AI agents to control AirSCP (MCP)**.
 3. **Connect**: `claude mcp add airscp -- /Applications/AirSCP.app/Contents/MacOS/AirSCP --mcp` (any MCP client: that

@@ -21,7 +21,7 @@ that come with macOS.
    [Releases page](https://github.com/kleash/airscp/releases), open it, and drag **AirSCP** into your
    **Applications** folder.
 2. Open **AirSCP** from your Applications folder or with Spotlight. The first time, macOS says
-   **“AirSCP” Not Opened**: Apple could not check it for malware, because AirSCP 1.0.0 isn't notarized yet. Click
+   **“AirSCP” Not Opened**: Apple could not check it for malware, because AirSCP isn't notarized yet. Click
    **Done**, then:
    1. Open **System Settings ▸ Privacy & Security** and scroll down.
    2. Next to **“AirSCP” was blocked to protect your Mac**, click **Open Anyway**.

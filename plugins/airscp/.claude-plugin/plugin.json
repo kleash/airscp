@@ -1,7 +1,7 @@
 {
   "name": "airscp",
   "displayName": "AirSCP",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Let Claude use AirSCP, the Mac app for SSH servers, SCP/SFTP file transfers and Windows Remote Desktop: connect, copy, synchronize, find and run, through AirSCP's own MCP server.",
   "author": {
     "name": "kleash",

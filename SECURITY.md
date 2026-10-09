@@ -18,7 +18,7 @@ The latest release. Fixes ship as a new release (Homebrew: `brew upgrade --cask 
 
 - The zip: `shasum -a 256 -c AirSCP-X.Y.Z.zip.sha256` (the SHA-256 is in the release notes and the Homebrew cask too),
   and once it is installed, `spctl -a -vvv -t exec /Applications/AirSCP.app` says `source=Notarized Developer ID`
-  (from 1.0.1; 1.0.0 isn't notarized).
+  (once releases are notarized; 1.0.0 and 1.1.0 aren't yet).
 - The files the release workflow built (the MCP bundle and the SBOM, and the zip when GitHub built it) come with signed
   SLSA build provenance, `AirSCP-X.Y.Z.intoto.jsonl` on the release. This checks that a file came out of this
   repository's release workflow, at the release's tag: `gh attestation verify airscp.mcpb --repo kleash/airscp`.
@@ -34,8 +34,8 @@ The latest release. Fixes ship as a new release (Homebrew: `brew upgrade --cask 
   (a 0700 socket plus a per-launch token), agents never see saved passwords, and AirSCP's confirmations stay in place.
 - New server keys and Remote Desktop certificates are shown for the user to trust, unless the user chooses otherwise
   for a host (with an orange shield wherever checks are off).
-- Release builds are signed with a Developer ID, use the hardened runtime and are notarized by Apple (from 1.0.1;
-  1.0.0 is ad-hoc signed).
+- Release builds are to be signed with a Developer ID, use the hardened runtime and be notarized by Apple, as soon as
+  the Developer ID exists; until then (1.0.0, 1.1.0) they are ad-hoc signed.
 
 More, in plain words: [Privacy and security](https://kleash.github.io/airscp/privacy-security.html).
 
