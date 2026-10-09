@@ -1139,7 +1139,8 @@ func field(_ sheet: [String: Any]?, _ id: String) -> [String: Any]? {
 // MARK: The Windows test VM (AIRSCP_WINDOWS=1)
 
 /// One coordinate space on a real Windows (1.0.0: an agent clicked what it saw in screenshot target=rdp and missed):
-/// a magenta target at physical pixels 340, 220 (120 × 80; the PowerShell that shows it is DPI-aware) is at those
+/// a magenta target at physical pixels 340, 220 (120 × 80, or wider: Windows draws no window narrower than its minimum,
+/// 136 pixels at 100 %, more at a larger scale; the PowerShell that shows it is DPI-aware) is at those
 /// pixels of the desktop's picture, and click with target rdp at a pixel of it lands on that very pixel, which Windows
 /// reports. The reply says where in words and shows the spot.
 @MainActor
@@ -1172,7 +1173,7 @@ func clickTheMagentaTarget(_ server: AgentServer, _ runner: WindowsRunner, share
                 box = box.union(CGRect(x: x, y: y, width: 1, height: 1))
             }
         }
-        return abs(box.width - 120) <= 2 && abs(box.height - 80) <= 2
+        return box.width >= 118 && abs(box.height - 80) <= 2
     }, "the target in the desktop's picture: \(box) (\(size))")
     #expect(abs(box.minX - 340) <= 1 && abs(box.minY - 220) <= 1, "\(box)")
     // The reply says which space its pixels are.
