@@ -64,6 +64,7 @@ enum MenuHelp {
         (#selector(FilePane.refresh(_:)), "List the folder again"),
         (#selector(FilePane.toggleColumnNamed(_:)), "Show or hide this column in the pane that has the focus"),
         (#selector(FilePane.toggleColumn(_:)), "Show or hide this column"),
+        (#selector(AppDelegate.toggleFullScreen(_:)), "Show the connected Windows desktop full screen, or else AirSCP's window"),
         // Go
         (#selector(FilePane.goBack(_:)), "Go back to the folder shown before"),
         (#selector(FilePane.goForward(_:)), "Go forward again"),
@@ -389,7 +390,7 @@ enum AirSCPTips {
         Windows
         • File ▸ New Remote Desktop… saves a Windows computer; double-click it to open its desktop.
         • Drop files on the desktop: Windows sees them in \\\\tsclient\\AirSCP. Copy files in Windows: paste them on the Mac.
-        • ⌘C and ⌘V work in Windows as on the Mac; Ctrl+Alt+Del and Full Screen are in the bar.
+        • ⌘C and ⌘V work in Windows as on the Mac; Ctrl+Alt+Del and Full Screen are in the bar; ⌃⌘F leaves full screen.
         • Company servers with self-signed certificates: the desktop's Advanced ▸ Server certificate can trust them \
         automatically, or check them with your company's certificate authority (best).
 

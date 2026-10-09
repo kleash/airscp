@@ -3,7 +3,7 @@ import AppKit
 import IOSurface
 
 /// The Windows desktop of an RDP session, and the keyboard and mouse for it: keys go to Windows while it has the focus,
-/// except ⌘Q (quit AirSCP) and ⌘⌃F (full screen). Dropping Finder files on it hands them to `onDrop` (Upload).
+/// except ⌘Q (quit AirSCP) and ⌃⌘F (full screen). Dropping Finder files on it hands them to `onDrop` (Upload).
 ///
 /// The desktop is the layer's contents, an IOSurface: Core Animation scales it into the view (keeping its proportions)
 /// and matches its colours (sRGB) to the screen on the GPU, so the main thread only copies what changed.
@@ -268,8 +268,8 @@ final class RDPDesktopView: NSView {
         syncModifiers(event.modifierFlags)
     }
 
-    /// Key combinations with ⌘ or Ctrl would go to AirSCP's menus: they go to Windows instead, but for ⌘Q and ⌘⌃F.
-    /// AppKit sends no key-up after ⌘ combinations, so the key is let go at once.
+    /// Key combinations with ⌘ or Ctrl would go to AirSCP's menus: they go to Windows instead, but for ⌘Q and ⌃⌘F (the
+    /// way out of full screen). AppKit sends no key-up after ⌘ combinations, so the key is let go at once.
     override func performKeyEquivalent(with event: NSEvent) -> Bool {
         guard event.type == .keyDown, window?.firstResponder === self, let session else {
             return super.performKeyEquivalent(with: event)

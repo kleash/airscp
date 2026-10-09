@@ -96,6 +96,8 @@ static UINT monitor_ready(CliprdrClientContext *cliprdr, const CLIPRDR_MONITOR_R
     s->clip_ready = true;
     send_format_list(s);  // the first one is sent even when empty
     pthread_mutex_unlock(&s->clip_lock);
+    const rdp_event event = { .type = RDP_EVENT_CLIPBOARD_READY };
+    rdp_emit(s, &event);
     return rc;
 }
 

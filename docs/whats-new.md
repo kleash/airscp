@@ -29,6 +29,11 @@ nav_order: 18
 - The horizontal scroll bar no longer covers the last file in a long folder.
 - **Debug logging on**, at the bottom of the sidebar, has a **Turn Off** button. **Help ▸ Turn On Debug Logging**
   (**Turn Off Debug Logging** while it is on) switches it too.
+- **Remote Desktop full screen shows the way out**: a note says <kbd>⌃⌘F</kbd> leaves it, and the menu bar comes
+  down at the top of the screen with **View ▸ Exit Full Screen**.
+- **The shared folder explains itself**: the bar says how to open `\\tsclient\AirSCP` in Windows, with a button that
+  copies the path. When Windows' policy blocks shared folders (Explorer shows an empty **tsclient**), the bar says so,
+  and to copy and paste files instead.
 
 ## AirSCP 1.0
 

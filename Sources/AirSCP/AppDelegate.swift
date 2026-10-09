@@ -328,6 +328,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSMenu
     /// Window ▸ the connected hosts and desktops, ⌘1…⌘9 (the item's tag is the number).
     @objc func selectConnected(_ sender: NSMenuItem) { main.selectConnected(sender.tag - 1) }
 
+    /// View ▸ Enter Full Screen (⌃⌘F): the connected Windows desktop shown fills the screen (or leaves it), else
+    /// AirSCP's window does (macOS's own full screen).
+    @objc func toggleFullScreen(_ sender: Any?) {
+        guard let main else { return }
+        if let desktop = main.fullScreenDesktop { desktop.toggleFullScreen() } else { main.window?.toggleFullScreen(sender) }
+    }
+
     @objc func showKeys(_ sender: Any?) {
         if keys == nil {
             keys = KeysWindowController(model: model, askpass: askpass) { [weak self] publicKey, id in
@@ -489,6 +496,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSMenu
             item.title = model?.debugLoggingOn == true ? "Turn Off Debug Logging" : "Turn On Debug Logging"
             enabled = !DebugLog.forced
             reason = DebugLogButton.forcedReason
+        } else if item.action == #selector(toggleFullScreen(_:)), let main {
+            let full = main.fullScreenDesktop?.isFullScreen ?? main.window?.styleMask.contains(.fullScreen) == true
+            item.title = full ? "Exit Full Screen" : "Enter Full Screen"
         }
         item.explain(enabled: enabled, reason: enabled ? nil : reason)
         return enabled
@@ -661,6 +671,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSMenu
             helpMenu,
         ].forEach(bar.addItem)
         BrowserContentController.addMenuItems(to: bar)  // the Files tab's commands
+        // Last in View, as on every Mac. Its target is fixed: while the Windows desktop is full screen, AirSCP's window
+        // isn't in the responder chain (and the window's own toggleFullScreen: would take it otherwise).
+        let fullScreen = item("Enter Full Screen", #selector(toggleFullScreen(_:)), "f", [.command, .control])
+        fullScreen.target = self
+        bar.item(withTitle: "View")?.submenu?.addItem(.separator())
+        bar.item(withTitle: "View")?.submenu?.addItem(fullScreen)
         return bar
     }
 }

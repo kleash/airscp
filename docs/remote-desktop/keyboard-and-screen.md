@@ -17,8 +17,16 @@ nav_order: 5
 ## Screen size
 
 - **Fit the window** (default): the Windows desktop follows the size of AirSCP's window.
-- A fixed size, or **Full screen**. **Full Screen** in the bar (or <kbd>⌃⌘F</kbd>) switches at any time.
+- A fixed size, or **Full screen** (below).
 - On a Retina screen, Windows gets the full resolution and scales to 200 %, so text is sharp.
+
+## Full screen
+
+- **Full Screen** in the bar, **View ▸ Enter Full Screen** or <kbd>⌃⌘F</kbd> shows the Windows desktop on the whole
+  screen. For a few seconds, a note at the top says how to leave.
+- To leave, press <kbd>⌃⌘F</kbd>. Or move the pointer to the top of the screen: the menu bar comes down. Choose
+  **View ▸ Exit Full Screen**.
+- The desktop's **Full screen** setting (under **Advanced**) opens it full screen each time.
 
 {% include shot.html name="rdp-editor-advanced" alt="Advanced settings: display, Retina resolution and ⌘ acts as Ctrl" %}
 

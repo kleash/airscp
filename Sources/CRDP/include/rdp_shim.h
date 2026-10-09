@@ -68,8 +68,12 @@ typedef enum {
     /// Windows copied files: code is how many files and folders (0: none any more), size their total bytes.
     /// Read them with rdp_session_remote_files.
     RDP_EVENT_CLIPBOARD_FILES,
-    /// The server answered the shared folder's announcement: code 0 accepted, else its NTSTATUS.
+    /// The server answered the shared folder's announcement: code 0 accepted, else its NTSTATUS (Windows answers
+    /// 0xC0000001 when its settings turn drive redirection off: Group Policy "Do not allow drive redirection").
     RDP_EVENT_SHARED_FOLDER,
+    /// Windows allows the clipboard: its side of the clipboard channel is up. None comes when its settings turn
+    /// clipboard redirection off.
+    RDP_EVENT_CLIPBOARD_READY,
 } rdp_event_type;
 
 typedef struct {

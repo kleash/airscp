@@ -90,6 +90,13 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
     /// The selected RDP entry (also when selected in the Connected section).
     var selectedEntry: RDPEntry? { model.rdpEntry(sidebar.selection?.id) }
 
+    /// What View ▸ Enter Full Screen shows full screen instead of the window: the desktop that fills the screen now
+    /// (whatever the sidebar selects), else the connected desktop shown.
+    var fullScreenDesktop: RDPWorkspaceController? {
+        desktops.values.first { $0.isFullScreen }
+            ?? selectedEntry.flatMap { desktops[$0.id] }.flatMap { $0.state == .connected ? $0 : nil }
+    }
+
     /// The connected hosts' Sessions, in the Connected section's order.
     var connectedSessions: [Session] {
         model.connected.compactMap { workspaces[$0] }.filter { $0.connection.state == .connected }.map(\.session)

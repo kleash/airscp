@@ -9,8 +9,9 @@ import SwiftUI
 /// shows its `state` in the sidebar.
 ///
 /// Files: the entry's shared Mac folder is \\tsclient\AirSCP in Windows (Upload… and dropping Finder files copy into
-/// it); files copied in Explorer come to the Mac with Paste Files to Mac…, or by themselves (up to 256 MB) when the
-/// desktop loses the focus, so ⌘V works in Finder. Text is shared both ways.
+/// it), unless Windows' settings turn drive redirection off (the bar then says so); files copied in Explorer come to
+/// the Mac with Paste Files to Mac…, or by themselves (up to 256 MB) when the desktop loses the focus, so ⌘V works in
+/// Finder. Text is shared both ways.
 @MainActor
 final class RDPWorkspaceController: NSViewController {
     let entryID: UUID
@@ -58,6 +59,8 @@ final class RDPWorkspaceController: NSViewController {
     var discardWhenEnded: [String] = []
     /// The bar's shield follows the entry's certificate check as it is edited.
     private var checks: AnyCancellable?
+    /// "Press ⌃⌘F to leave full screen", for a few seconds after the desktop fills the screen.
+    private(set) var fullScreenHint: NSPanel?
 
     init(entryID: UUID, model: AppModel, sshSession: @escaping (UUID) async throws -> Session) {
         self.entryID = entryID
@@ -236,7 +239,8 @@ final class RDPWorkspaceController: NSViewController {
             // A new copy in Windows: the Mac's clipboard no longer holds the last one.
             if self.bar.message.hasSuffix("on the Mac's clipboard.") { self.bar.message = "" }
         }
-        session.onSharedFolder = { [weak self] in self?.bar.sharedFolderReady = $0 }
+        session.onSharedFolder = { [weak self] in self?.sharedFolderAnswered($0) }
+        session.onClipboardReady = { [weak self] in self?.bar.clipboardReady = true }
         self.session = session
         desktop.session = session
         desktop.commandAsControl = entry.cmdAsCtrl
@@ -290,6 +294,7 @@ final class RDPWorkspaceController: NSViewController {
         desktop.desktopSize = .zero
         requestedSize = nil
         desktop.acceptsDrops = false
+        hideFullScreenHint()
         if desktop.isInFullScreenMode { desktop.exitFullScreenMode(options: nil) }
         pasteboardTimer?.invalidate()
         pasteboardTimer = nil
@@ -372,15 +377,75 @@ final class RDPWorkspaceController: NSViewController {
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.5, execute: work)
     }
 
-    private func toggleFullScreen() {
+    /// The desktop fills the screen (the bar's Full Screen, View ▸ Enter Full Screen, ⌃⌘F).
+    var isFullScreen: Bool { desktop.isInFullScreenMode }
+
+    /// Full screen with a way out in sight: the menu bar comes down when the pointer goes to the top (View ▸ Exit Full
+    /// Screen), over a window kept below it; AppKit's defaults hid the menu bar for good. The Dock stays hidden: Windows'
+    /// taskbar is at the bottom.
+    static let fullScreenOptions: [NSView.FullScreenModeOptionKey: Any] = [
+        .fullScreenModeAllScreens: false,
+        .fullScreenModeApplicationPresentationOptions: NSApplication.PresentationOptions([.hideDock, .autoHideMenuBar]).rawValue,
+        .fullScreenModeWindowLevel: NSWindow.Level.normal.rawValue,
+    ]
+
+    func toggleFullScreen() {
         guard state == .connected else { return }
         if desktop.isInFullScreenMode {
+            hideFullScreenHint()
             desktop.exitFullScreenMode(options: nil)
             view.window?.makeFirstResponder(desktop)
-        } else if let screen = view.window?.screen ?? NSScreen.main {
-            desktop.enterFullScreenMode(screen, withOptions: [.fullScreenModeAllScreens: false])
+        } else if let screen = view.window?.screen ?? NSScreen.main,
+                  desktop.enterFullScreenMode(screen, withOptions: Self.fullScreenOptions) {
             desktop.window?.makeFirstResponder(desktop)
+            if let window = desktop.window { showFullScreenHint(over: window) }
         }
+        bar.fullScreen = desktop.isInFullScreenMode
+    }
+
+    /// Says how to leave full screen at the top of `window` for a few seconds, then fades: nothing else on the screen
+    /// does. A panel of its own over the desktop (whose view hosts a layer: no subviews), that clicks go through.
+    func showFullScreenHint(over window: NSWindow) {
+        hideFullScreenHint()
+        let label = NSTextField(labelWithString: "Press ⌃⌘F to leave full screen")
+        label.font = .systemFont(ofSize: 15, weight: .medium)
+        label.textColor = .white
+        label.sizeToFit()
+        let size = NSSize(width: label.frame.width + 40, height: label.frame.height + 20)
+        let box = NSBox(frame: NSRect(origin: .zero, size: size))
+        box.boxType = .custom
+        box.borderWidth = 0
+        box.cornerRadius = 10
+        box.fillColor = NSColor.black.withAlphaComponent(0.75)
+        box.titlePosition = .noTitle
+        box.contentViewMargins = NSSize(width: 20, height: 10)
+        box.contentView?.addSubview(label)
+        label.setFrameOrigin(.zero)
+        let panel = NSPanel(contentRect: NSRect(origin: .zero, size: size), styleMask: [.borderless, .nonactivatingPanel],
+                            backing: .buffered, defer: false)
+        panel.isReleasedWhenClosed = false
+        panel.isOpaque = false
+        panel.backgroundColor = .clear
+        panel.hasShadow = false
+        panel.ignoresMouseEvents = true
+        panel.contentView = box
+        panel.setFrameOrigin(NSPoint(x: window.frame.midX - size.width / 2, y: window.frame.maxY - size.height - 48))
+        window.addChildWindow(panel, ordered: .above)
+        fullScreenHint = panel
+        DispatchQueue.main.asyncAfter(deadline: .now() + 3) { [weak self, weak panel] in
+            guard let self, let panel, self.fullScreenHint === panel else { return }
+            panel.animator().alphaValue = 0
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
+                if self?.fullScreenHint === panel { self?.hideFullScreenHint() }
+            }
+        }
+    }
+
+    private func hideFullScreenHint() {
+        guard let panel = fullScreenHint else { return }
+        fullScreenHint = nil
+        panel.parent?.removeChildWindow(panel)
+        panel.orderOut(nil)
     }
 
     // MARK: Questions
@@ -565,6 +630,15 @@ final class RDPWorkspaceController: NSViewController {
 
     // MARK: Shared folder
 
+    /// Windows answered the shared folder. Refused: its settings turn drive redirection off (Group Policy "Do not allow
+    /// drive redirection"), and Explorer shows "tsclient" under Network, empty. The bar says so, and files are no longer
+    /// taken for a folder Windows can't see.
+    func sharedFolderAnswered(_ accepted: Bool) {
+        bar.sharedFolderReady = accepted
+        bar.sharedFolderRefused = !accepted
+        if !accepted { desktop.acceptsDrops = false }
+    }
+
     /// The entry's shared folder (made if missing), or nil (with an error shown) when it can't be.
     private func sharedFolder(for entry: RDPEntry) -> URL? {
         let folder = entry.sharedFolder.isEmpty ? defaultSharedFolder() : URL(fileURLWithPath: entry.sharedFolder)
@@ -591,7 +665,8 @@ final class RDPWorkspaceController: NSViewController {
     /// Copies Mac files into the shared folder, where Windows sees them as \\tsclient\AirSCP\<name> (a name Windows
     /// can't show gets "_" where it can't: `RDPSession.windowsName`).
     func upload(_ urls: [URL]) {
-        guard let entry, entry.shareFolder, let folder = sharedFolder(for: entry), !urls.isEmpty else { return }
+        guard let entry, entry.shareFolder, !bar.sharedFolderRefused, let folder = sharedFolder(for: entry), !urls.isEmpty
+        else { return }
         // The shared folder itself, or a folder holding it, would be copied into itself without end.
         func real(_ url: URL) -> String {
             guard let path = realpath(url.path, nil) else { return url.standardizedFileURL.path }
@@ -750,6 +825,12 @@ final class RDPBar: ObservableObject {
     @Published var size = ""
     @Published var sharing = false
     @Published var sharedFolderReady = false
+    /// Windows' settings turn drive redirection off: \\tsclient\AirSCP isn't there.
+    @Published var sharedFolderRefused = false
+    /// Windows allows the clipboard (files can be copied and pasted instead of shared).
+    @Published var clipboardReady = false
+    /// The desktop fills the screen.
+    @Published var fullScreen = false
     /// Files Windows copied: how many, and their total size.
     @Published var remoteFiles: (count: Int, bytes: UInt64) = (0, 0)
     /// Copying files from Windows: how far (0…1); nil when not.
@@ -763,6 +844,9 @@ final class RDPBar: ObservableObject {
         size = ""
         sharing = false
         sharedFolderReady = false
+        sharedFolderRefused = false
+        clipboardReady = false
+        fullScreen = false
         remoteFiles = (0, 0)
         progress = nil
         message = ""
@@ -823,14 +907,30 @@ struct RDPBarView: View {
 
     static let contentHeight: CGFloat = 28
 
+    /// Where Windows sees the shared folder. Always given to SwiftUI as a String: a text literal's backslashes are read
+    /// as Markdown (the tooltip said \tsclient\AirSCP).
+    static let sharedPath = #"\\tsclient\AirSCP"#
+
     @ViewBuilder private var connected: some View {
         Group {
             buttons
         }
         .controlSize(.small)
         Spacer()
+        if bar.sharing && bar.sharedFolderRefused && bar.message.isEmpty {
+            Image(systemName: "exclamationmark.triangle.fill").foregroundColor(.orange).accessibilityHidden(true)
+        }
         Text(status).font(.caption).foregroundColor(.secondary).lineLimit(2).truncationMode(.tail)
-            .help("The desktop's size in pixels, and where Windows sees the shared Mac folder")
+            .help(bar.sharing && bar.sharedFolderRefused
+                  ? "Windows' settings turn drive redirection off (Group Policy), so " + Self.sharedPath + " isn't there"
+                  : "The desktop's size in pixels, and how to open the shared Mac folder in Windows")
+        if bar.sharing && bar.sharedFolderReady {
+            Button(action: copySharedFolder) { Image(systemName: "doc.on.doc") }
+                .buttonStyle(.borderless)
+                .accessibilityLabel("Copy " + Self.sharedPath)
+                .accessibilityIdentifier("rdp.copySharedFolder")
+                .help("Copy " + Self.sharedPath + ", to paste into Explorer's address bar or Run (Win+R) in Windows")
+        }
         Button("Disconnect", action: actions.disconnect).controlSize(.small)
             .help("End the Remote Desktop session (Windows keeps your apps open)")
     }
@@ -838,11 +938,14 @@ struct RDPBarView: View {
     @ViewBuilder private var buttons: some View {
         Button(action: actions.ctrlAltDel) { Label("Ctrl+Alt+Del", systemImage: "lock") }
             .help("Send Ctrl+Alt+Del (lock, change password, Task Manager)")
-        Button(action: actions.fullScreen) { Label("Full Screen", systemImage: "arrow.up.left.and.arrow.down.right") }
-            .help("Show the desktop full screen; ⌘⌃F leaves it again")
-        if bar.sharing {
+        Button(action: actions.fullScreen) {
+            Label(bar.fullScreen ? "Exit Full Screen" : "Full Screen",
+                  systemImage: bar.fullScreen ? "arrow.down.right.and.arrow.up.left" : "arrow.up.left.and.arrow.down.right")
+        }
+        .help(bar.fullScreen ? "Show the desktop in AirSCP's window again (⌃⌘F)" : "Show the desktop full screen; ⌃⌘F leaves it again")
+        if bar.sharing && !bar.sharedFolderRefused {
             Button(action: actions.upload) { Label("Send Files…", systemImage: "square.and.arrow.up") }
-                .help("Copy Mac files into the shared folder; Windows sees them as \\\\tsclient\\AirSCP")
+                .help("Copy Mac files into the shared folder; Windows sees them as " + Self.sharedPath)
             Button(action: actions.showSharedFolder) { Label("Shared Folder", systemImage: "folder") }
                 .help("Show the shared folder in Finder")
         }
@@ -864,8 +967,17 @@ struct RDPBarView: View {
     private var status: String {
         var parts = [bar.message.isEmpty ? bar.size : bar.message]
         if bar.sharing && bar.message.isEmpty {
-            parts.append(bar.sharedFolderReady ? "Shared folder: \\\\tsclient\\AirSCP" : "Shared folder: waiting for Windows")
+            parts.append(bar.sharedFolderRefused
+                         ? "Windows' policy blocks the shared folder" + (bar.clipboardReady ? ": copy and paste files instead" : "")
+                         : bar.sharedFolderReady ? "In Windows, open " + Self.sharedPath : "Shared folder: waiting for Windows")
         }
         return parts.filter { !$0.isEmpty }.joined(separator: " · ")
+    }
+
+    /// The shared folder's path on the clipboard, which Windows gets when the desktop has the focus again.
+    private func copySharedFolder() {
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(Self.sharedPath, forType: .string)
+        bar.message = "Copied " + Self.sharedPath + ": paste it into Explorer's address bar in Windows"
     }
 }

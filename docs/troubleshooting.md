@@ -41,6 +41,8 @@ common ones.
 | **The user name or password is incorrect** | A company account needs its domain (the Domain field, or `DOMAIN\user`). |
 | **AirSCP couldn't reach the server** | Check the address, that Remote Desktop is on in Windows, and your VPN. Allow AirSCP on the local network if macOS asks. |
 | **The certificate of … has changed** | Trust it only if you know why it changed. |
+| **Windows' policy blocks the shared folder** | The Windows computer doesn't allow drive redirection (Group Policy **Do not allow drive redirection**): `\\tsclient` is empty there. Copy and paste files instead, or ask its administrator. See [Copy files](remote-desktop/copy-files.md). |
+| **Press ⌃⌘F to leave full screen** | The Windows desktop fills the screen. Press <kbd>⌃⌘F</kbd>, or move the pointer to the top of the screen and choose **View ▸ Exit Full Screen**. |
 
 ## Turn on debug logs
 
