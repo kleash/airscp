@@ -21,6 +21,8 @@ final class HostWorkspace: NSViewController {
     private(set) var monitor: MonitorController!
     let tabs = NSTabViewController()
     private var tunnels: NSViewController!
+    /// The Terminal tab: kept across new Sessions, as Tunnels is (its shell starts again on the new connection).
+    private(set) var terminal: TerminalController!
     /// The host's name, state, address and route, and the server's pulse, above the tabs.
     private var header: NSHostingView<WorkspaceHeader>?
     private let split = NSSplitView()
@@ -43,6 +45,7 @@ final class HostWorkspace: NSViewController {
         tabs.canPropagateSelectedChildViewControllerTitle = false
         tunnels = NSHostingController(rootView: TunnelsView(tunnels: TunnelsModel(connection: connection, model: model),
                                                             connection: connection, app: model))
+        terminal = TerminalController(workspace: self)
         makeTabs(for: connection.session)
         connection.ask = { [weak self] prompt, reply in
             guard let self else { return reply(nil) }
@@ -244,6 +247,11 @@ final class HostWorkspace: NSViewController {
         tabs.selectedTabViewItemIndex = 2
     }
 
+    func showTerminal() {
+        tabs.selectedTabViewItemIndex = 3
+        view.window?.makeFirstResponder(terminal.terminal)
+    }
+
     var showsCommandLog: Bool { logPane != nil }
 
     /// Shows or hides the command log below the tabs. Hidden, it is taken away altogether: a SwiftUI list kept off
@@ -284,11 +292,13 @@ final class HostWorkspace: NSViewController {
             item.label = label
             item.toolTip = ["Files": "Browse and copy files between this Mac and the host",
                             "Monitor": "CPU, memory, disks, processes and ports of the host (Linux)",
-                            "Tunnels": "Port forwards through this connection"][label]
+                            "Tunnels": "Port forwards through this connection",
+                            "Terminal": "A shell on the host in AirSCP, through this connection: it knows files"][label]
             return item
         }
         if tabs.tabViewItems.isEmpty {
-            tabs.tabViewItems = [item(browser, "Files"), item(monitor, "Monitor"), item(tunnels, "Tunnels")]
+            tabs.tabViewItems = [item(browser, "Files"), item(monitor, "Monitor"), item(tunnels, "Tunnels"),
+                                 item(terminal, "Terminal")]
         } else {
             // A new Session: only the Files and Monitor tabs are replaced. The Tunnels tab keeps its item (a second item
             // for the same controller makes NSTabViewController throw when that tab is the selected one).
@@ -308,6 +318,7 @@ final class HostWorkspace: NSViewController {
     private func stateChanged(_ state: Session.State) {
         browser.stateChanged(state)
         monitor.stateChanged(state)
+        terminal.stateChanged(state)
         switch state {
         case .connected:
             let work = whenConnected

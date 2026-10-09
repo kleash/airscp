@@ -177,6 +177,11 @@ AirSCP was installed with `./install.sh`).
   `menu path="File > Import Hosts…" file=/tmp/hosts.json` (the reply's sheet says how many were imported).
   WinSCP's sites: `menu path="File > Import from WinSCP…" file=/path/WinSCP.ini` (its .ppk keys beside it; the
   reply's sheet says how many hosts were made and what was left out).
+- Terminal tab (a shell inside AirSCP, riding the connection): `menu path="Host > Terminal Tab"`, then
+  `type target=terminal text="ls -la\n"` (a line break is Return) and `key target=terminal combo=ctrl+c`; `snapshot` →
+  terminal: running, lines (the last `rows`, scrollback included), cursor, fullScreen, directory/title when the shell
+  says them. `wait until=text text=…` waits for output while the tab is shown. After `exit`, `key
+  target=terminal combo=return` starts a new shell. Prefer `go`/`open`/menus for files; the terminal is for commands.
 - Terminal: `menu path="Host > Open Terminal"` opens Terminal.app, and "Copy ssh Command" fills the clipboard: their
   result is outside AirSCP. Run a command and read its output: `menu path="Host > Run Command…"` →
   `set id=runCommand.command value="uname -a"` (or a snippet: `set id=runCommand.snippet value=<its name>`) →

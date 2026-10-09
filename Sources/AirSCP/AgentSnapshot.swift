@@ -138,9 +138,10 @@ struct AXNode {
 /// The snapshot tool's sections, read from the controllers' own state (nothing secret: no Keychain reads, password
 /// fields as "•••(n)").
 extension AgentServer {
-    /// "find", "sync" and "configImport" are there only while their sheet is open, "rdp" while a desktop is selected.
+    /// "find", "sync" and "configImport" are there only while their sheet is open, "rdp" while a desktop is selected,
+    /// "terminal" while the Terminal tab is shown.
     static let defaultSections: Set<String> = ["sidebar", "workspace", "panes", "transfers", "rdp", "sheets", "find", "sync",
-                                               "configImport"]
+                                               "configImport", "terminal"]
 
     func snapshot(_ arguments: [String: Any]) -> [String: Any] {
         let include = (arguments["include"] as? [String]).map(Set.init) ?? Self.defaultSections
@@ -167,6 +168,10 @@ extension AgentServer {
         }
         if include.contains("monitor"), let monitor = main?.selectedWorkspace?.monitor { result["monitor"] = monitorJSON(monitor.model) }
         if include.contains("rdp"), let desktop = selectedDesktop { result["rdp"] = rdpJSON(desktop) }
+        if include.contains("terminal"), let workspace = main?.selectedWorkspace, workspace.tabs.selectedTabViewItemIndex == 3
+            || include.count == 1 {
+            result["terminal"] = terminalJSON(workspace.terminal, lines: rows)
+        }
         if include.contains("sheets") { result["sheets"] = sheetsJSON() }
         if include.contains("find"), let find = findModel { result["find"] = findJSON(find, rows: rows) }
         if include.contains("sync"), let sync = syncModel { result["sync"] = syncJSON(sync, rows: rows) }
@@ -520,6 +525,21 @@ extension AgentServer {
                                    "remoteFiles": ["count": bar.remoteFiles.count, "bytes": bar.remoteFiles.bytes]]
         if let progress = bar.progress { json["progress"] = progress }
         if case .disconnected(let error) = desktop.state { json["error"] = error.message }
+        return json
+    }
+
+    // MARK: Terminal (PLAN.md W)
+
+    /// The Terminal tab's shell: running, its folder and title as the shell said them, the cursor, and the text of the
+    /// last `lines` lines (scrollback included), wrapped lines joined.
+    func terminalJSON(_ terminal: TerminalController, lines: Int = 200) -> [String: Any] {
+        guard let session = terminal.session else { return ["running": false] }
+        let screen = session.screen
+        var json: [String: Any] = ["running": session.running, "columns": screen.columns, "rows": screen.rows,
+                                   "cursor": ["x": screen.cursorX, "y": screen.cursorY], "fullScreen": screen.alternateScreen,
+                                   "lines": Array(screen.text.components(separatedBy: "\n").suffix(max(lines, 1)))]
+        if let directory = screen.directory { json["directory"] = directory }
+        if !screen.title.isEmpty { json["title"] = screen.title }
         return json
     }
 

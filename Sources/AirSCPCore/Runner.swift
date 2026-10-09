@@ -361,7 +361,7 @@ public enum Runner {
         let spawned = logged ? OpenSSH.verbose(argv) : argv
         if onTerminal {
             let (cArgs, cEnv) = cStrings(spawned, environment: environment, debug: logged)
-            let pid = cpty_spawn(argv[0], cArgs, cEnv, stdinFD, errPipe[1], 512, &master)
+            let pid = cpty_spawn(argv[0], cArgs, cEnv, stdinFD, errPipe[1], 512, 24, &master)
             let failure = errno
             freeCStrings(cArgs, cEnv)
             if master >= 0 { _ = fcntl(master, F_SETFD, FD_CLOEXEC) }
@@ -556,6 +556,23 @@ public enum Runner {
         env["PORTER_DEBUG"] = nil
         env["AIRSCP_DEBUG"] = debug ? "1" : nil
         return env
+    }
+
+    /// Starts `argv` on a new pseudo-terminal of `columns` × `rows` (its standard input, output and error), for AirSCP's
+    /// own terminal: returns the child's pid and the terminal's master side (close-on-exec), which the caller reads,
+    /// writes, resizes (`cpty_resize`), closes and waits for.
+    public static func spawnOnTerminal(_ argv: [String], environment: [String: String], columns: Int, rows: Int) throws
+        -> (pid: pid_t, master: Int32) {
+        let (cArgs, cEnv) = cStrings(argv, environment: environment, debug: false)
+        var master: Int32 = -1
+        let pid = cpty_spawn(argv[0], cArgs, cEnv, -1, -1, UInt16(clamping: columns), UInt16(clamping: rows), &master)
+        let failure = errno
+        freeCStrings(cArgs, cEnv)
+        guard pid > 0, master >= 0 else {
+            throw AirSCPError(.other, "Can't start \(argv[0]): \(String(cString: strerror(failure)))")
+        }
+        _ = fcntl(master, F_SETFD, FD_CLOEXEC)
+        return (pid, master)
     }
 
     private static func freeCStrings(_ args: [UnsafeMutablePointer<CChar>?], _ env: [UnsafeMutablePointer<CChar>?]) {

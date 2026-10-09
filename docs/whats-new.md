@@ -7,6 +7,10 @@ nav_order: 18
 
 ## AirSCP 1.1.0
 
+- **A terminal inside AirSCP**: each host has a **Terminal** tab (**Host ▸ Terminal Tab**, <kbd>⌃⌘T</kbd>) with a
+  shell on the server, through the same connection. Right-click a file name in its output to show it in Files,
+  download it, edit it or copy its path; drop Finder files on it to upload them where you are. See
+  [The Terminal tab](commands/terminal-tab.md).
 - **Import your sites from WinSCP**: **File ▸ Import from WinSCP…** reads the WinSCP.ini that WinSCP exports and makes
   hosts with their groups, keys (.ppk files), tunnels and HTTP proxies. Saved passwords stay behind. See
   [Import your sites from WinSCP](connecting/import-from-winscp.md).

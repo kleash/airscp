@@ -16,4 +16,5 @@ one.
 - [Run a command](run-a-command.md)
 - [Save commands as snippets](snippets.md)
 - [Open a terminal](open-a-terminal.md)
+- [The Terminal tab](terminal-tab.md): a shell inside AirSCP that knows files
 - [See the commands AirSCP ran](command-log.md)

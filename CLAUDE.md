@@ -73,7 +73,7 @@ sections win). User docs: `docs/` (published at https://kleash.github.io/airscp/
 | `Sources/AirSCP/main.swift` | Helper modes first (`--proxy-connect`, `--mcp`, `--agent`, askpass when `AIRSCP_ASKPASS_SOCK` is set), then the app |
 | `…/AppDelegate.swift`, `MainWindow.swift`, `HostsSidebar.swift`, `HostWorkspace.swift` | Menu bar, the one main window, sidebar, per-host workspace |
 | `…/BrowserContent.swift`, `FilePane.swift`, `FileActions.swift`, `FileSheets.swift`, `Synchronize.swift` | The Files tab |
-| `…/TransfersPanel.swift`, `MonitorTab.swift`, `Tunnels.swift`, `RDPWorkspace.swift`, `RDPDesktopView.swift` | Panels and tabs |
+| `…/TransfersPanel.swift`, `MonitorTab.swift`, `Tunnels.swift`, `TerminalTab.swift`, `RDPWorkspace.swift`, `RDPDesktopView.swift` | Panels and tabs (TerminalTab: the shell inside AirSCP over Core's `TerminalScreen` + `TerminalSession`) |
 | `…/AgentServer.swift`, `AgentSnapshot.swift` | Agent control inside the app: socket, tools, in-process accessibility tree, screenshots |
 | `…/Help.swift` | Tooltips of menu commands, Help menu, the docs URL table (`HelpPage`) |
 | `…/Themes.swift` | The Night Harbor (dark) and Paper (light) looks from system colours: ground, content, bar, pill; chips, dots, pills, bars, cards (`card()`), and `primaryTint()` for a sheet's default button (PLAN.md O.1) |

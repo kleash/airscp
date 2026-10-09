@@ -207,6 +207,20 @@ public enum OpenSSH {
             + (command == nil ? [host.hostname] : ["-t", host.hostname, command!])
     }
 
+    /// The remote command for AirSCP's own terminal: the login shell (in `directory`, else the login folder), after a
+    /// line that tells the terminal the shell's pid (AirSCP's OSC 1337;AirSCPPid, which it doesn't show): the shell is
+    /// sh's own process once it execs, so its folder can be read on the server (`processDirectory`).
+    public static func terminalShell(in directory: String?) -> String {
+        // In $HOME without a folder: the home the Files pane shows (sshd may start elsewhere when it differs).
+        viaSh("printf '\\033]1337;AirSCPPid=%s\\007' \"$$\"; cd " + (directory.map(Quote.shell) ?? "\"$HOME\"")
+              + " 2>/dev/null; exec \"$SHELL\" -l")
+    }
+
+    /// A shell command printing the current folder of process `pid` on the server: Linux's /proc, else lsof.
+    public static func processDirectory(_ pid: Int) -> String {
+        "readlink /proc/\(pid)/cwd 2>/dev/null || lsof -a -p \(pid) -d cwd -Fn 2>/dev/null | sed -n 's/^n//p'"
+    }
+
     /// The remote command for "Open Terminal Here": the login shell, started in `directory` (`viaSh`).
     public static func shellIn(_ directory: String) -> String {
         viaSh("cd " + Quote.shell(directory) + " && exec \"$SHELL\" -l")

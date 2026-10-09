@@ -836,8 +836,32 @@ final class AgentServer {
         window.makeKey()
     }
 
+    /// The selected host's terminal (target terminal): its tab shown, its shell running.
+    private func terminalView() throws -> TerminalView {
+        guard let workspace = main?.selectedWorkspace else { throw Failure("Select a host first: select pane=sidebar names=[\"web\"].") }
+        if workspace.tabs.selectedTabViewItemIndex != 3 { workspace.showTerminal() }
+        guard workspace.terminal.session?.running == true else {
+            throw Failure(workspace.session.state == .connected ? "The terminal's shell isn't running: key combo=return target=terminal starts a new one."
+                          : "\(workspace.host.displayName) isn't connected: menu path=\"Host > Connect\" first.")
+        }
+        return workspace.terminal.terminal
+    }
+
     private func key(_ arguments: [String: Any]) async throws -> [String: Any] {
         guard let combo = arguments["combo"] as? String else { throw Failure("key needs a combo, e.g. \"cmd+shift+n\".") }
+        if (arguments["target"] as? String)?.lowercased() == "terminal" {
+            let keys = try KeyCombo(combo)
+            let workspace = main?.selectedWorkspace
+            if workspace?.terminal.session?.running != true, [36, 76].contains(keys.keyCode), let workspace, workspace.session.state == .connected {
+                workspace.showTerminal()
+                _ = workspace.terminal.restartIfEnded()
+                return await acted()
+            }
+            let view = try terminalView()
+            let (down, _) = keys.events(window: try view.window ?? mainWindow)
+            view.keyDown(with: down)
+            return await acted()
+        }
         if ["rdp", "desktop"].contains((arguments["target"] as? String)?.lowercased()) {
             // The Windows key (⊞) is no Mac key: it goes to Windows as its own key, held while the rest is pressed.
             let (rest, windowsKey) = KeyCombo.windowsKey(in: combo)
@@ -925,6 +949,12 @@ final class AgentServer {
     private func type(_ arguments: [String: Any]) async throws -> [String: Any] {
         guard let text = arguments["text"] as? String else { throw Failure("type needs text.") }
         let target = (arguments["target"] as? String)?.lowercased()
+        if target == "terminal" {
+            // As typed: a line break is Return. A long text goes as a paste.
+            let view = try terminalView()
+            if text.count > 1000 { view.session?.paste(text) } else { view.session?.send(text.replacingOccurrences(of: "\n", with: "\r")) }
+            return await acted()
+        }
         if target == "rdp" || target == "desktop" {
             guard text.count <= 1000 else {
                 throw Failure("That's long to type key by key (\(text.count) characters): copy it as a file and send it with drop.")

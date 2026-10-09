@@ -580,7 +580,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSMenu
 
     // MARK: Menu bar
 
-    /// Shortcuts taken here: ⌘N New Host, ⌘K Connect, ⌘T Open Terminal, ⌘E Disconnect, ⇧⌘R Run Command,
+    /// Shortcuts taken here: ⌘N New Host, ⌘K Connect, ⌘T Open Terminal, ⌃⌘T Terminal Tab, ⌘E Disconnect, ⇧⌘R Run Command,
     /// ⇧⌘C Copy ssh Command, ⌥⌘L Command Log, ⌃⌘S Sidebar, ⌘0 AirSCP (the main window), ⌘1…⌘9 the connected hosts,
     /// ⌘, Settings, ⌘F Find. The browser's file commands (BrowserContentController) keep Finder's: ⇧⌘N, ⌘D, ⌘I, ⌘⌫, ⌘[ and so on.
     func mainMenu() -> NSMenu {
@@ -697,6 +697,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSMenu
                 .separator(),
                 item("Run Command…", #selector(MainWindowController.runCommand(_:)), "R"),
                 item("Tunnels", #selector(MainWindowController.showTunnels(_:))),
+                item("Terminal Tab", #selector(MainWindowController.showTerminal(_:)), "t", [.command, .control]),
                 item("Copy ssh Command", #selector(MainWindowController.copySSHCommand(_:)), "C"),
                 .separator(),
                 item("Edit…", #selector(MainWindowController.editHost(_:))),
