@@ -182,6 +182,13 @@ AirSCP was installed with `./install.sh`).
   terminal: running, lines (the last `rows`, scrollback included), cursor, fullScreen, directory/title when the shell
   says them. `wait until=text text=…` waits for output while the tab is shown. After `exit`, `key
   target=terminal combo=return` starts a new shell. Prefer `go`/`open`/menus for files; the terminal is for commands.
+- Certificate Manager: `menu path="Tools > Certificate Manager…"` (its controls `in="window:Certificate Manager"`);
+  open files with `press id=certificates.open files=[…]` (a password sheet: `set id=certificates.password`, `press
+  title=Open`); `select in="window:Certificate Manager" names=["Certificate: web.example.com"]` (rows read "Certificate: …",
+  "CA certificate: …", "Private key: RSA 2048"); `snapshot include=["elements"]` reads the details; buttons "Save PEM…",
+  "Save DER…", "Save Chain…", "PKCS#12…" (`certificates.p12Name`, `certificates.p12Password`, then "Save…" with
+  `file=`), "Save Key…" (`certificates.keyPassphrase`), "Public Key…", all taking `file=`. A server's chain: `menu
+  path="Tools > View Server Certificate…"`, `set id=certificates.server value=host:port`, `press title=View`.
 - Terminal: `menu path="Host > Open Terminal"` opens Terminal.app, and "Copy ssh Command" fills the clipboard: their
   result is outside AirSCP. Run a command and read its output: `menu path="Host > Run Command…"` →
   `set id=runCommand.command value="uname -a"` (or a snippet: `set id=runCommand.snippet value=<its name>`) →

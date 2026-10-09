@@ -14,6 +14,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSMenu
     private var askpass: AskpassServer!
     var main: MainWindowController!
     private var keys: KeysWindowController?
+    private(set) var certificates: CertificateManagerWindowController?
     private var snippets: NSWindow?
     private var settings: NSWindow?
     /// Help ▸ AirSCP Tips and Help ▸ Agent Guide.
@@ -344,6 +345,28 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSMenu
         keys?.showWindow(nil)
         let model = keys?.keys
         Task { await model?.refresh() }
+    }
+
+    /// Tools ▸ New Key Pair… and Import PuTTY Key…: the Keys window, with that sheet.
+    @objc func newKeyPair(_ sender: Any?) {
+        showKeys(sender)
+        keys?.keys.request = .newKey
+    }
+
+    @objc func importPuTTYKey(_ sender: Any?) {
+        showKeys(sender)
+        keys?.keys.request = .importKey
+    }
+
+    @objc func showCertificateManager(_ sender: Any?) {
+        if certificates == nil { certificates = CertificateManagerWindowController() }
+        certificates?.showWindow(nil)
+    }
+
+    /// Tools ▸ View Server Certificate…: the Certificate Manager, asking for a server.
+    @objc func viewServerCertificate(_ sender: Any?) {
+        showCertificateManager(sender)
+        certificates?.model.askServer = true
     }
 
     @objc func showSnippets(_ sender: Any?) {
@@ -710,6 +733,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSMenu
                 groupMenu("Delete Group"),
                 .separator(),
                 item("Proxies…", #selector(MainWindowController.showProxies(_:))),
+            ]),
+            menu("Tools", [
+                item("Certificate Manager…", #selector(showCertificateManager(_:))),
+                item("View Server Certificate…", #selector(viewServerCertificate(_:))),
+                .separator(),
+                item("New Key Pair…", #selector(newKeyPair(_:))),
+                item("Import PuTTY Key…", #selector(importPuTTYKey(_:))),
             ]),
             windowMenu,
             helpMenu,

@@ -49,6 +49,9 @@ final class KeysModel: ObservableObject {
     /// A file dropped on the window's list (by a drag, or by an agent's `drop target=keys`): the window opens Import
     /// Key for it.
     @Published var dropped: URL?
+    /// Tools ▸ New Key Pair… or Import PuTTY Key…: the window opens that sheet.
+    enum Request { case newKey, importKey }
+    @Published var request: Request?
     /// The user cancelled a passphrase prompt of the running ssh-keygen or ssh-add: it gets no more answers, and the
     /// operation is undone. (Tools take a cancel as an empty answer: ssh-keygen would make a key without a passphrase.)
     private(set) var cancelled = false
@@ -278,6 +281,10 @@ struct KeysView: View {
             .onReceive(keys.$dropped.compactMap { $0 }) { url in
                 keys.dropped = nil
                 startImport(url)
+            }
+            .onReceive(keys.$request.compactMap { $0 }) { request in
+                keys.request = nil
+                if request == .newKey { startNewKey() } else { chooseImport() }
             }
             HStack {
                 Button("New Key Pair…") { startNewKey() }

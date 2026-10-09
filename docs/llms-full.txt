@@ -1937,6 +1937,143 @@ types their names at the prompt.
 
 ---
 
+Source: https://kleash.github.io/airscp/certificates/
+
+# Certificates and keystores
+
+**Tools ▸ Certificate Manager…** does the everyday certificate work without `openssl` or `keytool` commands. Open a
+certificate, key or keystore, see what is in it and when it expires, and save it in the format another system wants.
+Everything happens on this Mac.
+
+## Pages
+
+- [Open and check certificates](https://kleash.github.io/airscp/certificates/open-and-check.html): details, expiry, which key goes with which certificate.
+- [Convert and export](https://kleash.github.io/airscp/certificates/convert-and-export.html): PEM, DER, the chain, keys, PKCS#12.
+- [See a server's certificate](https://kleash.github.io/airscp/certificates/server-certificate.html): what an HTTPS, LDAPS or mail server sends.
+
+## Tips
+
+- After each action AirSCP shows the `openssl` (or `keytool`) command that does the same. **Copy Command** puts it on
+  the clipboard, to reuse it on a server.
+- **Tools ▸ New Key Pair…** and **Tools ▸ Import PuTTY Key…** open the [Keys](https://kleash.github.io/airscp/keys/) window for SSH keys.
+
+
+---
+
+Source: https://kleash.github.io/airscp/certificates/open-and-check.html
+
+# Open and check certificates
+
+## Steps
+
+1. Choose **Tools ▸ Certificate Manager…**.
+2. Click **Open…**, or drop files on the window. It reads:
+   - certificates: `.pem`, `.crt`, `.cer`, `.der`, one or many in a file;
+   - chains: `.p7b`, `.p7c`;
+   - PKCS#12: `.p12`, `.pfx`;
+   - Java keystores: `.jks`;
+   - private keys (RSA, EC, Ed25519; PKCS#1, SEC1, PKCS#8, encrypted or not), public keys and certificate requests.
+3. A file with a password (PKCS#12, a keystore, an encrypted key) asks for it.
+4. Select an item in the list to see its details.
+
+## What the details show
+
+- **Subject** and **Issuer**: who the certificate is for, and who signed it.
+- **Names (SAN)**: the host names and addresses it is valid for.
+- **Valid until**: orange when it expires within 30 days, red once it has expired. The list's icons use the same
+  colours.
+- **Key usage**, **Extended key usage** and **Certificate authority**: what the certificate may be used for.
+- **Private key**: whether a key that goes with it is open. A key's line says which certificate it goes with.
+- **Issued by (open)**: the certificate that signed it, when that one is open too. The list shows each file's
+  certificates in chain order, the server's own first.
+- **SHA-256** and **SHA-1**: fingerprints, to compare with what someone sent you.
+
+## Tips
+
+- Open the certificate, its key and the CA's certificate together: AirSCP matches them, and can then make a chain or a
+  PKCS#12 file. See [Convert and export](https://kleash.github.io/airscp/certificates/convert-and-export.html).
+- **Close File** takes a file out of the list. The file itself stays where it is.
+
+## If something goes wrong
+
+- **“That password didn't open it”**: check the password; PKCS#12 passwords are case-sensitive.
+- **“The key … has a password of its own”**: in a Java keystore, a key can have another password than the store.
+  Type the key's password.
+- **“AirSCP doesn't read RC2-40 encryption”**: the file was made with `openssl pkcs12 -legacy` or by an old Windows.
+  Export it again with AES or 3DES.
+- **“AirSCP doesn't read JCEKS”**: convert the keystore to PKCS#12 with `keytool -importkeystore`.
+
+
+---
+
+Source: https://kleash.github.io/airscp/certificates/convert-and-export.html
+
+# Convert and export
+
+Select an item in the Certificate Manager, then use the buttons below its details. Each asks where to save.
+
+## For a certificate
+
+- **Save PEM…**: Base64 text (`.pem`, `.crt`), what most Linux servers and tools want.
+- **Save DER…**: binary (`.cer`, `.der`), for Windows and Java.
+- **Save Chain…**: the certificate followed by its issuers (those open in the window), in one PEM file, as web servers
+  such as nginx want.
+- **PKCS#12…**: the certificate, its private key and its chain in one file protected by a password (`.p12`, `.pfx`).
+  Open the certificate's private key first.
+- **Public Key…**: only its public key.
+
+## For a private key
+
+- **Save Key…**: as PEM. Type a passphrase to encrypt it (AES-256), or leave it empty. **Traditional format** writes
+  `BEGIN RSA PRIVATE KEY` (or `EC`) for older software.
+- **PKCS#12…**: the key with its certificate, when that is open.
+
+## PKCS#12 options
+
+- **Friendly name**: the name Windows and keystores show for the entry. Optional.
+- **Compatible with older systems**: 3DES and SHA-1 instead of AES-256 and SHA-256. Only for Java 8 or Windows before
+  2019, which can't open the modern file.
+
+## Tips
+
+- Saved keys and PKCS#12 files are readable by you only.
+- The line at the bottom shows the `openssl` command that makes the same file. **Copy Command** copies it.
+
+
+---
+
+Source: https://kleash.github.io/airscp/certificates/server-certificate.html
+
+# See a server's certificate
+
+Check what certificate a website, LDAP or mail server sends, and whether this Mac trusts it.
+
+## Steps
+
+1. Choose **Tools ▸ View Server Certificate…** (or click **Server…** in the Certificate Manager).
+2. Type the server, with its port when it isn't 443: `example.com`, `ldap.example.com:636`, `mail.example.com:465`.
+3. Click **View**.
+
+The server's certificates appear in the list, its own first, with a line that says whether this Mac trusts them for
+that name, and why not.
+
+## Tips
+
+- Only the TLS handshake happens: nothing else is sent to the server.
+- Save the server's certificates like any other: for example **Save Chain…** to give a Java truststore the server's
+  CA.
+- The command shown is `openssl s_client`, to look again from a server that has openssl.
+
+## If something goes wrong
+
+- **“Can't get the certificate”**: the server isn't reachable from this Mac on that port, or it doesn't speak TLS
+  there (STARTTLS ports such as 25 and 587 start in plain text and aren't read).
+- It stays at **“Connecting…”**: a firewall app on this Mac (such as LuLu or Little Snitch) may be asking whether
+  AirSCP may connect. Allow it.
+
+
+---
+
 Source: https://kleash.github.io/airscp/keys/
 
 # Keys
@@ -2402,6 +2539,10 @@ Source: https://kleash.github.io/airscp/whats-new.html
 
 ## AirSCP 1.1.0
 
+- **Certificate Manager**: **Tools ▸ Certificate Manager…** opens certificates, keys, chains, PKCS#12 files and Java
+  keystores, shows their details and expiry, and saves them as PEM, DER, chains, keys or PKCS#12, each with the
+  `openssl` command that does the same. **Tools ▸ View Server Certificate…** shows what a TLS server sends. See
+  [Certificates and keystores](https://kleash.github.io/airscp/certificates/).
 - **A terminal inside AirSCP**: each host has a **Terminal** tab (**Host ▸ Terminal Tab**, <kbd>⌃⌘T</kbd>) with a
   shell on the server, through the same connection. Right-click a file name in its output to show it in Files,
   download it, edit it or copy its path; drop Finder files on it to upload them where you are. See
@@ -2666,6 +2807,13 @@ AirSCP was installed with `./install.sh`).
   terminal: running, lines (the last `rows`, scrollback included), cursor, fullScreen, directory/title when the shell
   says them. `wait until=text text=…` waits for output while the tab is shown. After `exit`, `key
   target=terminal combo=return` starts a new shell. Prefer `go`/`open`/menus for files; the terminal is for commands.
+- Certificate Manager: `menu path="Tools > Certificate Manager…"` (its controls `in="window:Certificate Manager"`);
+  open files with `press id=certificates.open files=[…]` (a password sheet: `set id=certificates.password`, `press
+  title=Open`); `select in="window:Certificate Manager" names=["Certificate: web.example.com"]` (rows read "Certificate: …",
+  "CA certificate: …", "Private key: RSA 2048"); `snapshot include=["elements"]` reads the details; buttons "Save PEM…",
+  "Save DER…", "Save Chain…", "PKCS#12…" (`certificates.p12Name`, `certificates.p12Password`, then "Save…" with
+  `file=`), "Save Key…" (`certificates.keyPassphrase`), "Public Key…", all taking `file=`. A server's chain: `menu
+  path="Tools > View Server Certificate…"`, `set id=certificates.server value=host:port`, `press title=View`.
 - Terminal: `menu path="Host > Open Terminal"` opens Terminal.app, and "Copy ssh Command" fills the clipboard: their
   result is outside AirSCP. Run a command and read its output: `menu path="Host > Run Command…"` →
   `set id=runCommand.command value="uname -a"` (or a snippet: `set id=runCommand.snippet value=<its name>`) →

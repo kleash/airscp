@@ -65,6 +65,12 @@
 - [See the commands AirSCP ran](https://kleash.github.io/airscp/commands/command-log.html): AirSCP is a window on top of the ssh tools of macOS. The command log shows every command it ran for a host, as a line you can copy and run yourself.
 - [The Terminal tab](https://kleash.github.io/airscp/commands/terminal-tab.html): A shell on the server, inside AirSCP. It uses the host's connection, so there is no second login, and it knows files: right-click a file name in the output to show, download or edit it, and drop Finder files on it to upload them to the folder you are in.
 
+## Certificates and keystores
+- [Certificates and keystores](https://kleash.github.io/airscp/certificates/): **Tools ▸ Certificate Manager…** does the everyday certificate work without `openssl` or `keytool` commands. Open a certificate, key or keystore, see what is in it and when it expires, and save it in the format another system wants. Everything happens on this Mac.
+- [Open and check certificates](https://kleash.github.io/airscp/certificates/open-and-check.html)
+- [Convert and export](https://kleash.github.io/airscp/certificates/convert-and-export.html): Select an item in the Certificate Manager, then use the buttons below its details. Each asks where to save.
+- [See a server's certificate](https://kleash.github.io/airscp/certificates/server-certificate.html): Check what certificate a website, LDAP or mail server sends, and whether this Mac trusts it.
+
 ## Keys
 - [Keys](https://kleash.github.io/airscp/keys/): An SSH key pair lets you log in without typing a password. The **Keys** window lists your keys and makes new ones.
 - [Make a new key pair](https://kleash.github.io/airscp/keys/new-key-pair.html): Make a key in a few clicks, without the command line. Then put it on your servers to log in without a password.

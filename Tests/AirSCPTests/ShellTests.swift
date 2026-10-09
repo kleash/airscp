@@ -488,7 +488,7 @@ private func report(_ state: Session.State, _ workspace: HostWorkspace?) {
     }
     let bar = AppDelegate().mainMenu()
     walk(bar)
-    #expect(bar.items.map(\.title) == ["AirSCP", "File", "Edit", "View", "Go", "Host", "Window", "Help"])
+    #expect(bar.items.map(\.title) == ["AirSCP", "File", "Edit", "View", "Go", "Host", "Tools", "Window", "Help"])
     #expect(seen.count > 40)
 }
 
