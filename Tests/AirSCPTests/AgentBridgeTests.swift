@@ -471,7 +471,9 @@ struct AgentLabTests {
         let menus = try await app.call("snapshot", ["include": ["menus"]])["menus"] as? [[String: Any]] ?? []
         let paths = menus.compactMap { $0["path"] as? String }
         #expect(paths.contains("Host > Delete Group > Lab Servers…") && paths.contains("View > Columns > Owner"))
-        #expect(!paths.contains { $0.contains("Tab") || $0.contains("Merge All Windows") }, "\(paths.filter { $0.contains("Tab") })")
+        // AppKit's window tabs (Show Tab Bar, Move Tab to New Window…), not AirSCP's own Host > Terminal Tab.
+        let tabbing = paths.filter { ($0.contains("Tab") && $0 != "Host > Terminal Tab") || $0.contains("Merge All Windows") }
+        #expect(tabbing.isEmpty, "\(tabbing)")
         // The main window once: AirSCP's own Window ▸ AirSCP (⌘0), not also AppKit's entry for it under its title.
         #expect(paths.filter { $0 == "Window > AirSCP" }.count == 1, "\(paths.filter { $0.hasPrefix("Window") })")
         reply = try await app.call("menu", ["path": "Host > Delete Group > Lab Servers"])
