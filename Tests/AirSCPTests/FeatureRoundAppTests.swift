@@ -34,7 +34,9 @@ import Testing
             let before = workspace.session
             _ = try await workspace.connectedSession()
             #expect(workspace.session !== before && workspace.tabs.selectedTabViewItemIndex == 2)
-            #expect(workspace.tabs.tabViewItems.count == 3 && workspace.tabs.tabViewItems[2] === tunnels)
+            // Files, Monitor, Tunnels and Terminal: the Tunnels and Terminal tabs keep their items.
+            #expect(workspace.tabs.tabViewItems.count == 4 && workspace.tabs.tabViewItems[2] === tunnels)
+            #expect(workspace.tabs.tabViewItems[3].viewController === workspace.terminal)
             #expect(workspace.tabs.tabViewItems[0].viewController === workspace.browser)
             workspace.tabs.selectedTabViewItemIndex = 0  // the new Files tab works
             #expect(workspace.browser.view.window != nil)
