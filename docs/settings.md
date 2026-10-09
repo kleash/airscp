@@ -46,6 +46,11 @@ How new hosts check their server's key, and new desktops their server's certific
 **New keys go in**: the folder where New Key Pair and Import Key save keys. `~/.ssh` by default, where ssh finds them by
 itself.
 
+## Apple Intelligence
+
+**Use Apple Intelligence for Ask AirSCP and Explain**: on by default, on a Mac that has it. Answers come from Apple's
+model on this Mac. See [Shortcuts, Siri & Apple Intelligence](shortcuts-and-ai.md).
+
 ## Agents
 
 **Allow AI agents to control AirSCP (MCP)**: off by default. See [AI agents (MCP)](ai-agents.md).

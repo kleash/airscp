@@ -87,7 +87,8 @@ sections win). User docs: `docs/` (published at https://kleash.github.io/airscp/
 ## Build and test (on a Mac)
 
 ```sh
-./build.sh --native        # build/AirSCP.app for this Mac; ./build.sh = universal; first run builds FreeRDP (minutes)
+./build.sh --native        # build/AirSCP.app for this Mac; ./build.sh = universal; first run builds FreeRDP (minutes);
+                           # with Xcode installed it also makes the App Intents metadata (Shortcuts), else it says so
 swift build                # debug build: must have 0 warnings
 ./test.sh                  # Swift Testing suite (needs Swift 6), throwaway sshd servers; extra args go to swift test
 AIRSCP_DOCKER=1 ./test.sh  # + Docker lab suites (starts the lab: testenv/up.sh)

@@ -14,6 +14,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSMenu
     private var askpass: AskpassServer!
     var main: MainWindowController!
     private var keys: KeysWindowController?
+    private var ask: AskWindowController?
     private(set) var certificates: CertificateManagerWindowController?
     private var snippets: NSWindow?
     private var settings: NSWindow?
@@ -369,6 +370,36 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSMenu
         certificates?.model.askServer = true
     }
 
+    /// Help ▸ Ask AirSCP…: a question about AirSCP, a server or an error, answered by Apple Intelligence on this Mac
+    /// from a summary of the host in front (`question` filled in by Explain).
+    @objc func askAirSCP(_ sender: Any?) { ask(nil) }
+
+    func ask(_ question: String?) {
+        guard AppleIntelligence.problem(model.data.settings) == nil else { return }
+        if ask == nil { ask = AskWindowController() }
+        let window = ask!
+        window.model.assistant = AppleIntelligence.assistant
+        window.model.context = assistantContext()
+        if let question {
+            window.model.question = question
+            window.model.ask()
+        }
+        window.showWindow(nil)
+    }
+
+    /// What the model is told about the host in front: no passwords, keys or file contents.
+    private func assistantContext() -> String {
+        guard let workspace = main?.selectedWorkspace else {
+            return AssistantContext.summary(host: nil, route: nil, state: nil, error: nil, commands: [], figures: nil)
+        }
+        let host = workspace.host
+        var error: String?
+        if case .disconnected(let failure) = workspace.session.state { error = failure.message }
+        return AssistantContext.summary(host: host, route: model.data.route(for: host)?.full,
+                                        state: MainWindowController.describe(workspace.session.state), error: error,
+                                        commands: workspace.connection.log.entries.suffix(8).map(\.command), figures: nil)
+    }
+
     @objc func showSnippets(_ sender: Any?) {
         if snippets == nil {
             let controller = NSHostingController(rootView: SnippetsView(model: model) { [weak self] snippet, id in
@@ -554,6 +585,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSMenu
         } else if item.action == #selector(selectConnected(_:)) {
             enabled = model.map { item.tag - 1 < $0.connected.count } ?? false
             reason = "Nothing connected has this number: connect a host or desktop first"
+        } else if item.action == #selector(askAirSCP(_:)) {
+            let problem = model.map { AppleIntelligence.problem($0.data.settings) } ?? "AirSCP is starting"
+            enabled = problem == nil
+            reason = problem ?? ""
         } else if item.action == #selector(showDebugLog(_:)) {
             enabled = FileManager.default.fileExists(atPath: DebugLog.fileURL.path)
             reason = "No debug log yet: turn on Settings ▸ Debug logging, then connect again"
@@ -663,6 +698,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSMenu
             item("Welcome to AirSCP…", #selector(showWelcome(_:))),
             item("AirSCP Tips", #selector(showTips(_:))),
             item("Agent Guide", #selector(showAgentGuide(_:))),
+            item("Ask AirSCP…", #selector(askAirSCP(_:)), "k", [.command, .option]),
             .separator(),
             item("Turn On Debug Logging", #selector(toggleDebugLogging(_:))),
             item("Show Debug Log in Finder", #selector(showDebugLog(_:))),

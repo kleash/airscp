@@ -304,6 +304,8 @@ public struct AppSettings: Codable, Equatable {
     public var keyFolder = ""
     /// Settings ▸ Debug logging (`DebugLog`, PLAN.md AE). Off by default.
     public var debugLogging = false
+    /// Ask AirSCP and Explain use Apple Intelligence (on this Mac only) when the Mac has it (PLAN.md AD).
+    public var appleIntelligence = true
 
     public init() {}
 
@@ -329,6 +331,7 @@ public struct AppSettings: Codable, Equatable {
         caFile = try container.decodeIfPresent(String.self, forKey: .caFile) ?? defaults.caFile
         keyFolder = try container.decodeIfPresent(String.self, forKey: .keyFolder) ?? defaults.keyFolder
         debugLogging = try container.decodeIfPresent(Bool.self, forKey: .debugLogging) ?? defaults.debugLogging
+        appleIntelligence = try container.decodeIfPresent(Bool.self, forKey: .appleIntelligence) ?? defaults.appleIntelligence
     }
 }
 

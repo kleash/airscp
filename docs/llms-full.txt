@@ -2273,6 +2273,11 @@ How new hosts check their server's key, and new desktops their server's certific
 **New keys go in**: the folder where New Key Pair and Import Key save keys. `~/.ssh` by default, where ssh finds them by
 itself.
 
+## Apple Intelligence
+
+**Use Apple Intelligence for Ask AirSCP and Explain**: on by default, on a Mac that has it. Answers come from Apple's
+model on this Mac. See [Shortcuts, Siri & Apple Intelligence](https://kleash.github.io/airscp/shortcuts-and-ai.html).
+
 ## Agents
 
 **Allow AI agents to control AirSCP (MCP)**: off by default. See [AI agents (MCP)](https://kleash.github.io/airscp/ai-agents.html).
@@ -2354,6 +2359,46 @@ An agent can work in a Remote Desktop too. It works the way a careful person at 
   `AirSCP --agent screenshot --out shot.png`.
 - All of this help as plain text for agents: [llms.txt](https://kleash.github.io/airscp/llms.txt) and
   [llms-full.txt](https://kleash.github.io/airscp/llms-full.txt).
+
+
+---
+
+Source: https://kleash.github.io/airscp/shortcuts-and-ai.html
+
+# Shortcuts, Siri and Apple Intelligence
+
+## Shortcuts and Siri
+
+AirSCP's actions are in the **Shortcuts** app, in Spotlight and for Siri:
+
+- **Connect to Host**: opens AirSCP and connects to a saved host. Say “Connect to web-01 with AirSCP”.
+- **Open a Shell on Host**: connects and shows the host's [Terminal tab](https://kleash.github.io/airscp/commands/terminal-tab.html).
+- **Open Remote Desktop**: connects to a saved Windows desktop.
+- **Disconnect All**: disconnects everything AirSCP is connected to.
+- **Get Transfer Status**: says how the transfers are going, to use in a shortcut.
+
+Open the Shortcuts app and search for AirSCP to put them in your own shortcuts, or give them a key. They do exactly what
+the menus do.
+
+## Ask AirSCP (Apple Intelligence)
+
+On a Mac with Apple Intelligence (Apple silicon, macOS 26 or later, Apple Intelligence turned on):
+
+- **Help ▸ Ask AirSCP…** (<kbd>⌥⌘K</kbd>): ask in your own words, e.g. “Why can't I connect to web-01?” or “How do I
+  upload a folder without node_modules?”.
+- A failed connection's banner has **Explain…**: it asks what the error means and what to try.
+
+The answer comes from Apple's model **on this Mac**: your question and a short summary of the host in front (its name,
+address, route, state, the last error and the commands AirSCP ran) never leave it. Passwords, keys and file contents are
+never part of it. **What AirSCP tells it**, in the Ask window, shows that summary.
+
+AI can be wrong: check what it suggests before you act on it.
+
+## Tips
+
+- **Settings ▸ Apple Intelligence** turns Ask AirSCP and Explain off for AirSCP.
+- When Help ▸ Ask AirSCP… is greyed out, point at it to see why (for example, Apple Intelligence is off in System
+  Settings ▸ Apple Intelligence & Siri).
 
 
 ---
@@ -2525,6 +2570,12 @@ AirSCP keeps your servers, files and passwords on your Mac.
 - Agents never see saved passwords, and AirSCP's questions (Delete, Trust) stay in the way.
 - The sidebar shows when an agent is connected and what it did. See [AI agents (MCP)](https://kleash.github.io/airscp/ai-agents.html).
 
+## Apple Intelligence
+
+- Ask AirSCP and Explain use Apple's on-device model: nothing is sent to Apple or anyone else.
+- The model gets your question and a short summary of the host in front, never passwords, keys or file contents.
+- **Settings ▸ Apple Intelligence** turns it off.
+
 ## Report a security problem
 
 Please don't open a public issue: follow the security policy (`SECURITY.md`) in
@@ -2539,6 +2590,10 @@ Source: https://kleash.github.io/airscp/whats-new.html
 
 ## AirSCP 1.1.0
 
+- **Shortcuts, Siri and Apple Intelligence**: AirSCP's actions (Connect to Host, Open a Shell, Open Remote Desktop,
+  Disconnect All, Transfer Status) are in Shortcuts and Spotlight. On a Mac with Apple Intelligence, **Help ▸ Ask
+  AirSCP…** answers questions on this Mac, and a failed connection has **Explain…**. See
+  [Shortcuts, Siri & Apple Intelligence](https://kleash.github.io/airscp/shortcuts-and-ai.html).
 - **Certificate Manager**: **Tools ▸ Certificate Manager…** opens certificates, keys, chains, PKCS#12 files and Java
   keystores, shows their details and expiry, and saves them as PEM, DER, chains, keys or PKCS#12, each with the
   `openssl` command that does the same. **Tools ▸ View Server Certificate…** shows what a TLS server sends. See
@@ -2814,6 +2869,9 @@ AirSCP was installed with `./install.sh`).
   "Save DER…", "Save Chain…", "PKCS#12…" (`certificates.p12Name`, `certificates.p12Password`, then "Save…" with
   `file=`), "Save Key…" (`certificates.keyPassphrase`), "Public Key…", all taking `file=`. A server's chain: `menu
   path="Tools > View Server Certificate…"`, `set id=certificates.server value=host:port`, `press title=View`.
+- The same actions are reachable three ways: the menus (a person), these tools (you), and App Intents (Shortcuts, Siri,
+  Spotlight: Connect to Host, Open a Shell on Host, Open Remote Desktop, Disconnect All, Get Transfer Status). Help >
+  Ask AirSCP… is the user's own Apple Intelligence: don't use it for them.
 - Terminal: `menu path="Host > Open Terminal"` opens Terminal.app, and "Copy ssh Command" fills the clipboard: their
   result is outside AirSCP. Run a command and read its output: `menu path="Host > Run Command…"` →
   `set id=runCommand.command value="uname -a"` (or a snippet: `set id=runCommand.snippet value=<its name>`) →
