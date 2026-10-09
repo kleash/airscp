@@ -252,6 +252,7 @@ final class AgentServer {
                 if Panels.agentChoice != nil { result["note"] = "No Open or Save panel opened: file wasn't used." }
                 if let folder = Panels.agentPanelFolder { result["panelFolder"] = folder }  // where it would have opened
             }
+            if let png = result.removeValue(forKey: "picture") as? Data { return Self.imageReply(png, result) }  // a click's
             return Self.text(result)
         } catch let failure as Failure {
             return AgentBridge.failure(failure.message)
@@ -829,14 +830,20 @@ final class AgentServer {
 
     private func key(_ arguments: [String: Any]) async throws -> [String: Any] {
         guard let combo = arguments["combo"] as? String else { throw Failure("key needs a combo, e.g. \"cmd+shift+n\".") }
-        let keys = try KeyCombo(combo)
         if ["rdp", "desktop"].contains((arguments["target"] as? String)?.lowercased()) {
+            // The Windows key (⊞) is no Mac key: it goes to Windows as its own key, held while the rest is pressed.
+            let (rest, windowsKey) = KeyCombo.windowsKey(in: combo)
+            let keys = try rest.map { try KeyCombo($0) }
             let desktop = try desktopView()
             return try await Self.lendingFocus(to: desktop) {
                 bringToFront(desktop.window!)
-                return await perform { self.sendKey(keys, to: desktop.window!) }
+                if windowsKey { desktop.session?.scancode(0x15B, down: true) }
+                let reply = await perform { if let keys { self.sendKey(keys, to: desktop.window!) } }
+                if windowsKey { desktop.session?.scancode(0x15B, down: false) }
+                return reply
             }
         }
+        let keys = try KeyCombo(combo)
         let window = try keyWindow(arguments["in"] as? String)
         if keys.base == " ", keys.modifiers.isEmpty, window.firstResponder is FileTableView { throw Failure(Self.noQuickLook) }
         bringToFront(window)
@@ -960,51 +967,122 @@ final class AgentServer {
 
     private func click(_ arguments: [String: Any]) async throws -> [String: Any] {
         guard let x = (arguments["x"] as? NSNumber)?.doubleValue, let y = (arguments["y"] as? NSNumber)?.doubleValue else {
-            throw Failure("click needs x and y: points from the top left of the main window (a screenshot at scale 1), for the "
-                          + "Windows desktop. Hosts, folders and rows are taken by name: select pane=sidebar names=[\"web\"], "
-                          + "go path=…, open name=….")
+            throw Failure("click needs x and y: points from the top left of the main window (a screenshot at scale 1), or "
+                          + "with target rdp pixels of the Windows desktop's picture (screenshot target=rdp). Hosts, "
+                          + "folders and rows are taken by name: select pane=sidebar names=[\"web\"], go path=…, open name=….")
+        }
+        let right = (arguments["button"] as? String)?.lowercased() == "right"
+        let wheel = (arguments["wheel"] as? NSNumber)?.intValue
+        let count = max(1, min(arguments["count"] as? Int ?? 1, 3))
+        if ["rdp", "desktop"].contains((arguments["target"] as? String)?.lowercased()) {
+            // The desktop's own pixels, as screenshot target=rdp has them: the same whatever the window's size, the
+            // screen's Retina scale or full screen, so there is nothing to convert.
+            guard let session = selectedDesktop?.session, let size = Self.desktopSize(session) else {
+                throw Failure("No Remote Desktop is connected and shown: select it in the sidebar.")
+            }
+            let point = try Self.desktopPixel(x: x, y: y, size: size)
+            return await clickDesktop(session, at: point, of: size, right: right, count: count, wheel: wheel)
         }
         let base = try (arguments["in"] as? String).map { try scopes($0).last! } ?? mainWindow
         let point = NSPoint(x: base.frame.minX + x, y: base.frame.maxY - y)
         let window = openSheets().reversed().first { $0.frame.contains(point) } ?? base
         let location = NSPoint(x: point.x - window.frame.minX, y: point.y - window.frame.minY)
-        let right = (arguments["button"] as? String)?.lowercased() == "right"
         let hit = window.contentView?.hitTest(window.contentView!.convert(location, from: nil))
         if let hit, Self.takenByName(hit) {
             throw Failure("Never click in the sidebar or the file panes: hosts, folders and rows are taken by name, their "
                           + "controls by id (press, set). A host: select pane=sidebar names=[\"web\"]; a folder: go path=/var/log; "
                           + "a row: open name=… (a folder, ..) or select pane=right names=[\"a.txt\"], then menu path=\"File > …\".")
         }
-        let desktop = hit as? RDPDesktopView
-        if right, desktop == nil {
-            throw Failure("A right-click opens a context menu, which agents can't see: use menu \"context > …\" instead.")
+        if let desktop = hit as? RDPDesktopView, let session = desktop.session, let size = Self.desktopSize(session) {
+            return await clickDesktop(session, at: desktop.desktopPoint(atWindowPoint: location), of: size, right: right,
+                                      count: count, wheel: wheel)
         }
-        let wheel = (arguments["wheel"] as? NSNumber)?.intValue
-        if let desktop, let session = desktop.session {
-            let point = desktop.desktopPoint(atWindowPoint: location)
-            if let wheel {  // notches, as a mouse wheel turns: up when positive
-                session.wheel(horizontal: false, delta: wheel * 120, at: point)
-                return await acted()
-            }
-            // The pointer moves there first, and rests a moment: some controls (Windows 11's taskbar) react only to a
-            // pointer over them.
-            session.mouseMove(to: point)
-            try? await Task.sleep(nanoseconds: 150_000_000)
-            // Then the button, down and up at that point, straight to Windows: an up event posted to AppKit's queue
-            // came back with another location (a corner of the desktop), and Windows took the click for a drag.
-            let button = right ? 1 : 0
-            for _ in 0..<max(1, min(arguments["count"] as? Int ?? 1, 3)) {
-                session.mouseButton(button, down: true, at: point)
-                session.mouseButton(button, down: false, at: point)
-            }
-            return await acted()
-        } else if wheel != nil {
-            throw Failure("wheel scrolls the Windows desktop only (AirSCP's lists are in snapshot, every row).")
+        // Window points that miss the desktop shown: the agent may have meant the desktop's own pixels.
+        let note = selectedDesktop?.session == nil ? nil : "x, y are points of the window here, not on the Windows "
+            + "desktop: for pixels of screenshot target=rdp, add target rdp."
+        if right {
+            throw Failure("A right-click opens a context menu, which agents can't see: use menu \"context > …\" instead."
+                          + (note.map { " (\($0))" } ?? ""))
+        }
+        if wheel != nil {
+            throw Failure("wheel scrolls the Windows desktop only (AirSCP's lists are in snapshot, every row)."
+                          + (note.map { " (\($0))" } ?? ""))
         }
         let modifiers = try KeyCombo.modifiers(arguments["modifiers"] as? String ?? "")
         bringToFront(window)
-        let count = max(1, min(arguments["count"] as? Int ?? 1, 3))
-        return await perform { Self.click(at: location, in: window, right: right, modifiers: modifiers, count: count) }
+        var reply = await perform { Self.click(at: location, in: window, right: right, modifiers: modifiers, count: count) }
+        reply["note"] = note
+        return reply
+    }
+
+    /// A click, or the wheel turned, at a pixel of the Windows desktop, straight to Windows. The reply says where in
+    /// words, with a picture of what was under the pointer as it clicked.
+    private func clickDesktop(_ session: RDPSession, at point: CGPoint, of size: CGSize, right: Bool, count: Int,
+                              wheel: Int?) async -> [String: Any] {
+        let at = "\(Int(point.x)), \(Int(point.y)) of the \(Int(size.width)) × \(Int(size.height)) desktop picture"
+        if let wheel {  // notches, as a mouse wheel turns: up when positive
+            session.wheel(horizontal: false, delta: wheel * 120, at: point)
+            return await acted(["desktop": "Turned the wheel \(abs(wheel)) notches \(wheel > 0 ? "up" : "down") at \(at)."])
+        }
+        // The pointer moves there first, and rests a moment: some controls (Windows 11's taskbar) react only to a
+        // pointer over them.
+        session.mouseMove(to: point)
+        try? await Task.sleep(nanoseconds: 150_000_000)
+        let picture = Self.frameImage(session).flatMap { Self.clickPicture($0, at: point) }
+        // Then the button, down and up at that point, straight to Windows: an up event posted to AppKit's queue
+        // came back with another location (a corner of the desktop), and Windows took the click for a drag.
+        let button = right ? 1 : 0
+        for _ in 0..<count {
+            session.mouseButton(button, down: true, at: point)
+            session.mouseButton(button, down: false, at: point)
+        }
+        let what = right ? "Right-clicked" : count == 2 ? "Double-clicked" : count == 3 ? "Triple-clicked" : "Clicked"
+        var reply = await acted(["desktop": "\(what) \(at)."
+            + (picture == nil ? "" : " The picture shows what was there: 200 × 120 pixels around it, zoomed 2×, "
+               + "the red cross where it clicked.")])
+        reply["picture"] = picture.flatMap(Self.png)
+        return reply
+    }
+
+    /// The desktop's size in pixels (its picture's), nil while it has none.
+    static func desktopSize(_ session: RDPSession) -> CGSize? {
+        session.withFrame { frame in frame.map { CGSize(width: $0.width, height: $0.height) } }
+    }
+
+    /// x, y of the desktop's picture as the pixel they name, or why they can't be one.
+    static func desktopPixel(x: Double, y: Double, size: CGSize) throws -> CGPoint {
+        guard x >= 0, y >= 0, x < Double(size.width), y < Double(size.height) else {
+            throw Failure("x, y (\(Int(x)), \(Int(y))) are outside the Windows desktop's picture, which is "
+                          + "\(Int(size.width)) × \(Int(size.height)) pixels (screenshot target=rdp).")
+        }
+        return CGPoint(x: x.rounded(.down), y: y.rounded(.down))
+    }
+
+    /// The desktop around `point` (200 × 120 pixels, less at its edges), zoomed 2× (nothing smoothed) with a red cross
+    /// on `point`, which is left uncovered: what a click there hits.
+    static func clickPicture(_ frame: CGImage, at point: CGPoint) -> CGImage? {
+        let area = CGRect(x: point.x - 100, y: point.y - 60, width: 200, height: 120)
+            .intersection(CGRect(x: 0, y: 0, width: frame.width, height: frame.height))
+        guard !area.isEmpty, let part = frame.cropping(to: area), let space = CGColorSpace(name: CGColorSpace.sRGB),
+              let context = CGContext(data: nil, width: Int(area.width) * 2, height: Int(area.height) * 2, bitsPerComponent: 8,
+                                      bytesPerRow: 0, space: space, bitmapInfo: CGImageAlphaInfo.noneSkipFirst.rawValue
+                                        | CGBitmapInfo.byteOrder32Little.rawValue)
+        else { return nil }
+        context.interpolationQuality = .none
+        context.draw(part, in: CGRect(x: 0, y: 0, width: area.width * 2, height: area.height * 2))
+        // The middle of the zoomed pixel; the context's origin is at the bottom left.
+        let x = (point.x - area.minX) * 2 + 1, y = (area.maxY - point.y) * 2 - 1
+        for (color, width) in [(CGColor(srgbRed: 1, green: 1, blue: 1, alpha: 1), CGFloat(4)),
+                               (CGColor(srgbRed: 0.9, green: 0.1, blue: 0.1, alpha: 1), CGFloat(2))] {
+            context.setStrokeColor(color)
+            context.setLineWidth(width)
+            for (dx, dy) in [(1.0, 0.0), (-1.0, 0.0), (0.0, 1.0), (0.0, -1.0)] {
+                context.move(to: CGPoint(x: x + dx * 6, y: y + dy * 6))
+                context.addLine(to: CGPoint(x: x + dx * 30, y: y + dy * 30))
+            }
+            context.strokePath()
+        }
+        return context.makeImage()
     }
 
     /// Whether `view` is in the sidebar or a file pane, whose hosts, folders and files are taken by name (and controls by
@@ -1648,12 +1726,23 @@ final class AgentServer {
                 image = cropped
             }
         }
-        guard let png = NSBitmapImageRep(cgImage: image).representation(using: .png, properties: [:]) else {
-            throw Failure("AirSCP couldn't make the PNG.")
+        guard let png = Self.png(image) else { throw Failure("AirSCP couldn't make the PNG.") }
+        var info: [String: Any] = ["width": image.width, "height": image.height, "scale": target == "rdp" ? 1 : scale, "target": target]
+        if target == "rdp" || target == "desktop" {
+            info["coordinates"] = "x, y are pixels of this picture of the Windows desktop (\(image.width) × \(image.height)), "
+                + "from its top left: click with target rdp takes them as they are."
         }
-        let info = Self.text(["width": image.width, "height": image.height, "scale": target == "rdp" ? 1 : scale, "target": target])
-        return ["content": [["type": "image", "data": png.base64EncodedString(), "mimeType": "image/png"]]
-                    + (info["content"] as? [[String: Any]] ?? []), "isError": false]
+        return Self.imageReply(png, info)
+    }
+
+    static func png(_ image: CGImage) -> Data? {
+        NSBitmapImageRep(cgImage: image).representation(using: .png, properties: [:])
+    }
+
+    /// A PNG and its JSON as one tool result.
+    static func imageReply(_ png: Data, _ json: [String: Any]) -> [String: Any] {
+        ["content": [["type": "image", "data": png.base64EncodedString(), "mimeType": "image/png"]]
+            + (text(json)["content"] as? [[String: Any]] ?? []), "isError": false]
     }
 
     /// The window as the user sees it: its frame (title bar and toolbar) and content, its sheets and the panels over it
@@ -1930,6 +2019,15 @@ struct KeyCombo {
         return (code, text != lower)
     }
 
+    /// A combo for the Windows desktop without its Windows key (⊞: "win+e", "windows+r", "⊞+d", "super+e"), and
+    /// whether it had one; nil for the Windows key alone.
+    static func windowsKey(in combo: String) -> (rest: String?, windowsKey: Bool) {
+        let parts = combo.split(separator: "+", omittingEmptySubsequences: false).map(String.init)
+        let rest = parts.filter { !["win", "windows", "⊞", "super"].contains($0.lowercased()) }
+        guard rest.count < parts.count else { return (combo, false) }
+        return (rest.isEmpty ? nil : rest.joined(separator: "+"), true)
+    }
+
     static func modifiers(_ text: String) throws -> NSEvent.ModifierFlags {
         var flags: NSEvent.ModifierFlags = []
         for part in text.lowercased().split(separator: "+").map(String.init) where !part.isEmpty {
@@ -1938,7 +2036,8 @@ struct KeyCombo {
             case "shift", "⇧": flags.insert(.shift)
             case "opt", "option", "alt", "⌥": flags.insert(.option)
             case "ctrl", "control", "⌃": flags.insert(.control)
-            default: throw AgentServer.Failure("Unknown modifier “\(part)”: cmd, shift, option, control.")
+            default: throw AgentServer.Failure("Unknown modifier “\(part)”: cmd, shift, option, control (and win, the "
+                                               + "Windows key, with target rdp).")
             }
         }
         return flags

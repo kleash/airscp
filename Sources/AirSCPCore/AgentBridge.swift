@@ -27,8 +27,8 @@ public enum AgentBridge {
               "in": string("window:<title> | sheet: whose elements (default: the main window)")]),
         tool("screenshot", "A PNG of an AirSCP window as the user sees it, drawn by AirSCP itself (sheets and panels "
              + "composited, the Remote Desktop included). target: main (default), sheet, window:<title>, element:<id>, "
-             + "or rdp (the Windows desktop at its full pixel size). Coordinates in the image at scale 1 are the "
-             + "click tool's.",
+             + "or rdp (the Windows desktop alone, at its own pixel size: its pixels are what click with target rdp "
+             + "takes). A window's picture at scale 1 has the points click takes without target.",
              ["target": string("main | sheet | rdp | window:<title> | element:<id>"), "scale": integer("1 (points, default) or 2")]),
         tool("menu", "Choose a menu-bar item by its path, e.g. \"Host > Connect\", \"File > New Folder…\", or a "
              + "context menu: \"context > Rename…\" (a file pane's, for its selected rows; pane=transfers: the Transfers "
@@ -49,17 +49,22 @@ public enum AgentBridge {
              ["id": string("Accessibility id"), "title": string("Label, title or placeholder"), "value": any("New value"),
               "in": string("sheet | window:<title>"), "file": string("A Mac path for its panel")], required: ["value"]),
         tool("key", "Press keys, e.g. \"cmd+shift+n\", \"return\", \"escape\", \"down\", \"cmd+v\". target: window "
-             + "(default: the frontmost sheet, else the main window, or the window named by in) or rdp (the Windows desktop).",
+             + "(default: the frontmost sheet, else the main window, or the window named by in) or rdp (the Windows "
+             + "desktop: drive Windows by keys first, e.g. \"win+e\" File Explorer, \"alt+d\" its address bar, "
+             + "\"win+r\" Run, \"win\" Start, \"ctrl+shift+escape\", \"alt+f4\"; win is the Windows key).",
              ["combo": string("Key combination"), "target": string("window | rdp"), "in": string("window:<title> | sheet")],
              required: ["combo"]),
         tool("type", "Type text into the focused field (or the Windows desktop with target rdp).",
              ["text": string("Text"), "target": string("window | rdp"), "in": string("window:<title> | sheet")], required: ["text"]),
-        tool("click", "Click at x, y: points from the top left of the main window (or the window named by in), as in a "
-             + "screenshot of it at scale 1. For the Windows desktop; refused in the file panes and the sidebar (go, "
-             + "open, select and menu take folders, rows and hosts by name), elsewhere only a last resort after press and set. "
-             + "On the Windows desktop the pointer rests there first; wheel turns the mouse wheel there instead of clicking "
-             + "(notches, up when positive).",
-             ["x": number("X"), "y": number("Y"), "button": string("left | right"), "count": integer("2 for a double-click"),
+        tool("click", "Click at x, y. target rdp: x, y are pixels of the Windows desktop's picture (screenshot "
+             + "target=rdp) from its top left, as they are; the reply shows what was there, zoomed, with a red cross where "
+             + "it clicked. Without target: points from the top left of the main window (or the window named by in), as "
+             + "in a screenshot of it at scale 1. Refused in the file panes and the sidebar (go, open, select and menu take "
+             + "folders, rows and hosts by name), elsewhere only a last resort after press and set. On the Windows desktop "
+             + "the pointer rests there first; wheel turns the mouse wheel there instead of clicking (notches, up when "
+             + "positive). For Windows, keys first: click when no key does it.",
+             ["x": number("X"), "y": number("Y"), "target": string("rdp: x, y are pixels of screenshot target=rdp"),
+              "button": string("left | right"), "count": integer("2 for a double-click"),
               "modifiers": string("e.g. cmd+shift"), "wheel": integer("Wheel notches on the Windows desktop (up > 0)"),
               "in": string("window:<title>")], required: ["x", "y"]),
         tool("focus", "Give the keyboard focus to a file pane (pane: left|right, so that menu commands act on it) or to "

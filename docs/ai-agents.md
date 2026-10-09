@@ -35,6 +35,17 @@ questions, and AirSCP's own screenshots. AirSCP is an MCP server for them. It is
 
 {% include shot.html name="agent-activity" alt="The agent's recent actions: it dropped three files on the server pane, set a speed limit and selected a file" %}
 
+## Windows desktops
+
+An agent can work in a Remote Desktop too. It works the way a careful person at the keyboard does:
+
+- **Keys first.** It opens File Explorer with <kbd>⊞</kbd> <kbd>E</kbd>, goes to a folder through the address bar
+  (<kbd>Alt</kbd> <kbd>D</kbd>, the path, <kbd>Return</kbd>) and runs programs with <kbd>⊞</kbd> <kbd>R</kbd>.
+  Keys don't miss.
+- **Clicks where no key reaches.** The agent clicks in the pixels of the desktop picture AirSCP gives it, so the
+  window's size, a Retina screen or full screen don't move its clicks. After each click AirSCP shows it a close-up of
+  the spot with a red cross, so it can see what it hit.
+
 ## Safe by design
 
 - Only programs of your own user account on this Mac can connect, through a private socket with a secret that changes

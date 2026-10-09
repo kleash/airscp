@@ -2067,6 +2067,17 @@ questions, and AirSCP's own screenshots. AirSCP is an MCP server for them. It is
 
 (Picture: The agent's recent actions: it dropped three files on the server pane, set a speed limit and selected a file)
 
+## Windows desktops
+
+An agent can work in a Remote Desktop too. It works the way a careful person at the keyboard does:
+
+- **Keys first.** It opens File Explorer with <kbd>⊞</kbd> <kbd>E</kbd>, goes to a folder through the address bar
+  (<kbd>Alt</kbd> <kbd>D</kbd>, the path, <kbd>Return</kbd>) and runs programs with <kbd>⊞</kbd> <kbd>R</kbd>.
+  Keys don't miss.
+- **Clicks where no key reaches.** The agent clicks in the pixels of the desktop picture AirSCP gives it, so the
+  window's size, a Retina screen or full screen don't move its clicks. After each click AirSCP shows it a close-up of
+  the spot with a red cross, so it can see what it hit.
+
 ## Safe by design
 
 - Only programs of your own user account on this Mac can connect, through a private socket with a secret that changes
@@ -2270,6 +2281,9 @@ Source: https://kleash.github.io/airscp/whats-new.html
 
 ## AirSCP 1.1.0
 
+- **AI agents click the right spot on a Windows desktop**: they click in the pixels of the desktop picture AirSCP
+  gives them, see a close-up of each click, and can press the Windows key (<kbd>⊞</kbd> <kbd>E</kbd>,
+  <kbd>⊞</kbd> <kbd>R</kbd>). Their guide tells them to use the keyboard first.
 - **Tunnels say where they lead**: **Add Tunnel…** reads as a sentence (open port 8080 on this Mac, through your
   server, to the server itself, port 80), and the whole route shows as you type and in the list. The second port is
   the same as the first until you change it.
@@ -2359,22 +2373,22 @@ How to work with AirSCP:
 - Other windows (Settings, Keys, Snippets, file editors): add `in="window:<title>"` to `press`, `set`, `select`,
   `menu`, `key`, `type`, `click` and `snapshot` (its elements). Without it, menus and keys act on the main window.
 - Hosts and desktops are chosen in the sidebar: `select pane=sidebar names=["web"]`, then `menu path="Host > Connect"`.
-- Never click in the file panes or the sidebar: `go`, `open`, `select`, `menu` take folders, rows and hosts by name;
-  `click` is for the Windows desktop. `screenshot` only to check how something looks: the snapshot has the facts.
+  Never click in the file panes or the sidebar (`go`, `open`, `select`, `menu` take them by name). `screenshot` only to
+  see how something looks (it is large; the snapshot has the facts).
+- A Windows desktop (Remote Desktop) is driven by keys first: `key target=rdp` "win+e" (File Explorer), "alt+d" (its
+  address bar: `type target=rdp` a path such as D:\Data, then "return"), "win+r" (Run). Click only where no key does
+  it: `click target=rdp` takes pixels of `screenshot target=rdp` as they are. More: `guide topic=rdp`.
 - Secrets never come back: password fields read as "•••(n)", and no tool reads the Keychain. From a shell, give a
   password with `value=-` and the password on standard input: a command line can be read by every process.
 - Open and Save panels (Upload…, Download To…, Import Hosts…, Export Hosts…, Choose a Key File…, Other Key File…,
   Choose…, Send Files…, Paste Items to Mac…) can't be driven: give the command that opens one `file=<path>` (or
-  `files=[…]`) and that is chosen instead, e.g. `menu path="File > Export Hosts…" file=/tmp/hosts.json`; the reply's
-  `panelFolder` is where the panel would have opened. A panel that opened anyway: `press title=Cancel`. Quick Look is
+  `files=[…]`), which is chosen instead, e.g. `menu path="File > Export Hosts…" file=/tmp/hosts.json`; the reply's
+  `panelFolder` is where the panel would have opened (one that opened anyway: `press title=Cancel`). Quick Look is
   refused. Commands that hand over to another app (Terminal, Finder, the default app, the clipboard) run, unseen.
-- Agent control is off unless the user turned it on: AirSCP ▸ Settings ▸ "Allow AI agents to control AirSCP (MCP)".
-  The sidebar then shows "Agent control on": its dot pulses while you act and the footer names you (your MCP client's
-  name) and your last action; the user can see your recent actions there and turn agent control off. `snapshot` →
-  agent: client, actions (how many).
-- A first run with no hosts greets with the "Welcome to AirSCP" sheet: press Start (or one of its buttons) first.
-  Help ▸ Welcome to AirSCP… shows it again; Help ▸ AirSCP Tips and Help ▸ Agent Guide open windows with short texts;
-  the Help menu's other items and a sheet's "?" button (id `help`) open AirSCP Help in the browser, outside AirSCP.
+- Agent control is off unless the user turned it on (AirSCP ▸ Settings ▸ "Allow AI agents to control AirSCP (MCP)");
+  the sidebar then shows the user your name, your actions and a way to turn it off. `snapshot` → agent: client, actions.
+- A first run with no hosts shows the "Welcome to AirSCP" sheet: press Start first. The Help menu's AirSCP Help items
+  and a sheet's "?" button (id `help`) open the browser, outside AirSCP; Tips and Agent Guide open short texts.
 
 ## tools
 Each tool takes a JSON object. From a shell: `AirSCP --agent <tool> key=value …` (values are text, except for
@@ -2390,8 +2404,9 @@ AirSCP was installed with `./install.sh`).
   lists them: its search, sort and selection), "menus", "elements", "settings"; `in="window:Keys"` makes "elements"
   that window's. Example: `snapshot {"include": ["panes", "transfers"], "rows": 50}`.
 - `screenshot {target?, scale?}` — a PNG drawn by AirSCP: target "main" (default; sheets and panels composited),
-  "sheet", "rdp" (the Windows desktop at its pixel size), "window:Settings", "element:right.table"; scale 1 or 2.
-  Example: `screenshot {"target": "rdp"}`.
+  "sheet", "rdp" (the Windows desktop alone, at its own pixel size, which the reply gives: `click target=rdp` takes
+  its pixels as they are), "window:Settings", "element:right.table"; scale 1 or 2. Example: `screenshot {"target":
+  "rdp"}`.
 - `menu {path, pane?, in?, file?, files?}` — a menu-bar command, or `context > <entry>` from a context menu: a file
   pane's (its selected rows) or with `pane: "transfers"` the Transfers panel's (its selected jobs: Cancel, Retry,
   Remove, Show Details…, Show in Finder). `in`: the window whose command it is, as if it were in front. `file`/`files`:
@@ -2409,16 +2424,20 @@ AirSCP was installed with `./install.sh`).
 - `key {combo, target?, in?}` — keys as events: "cmd+shift+n", "return", "escape", "down", "f5", "cmd+delete",
   "capslock". "delete" is the Mac's ⌫ (Backspace); "forwarddelete" is the Delete key (⌦, Windows' Del: in Explorer
   "delete" goes up a folder, "forwarddelete" deletes). They go to the frontmost sheet, else the main window (or the
-  window `in` names); target "rdp" sends them to the Windows desktop. Example: `key {"combo": "cmd+v", "target": "rdp"}`.
+  window `in` names); target "rdp" sends them to the Windows desktop, where "win" is the Windows key ("win+e",
+  "win+r"; "win" alone opens Start) and "ctrl", "alt" and "shift" are Windows' own ("cmd" is Ctrl). Example:
+  `key {"combo": "win+e", "target": "rdp"}`.
 - `type {text, target?, in?}` — text into the focused field, or the Windows desktop with target "rdp" (key by key,
   there at a person's pace, about ten keys a second, which Windows 11's apps keep up with; more than 1 000 characters
   key by key are refused outside a text field: use `set`). Example: `type {"text": "notepad", "target": "rdp"}`.
-- `click {x, y, button?, count?, modifiers?, wheel?, in?}` — a click at window points (a scale-1 screenshot's points,
-  from the window's top left; count 2: double-click), for the Windows desktop. Refused in the file panes and the
-  sidebar (`go`, `open`, `select` and `menu` take folders, rows and hosts by name); elsewhere only the last resort
-  after `press` and `set`. Right-clicks only on the Windows desktop (elsewhere use `menu context > …`).
-  On the Windows desktop the pointer rests there a moment first (for controls that react to it), and `wheel` turns
-  the mouse wheel there instead (notches; up when positive). Example: `click {"x": 600, "y": 400, "count": 2}`.
+- `click {x, y, target?, button?, count?, modifiers?, wheel?, in?}` — a click at window points (count 2:
+  double-click). Refused in the file panes and the sidebar (`go`, `open`, `select` and `menu` take folders, rows and
+  hosts by name); elsewhere the last resort after `press` and `set`. With target "rdp", x, y are pixels of the Windows
+  desktop's picture (`screenshot target=rdp`) from its top left, as they are (the window's size, Retina and full
+  screen change nothing), and the reply has a picture of the spot, zoomed 2×, with a red cross where it clicked.
+  Right-clicks only on the Windows desktop (elsewhere use `menu context > …`). On the Windows desktop the pointer rests
+  there a moment first (for controls that react to it), and `wheel` turns the mouse wheel there instead (notches; up
+  when positive). Example: `click {"x": 600, "y": 400, "count": 2}`, `click {"target": "rdp", "x": 912, "y": 858}`.
 - `focus {pane | target}` — pane "left"/"right" (menu commands then act on it), or target "sidebar", "filter",
   "path" (the Go to Folder field), "desktop". Example: `focus {"target": "filter", "pane": "right"}` then `type`.
 - `go {path, pane?}` — shows a folder in a file pane, as Go to Folder (⇧⌘G) does: an absolute path, `~` or `~/…` (the
@@ -2720,11 +2739,23 @@ AirSCP was installed with `./install.sh`).
   `rdpLogin.remember`; press "Log In") → `wait until=rdp_connected` → `wait until=rdp_drawn` (Windows draws a blank
   frame first, for up to a minute at logon). Questions for a desktop that isn't shown come on the window too. `snapshot`
   → rdp: state, size, fullScreen, sharing, sharedFolderReady, sharedFolderRefused, remoteFiles, message.
-- See it: `screenshot target=rdp` (the desktop's pixels: read Windows' text there). Act: `click` on the desktop
-  (window points; right-clicks allowed here; `wheel=-3` scrolls down three notches), `type target=rdp`, `key
-  target=rdp` (⌘ acts as Ctrl: "cmd+c", "cmd+v"; "cmd+r" is Win+R only when ⌘ is the Windows key; "capslock"
-  lasts until the next desktop action, which gives Windows the Mac's own Caps Lock again), Ctrl+Alt+Del: `press
-  title=Ctrl+Alt+Del`.
+- Drive Windows with its keyboard first: keys don't miss, clicks can. `key {"combo": …, "target": "rdp"}` with
+  "win+e" (File Explorer), "alt+d" or "ctrl+l" (Explorer's address bar: then `type {"text": "D:\\", "target":
+  "rdp"}` and "return" opens that folder), "win+r" (Run: a program, a folder or \\tsclient\AirSCP, then "return"),
+  "win" (Start: type to search, then "return"), "ctrl+shift+escape" (Task Manager), "alt+tab", "ctrl+w" (closes an
+  Explorer window), "alt+f4" (closes the window; on the bare desktop it offers to shut Windows down: "escape"),
+  "tab", "shift+tab" and the arrows (move in a dialog or a list; in a folder, type a name's first letters to select
+  it), "return" (opens it), "alt+up" (the folder above), "f2" (rename), "ctrl+a", "ctrl+c", "ctrl+v". "cmd" is Ctrl
+  too ("cmd+c" copies) unless the desktop's ⌘ is the Windows key; "capslock" lasts until the next desktop action,
+  which gives Windows the Mac's own Caps Lock again. Ctrl+Alt+Del: `press title=Ctrl+Alt+Del`.
+- See it: `screenshot target=rdp`, the desktop alone at its own pixel size (the reply gives it): read Windows' text
+  there, and look again after each step. Windows opens a window a moment after its key: keys sent before it shows go
+  elsewhere (typed on the bare desktop, then "return", they open whatever icon the letters chose), so after "win+e"
+  or "win+r" take screenshots until it is there, then type.
+- Click only what no key reaches: `click {"target": "rdp", "x": …, "y": …}` in pixels of that picture, from its top
+  left; `"count": 2` double-clicks, `"button": "right"` right-clicks, `"wheel": -3` scrolls down three notches there.
+  The reply's picture shows what was there, zoomed, with a red cross where it clicked: when the cross isn't on what
+  you meant, take a new screenshot before clicking again. (Without target, x, y are the main window's points.)
 - Full screen: `press title="Full Screen"`, `menu path="View > Enter Full Screen"` or `key combo=ctrl+cmd+f
   target=rdp`; each leaves it again (the menu item and the bar's button are titled Exit Full Screen then). `snapshot` →
   rdp.fullScreen; `screenshot` then draws the full screen, with the note at its top for the first seconds ("Press ⌃⌘F
