@@ -77,6 +77,9 @@ final class FilePane: NSViewController, NSTableViewDataSource, NSTableViewDelega
     private(set) var activities: [String] = []
     private var freeSpace: String?
     private var placeholderText = ""
+    /// The folder's rows went when the connection ended; `dir` stays, listed again once connected (agents don't take
+    /// the pane as listed meanwhile).
+    private(set) var unlisted = false
     /// The connection's state in a word or two, for the status line while there is no folder ("Not connected").
     private var stateText = ""
     /// The host's start folder this pane opened at its last connect: an edited one applies at the next.
@@ -95,6 +98,8 @@ final class FilePane: NSViewController, NSTableViewDataSource, NSTableViewDelega
     let statusLabel = NSTextField(labelWithString: "")
     private let spinner = NSProgressIndicator()
     private let placeholder = NSTextField(wrappingLabelWithString: "")
+    /// Under the placeholder of a server pane whose connection ended after it showed a folder.
+    private let reconnectButton = NSButton(title: "Reconnect", target: nil, action: nil)
     private var hiddenButton: NSButton!
     private var sizesButton: NSButton!
     private var transferButton: NSButton!
@@ -239,6 +244,7 @@ final class FilePane: NSViewController, NSTableViewDataSource, NSTableViewDelega
             previewFiles = [:]
         }
         dir = path
+        unlisted = false
         items = listed.items
         sortedItems = listed.sorted
         folderSizes = [:]
@@ -350,7 +356,7 @@ final class FilePane: NSViewController, NSTableViewDataSource, NSTableViewDelega
         case .connected:
             let start = start()
             if let dir, start == startedIn {
-                Task { await open(dir, record: false) }
+                Task { await openNearest(dir, record: false) }  // (deleted meanwhile: the nearest folder above it)
             } else {
                 startedIn = start
                 Task {
@@ -366,8 +372,16 @@ final class FilePane: NSViewController, NSTableViewDataSource, NSTableViewDelega
             }
         case .connecting: setPlaceholder("Connecting…")
         case .reconnecting: setPlaceholder("Reconnecting…")
-        case .idle: setPlaceholder("Not connected. Click Connect above to browse this host.")
-        case .disconnected: setPlaceholder("Disconnected. Click Reconnect above.")
+        case .idle, .disconnected:
+            // Its rows would be stale, and acting on them fails: they go. The folder stays, listed again once connected.
+            forgetRows()
+            if let dir {
+                setPlaceholder("Disconnected. Reconnect to come back to \(dir).")
+            } else if state == .idle {
+                setPlaceholder("Not connected. Click Connect above to browse this host.")
+            } else {
+                setPlaceholder("Disconnected. Click Reconnect above.")
+            }
         }
         stateText = MainWindowController.describe(state)
         updateStatus()
@@ -378,10 +392,30 @@ final class FilePane: NSViewController, NSTableViewDataSource, NSTableViewDelega
         updatePlaceholder()
     }
 
-    /// The text over the table when it has no rows: why (not connected yet, an empty folder, the filter) and what to do.
+    /// The rows of a server pane whose connection ended (a listing under way stops).
+    private func forgetRows() {
+        unlisted = dir != nil
+        listGeneration += 1
+        listing?.cancel()
+        folderSizesTask?.cancel()
+        items = []
+        sortedItems = []
+        folderSizes = [:]
+        freeSpace = nil
+        rowsGeneration += 1
+        rebuilding = false
+        show([], selecting: [], scroll: false)
+    }
+
+    /// No folder to show: none listed yet, or its rows went when the connection ended (until it is listed again): the
+    /// placeholder and the status line say why.
+    private var showsNoFolder: Bool { dir == nil || unlisted }
+
+    /// The text over the table when it has no rows: why (not connected yet, an empty folder, the filter) and what to do;
+    /// Reconnect once a folder was shown and the connection has ended.
     private func updatePlaceholder() {
         let text: String
-        if dir == nil {
+        if showsNoFolder {
             text = placeholderText
         } else if rows.isEmpty {
             let term = filter.trimmingCharacters(in: .whitespaces)
@@ -393,6 +427,14 @@ final class FilePane: NSViewController, NSTableViewDataSource, NSTableViewDelega
         }
         placeholder.stringValue = text
         placeholder.isHidden = text.isEmpty
+        switch session?.state {
+        case .idle?, .disconnected?: reconnectButton.isHidden = !unlisted
+        default: reconnectButton.isHidden = true
+        }
+    }
+
+    @objc private func reconnect(_ sender: Any?) {
+        browser?.workspace?.connect()
     }
 
     // MARK: Activity and errors
@@ -630,7 +672,8 @@ final class FilePane: NSViewController, NSTableViewDataSource, NSTableViewDelega
         headerMenu.delegate = self
         table.headerView?.menu = headerMenu
 
-        let scroll = NSScrollView()
+        let scroll = FileScrollView()
+        scroll.automaticallyAdjustsContentInsets = false  // its insets are FileScrollView's
         scroll.documentView = table
         scroll.drawsBackground = false
         scroll.hasVerticalScroller = true
@@ -756,6 +799,11 @@ final class FilePane: NSViewController, NSTableViewDataSource, NSTableViewDelega
         placeholder.alignment = .center
         placeholder.isSelectable = false
         placeholder.isHidden = true
+        reconnectButton.target = self
+        reconnectButton.action = #selector(reconnect(_:))
+        reconnectButton.toolTip = "Connect to this host again and show this folder (⌘K)"
+        reconnectButton.isHidden = true
+        reconnectButton.translatesAutoresizingMaskIntoConstraints = false
         placeholder.translatesAutoresizingMaskIntoConstraints = false
         // Wrapped to fit the narrowest pane (260): in one line, a server folder's hint was wider than a pane of the default
         // window, and cut off at both ends.
@@ -767,6 +815,7 @@ final class FilePane: NSViewController, NSTableViewDataSource, NSTableViewDelega
         stack.translatesAutoresizingMaskIntoConstraints = false
         card.addSubview(stack)
         card.addSubview(placeholder)
+        card.addSubview(reconnectButton)
         NSLayoutConstraint.activate([
             stack.topAnchor.constraint(equalTo: card.topAnchor),
             stack.bottomAnchor.constraint(equalTo: card.bottomAnchor),
@@ -775,6 +824,8 @@ final class FilePane: NSViewController, NSTableViewDataSource, NSTableViewDelega
             placeholder.centerXAnchor.constraint(equalTo: scroll.centerXAnchor),
             placeholder.centerYAnchor.constraint(equalTo: scroll.centerYAnchor),
             placeholder.widthAnchor.constraint(lessThanOrEqualToConstant: 240),
+            reconnectButton.centerXAnchor.constraint(equalTo: placeholder.centerXAnchor),
+            reconnectButton.topAnchor.constraint(equalTo: placeholder.bottomAnchor, constant: 10),
             view.widthAnchor.constraint(greaterThanOrEqualToConstant: 260),
         ])
         self.view = view
@@ -783,7 +834,8 @@ final class FilePane: NSViewController, NSTableViewDataSource, NSTableViewDelega
         let named: [(NSView, String)] = [(table, "table"), (sourceButton, "source"), (history, "history"), (up, "up"),
                                           (homeButton, "home"), (refresh, "refresh"), (filterField, "filter"),
                                           (pathControl, "path"), (pathField, "goTo"), (sizesButton, "sizes"),
-                                          (hiddenButton, "hidden"), (transferButton, "transfer")]
+                                          (hiddenButton, "hidden"), (transferButton, "transfer"),
+                                          (reconnectButton, "reconnect")]
         for (control, name) in named { control.setAccessibilityIdentifier(side + name) }
         updateSourceButton()
         updateStatus()
@@ -893,7 +945,7 @@ final class FilePane: NSViewController, NSTableViewDataSource, NSTableViewDelega
     func updateStatus() {
         if let activity = activities.last {
             statusLabel.stringValue = activity
-        } else if dir == nil {
+        } else if showsNoFolder {
             statusLabel.stringValue = stateText
         } else {
             var text = FileList.items(rows.count)
@@ -1342,6 +1394,22 @@ final class FileTableView: NSTableView {
         }
         if let action, NSApp.sendAction(action, to: delegate, from: self) { return }
         super.keyDown(with: event)
+    }
+}
+
+/// A file table's scroll view. Overlay scroll bars (System Settings ▸ Appearance ▸ Show scroll bars: automatically, or
+/// when scrolling) lie over the rows, and the horizontal one hid the last row's text: the rows get the bar's height of
+/// room below them, so that scrolled to the end the last row is above the bar. Legacy scroll bars (Always) have room of
+/// their own.
+final class FileScrollView: NSScrollView {
+    override func tile() {
+        let bar = scrollerStyle == .overlay && hasHorizontalScroller
+            ? NSScroller.scrollerWidth(for: horizontalScroller?.controlSize ?? .regular, scrollerStyle: .overlay) : 0
+        if contentInsets.bottom != bar {
+            contentInsets.bottom = bar
+            scrollerInsets.bottom = -bar
+        }
+        super.tile()
     }
 }
 

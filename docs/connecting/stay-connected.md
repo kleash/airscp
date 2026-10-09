@@ -30,6 +30,8 @@ transfers.
 
 - Reconnecting never asks you anything. If logging in needs an answer (a password that isn't saved, a passphrase, a
   verification code, a new server key), AirSCP stops and shows **Disconnected** with a **Reconnect** button.
+- After **Host ▸ Disconnect**, or when AirSCP stops trying, the server's pane shows no files: they could be out of
+  date. Click **Reconnect** there to connect again and see the same folder.
 - Tunnels that were on come back on when AirSCP reconnects by itself. After you click **Reconnect**, switch them on
   again in the **Tunnels** tab.
 - A connected host stays connected while you look at another host.

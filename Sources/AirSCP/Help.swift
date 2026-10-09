@@ -101,6 +101,7 @@ enum MenuHelp {
         (#selector(AppDelegate.showGettingStarted(_:)), "Open the first steps in AirSCP Help: add a server, connect, copy files"),
         (#selector(AppDelegate.showWhatsNew(_:)), "Open the page of what is new in this version of AirSCP, on the web"),
         (#selector(AppDelegate.reportProblem(_:)), "Tell AirSCP's makers about a problem: a form on GitHub, with your versions filled in"),
+        (#selector(AppDelegate.toggleDebugLogging(_:)), "Turn the detailed log of connections and transfers on or off (Settings ▸ Debug logging)"),
         (#selector(AppDelegate.showDebugLog(_:)), "Show the debug log in Finder, to read it or attach it to a problem report"),
         (#selector(AppDelegate.copyDiagnostics(_:)), "Copy the versions of AirSCP, macOS and ssh and the debug log's last lines, for a report"),
         (#selector(AppDelegate.showWelcome(_:)), "Show the welcome sheet again: import, add a host, the three tips"),
@@ -161,6 +162,9 @@ struct DebugLogButton: View {
     static let showTitle = "Show Debug Log", retryTitle = "Turn On Debug Logging and Try Again"
     static let showTip = "Show AirSCP-debug.log in Finder, to read what happened or attach it to a problem report"
     static let retryTip = "Turn on Settings ▸ Debug logging and connect again, so the log shows what went wrong"
+    /// The sidebar's Turn Off; why it and Help ▸ Turn Off Debug Logging are off while AIRSCP_DEBUG=1 keeps the log on.
+    static let turnOffTip = "Turn off debug logging; Settings ▸ Advanced or the Help menu turns it on again"
+    static let forcedReason = "On while AirSCP runs with AIRSCP_DEBUG=1"
 
     var body: some View {
         if model.debugLoggingOn {

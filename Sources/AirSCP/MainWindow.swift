@@ -502,6 +502,9 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
             item.toolTip = Self.toolbarTips[id]
             item.showsIndicator = false
             item.menu = NSMenu()
+            // The item's button is a pull-down, whose first item is its title and never listed: without this empty one,
+            // New Host… was missing from the menu.
+            item.menu.addItem(withTitle: "", action: nil, keyEquivalent: "")
             for (title, action) in [("New Host…", #selector(AppDelegate.newHost(_:))),
                                     ("New Remote Desktop…", #selector(AppDelegate.newRemoteDesktop(_:))),
                                     ("New Group…", #selector(AppDelegate.newGroup(_:)))] {

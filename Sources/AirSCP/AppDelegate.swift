@@ -10,7 +10,7 @@ import UniformTypeIdentifiers
 /// host (ssh -O exit) and desktop, asking first if transfers are running.
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSMenuItemValidation {
-    private var model: AppModel!
+    var model: AppModel!
     private var askpass: AskpassServer!
     var main: MainWindowController!
     private var keys: KeysWindowController?
@@ -282,6 +282,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSMenu
     /// Help ▸ Show Debug Log in Finder.
     @objc func showDebugLog(_ sender: Any?) { revealDebugLog() }
 
+    /// Help ▸ Turn On Debug Logging, or Turn Off Debug Logging while it is on (its title says which): Settings ▸ Debug
+    /// logging.
+    @objc func toggleDebugLogging(_ sender: Any?) { model.data.settings.debugLogging = !model.debugLoggingOn }
+
     /// Help ▸ Copy Diagnostics: AirSCP's, macOS's and ssh's versions, the debug log's state and file, and its last 500
     /// lines, for a problem report.
     @objc func copyDiagnostics(_ sender: Any?) {
@@ -481,6 +485,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSMenu
         } else if item.action == #selector(showDebugLog(_:)) {
             enabled = FileManager.default.fileExists(atPath: DebugLog.fileURL.path)
             reason = "No debug log yet: turn on Settings ▸ Debug logging, then connect again"
+        } else if item.action == #selector(toggleDebugLogging(_:)) {
+            item.title = model?.debugLoggingOn == true ? "Turn Off Debug Logging" : "Turn On Debug Logging"
+            enabled = !DebugLog.forced
+            reason = DebugLogButton.forcedReason
         }
         item.explain(enabled: enabled, reason: enabled ? nil : reason)
         return enabled
@@ -581,6 +589,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSMenu
             item("AirSCP Tips", #selector(showTips(_:))),
             item("Agent Guide", #selector(showAgentGuide(_:))),
             .separator(),
+            item("Turn On Debug Logging", #selector(toggleDebugLogging(_:))),
             item("Show Debug Log in Finder", #selector(showDebugLog(_:))),
             item("Copy Diagnostics", #selector(copyDiagnostics(_:))),
             item("Report a Problem", #selector(reportProblem(_:))),

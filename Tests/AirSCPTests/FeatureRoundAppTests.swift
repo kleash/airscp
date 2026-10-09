@@ -567,3 +567,44 @@ import Testing
         }
     }
 }
+
+extension FeatureRoundAppTests {
+    /// After Disconnect the server pane showed the folder's old rows. Through agent control: it has none and isn't
+    /// "listed", and its Reconnect lists the same folder again.
+    @MainActor @Test func aDisconnectedPaneIsListedAgainByItsReconnect() async throws {
+        _ = NSApplication.shared
+        try await withServer { @MainActor server in
+            try write("x", to: server.path("logs/app.log"))
+            var host = server.host()
+            host.label = "lab"
+            host.defaultRemoteDir = server.path("logs")
+            let model = testModel([host])
+            let askpass = try AskpassServer(helperPath: TestEnvironment.airscpBinary)
+            defer { askpass.close() }
+            let (main, agent, _) = try agentWindow(model, askpass)
+            defer {
+                agent.close()
+                main.window?.orderOut(nil)
+            }
+            _ = await call(agent, "select", ["pane": "sidebar", "names": ["lab"]])
+            _ = await call(agent, "menu", ["path": "Host > Connect"])
+            #expect(await call(agent, "wait", ["until": "listed", "pane": "right", "text": "app.log", "timeout": 20]).error == nil)
+            _ = await call(agent, "menu", ["path": "Host > Disconnect"])
+            #expect(await call(agent, "wait", ["until": "disconnected", "timeout": 20]).error == nil)
+            let right = try #require(main.selectedWorkspace?.browser.right)
+            #expect(right.rows.isEmpty && right.dir == server.path("logs"))
+            #expect(await call(agent, "wait", ["until": "listed", "pane": "right", "timeout": 1]).error?.hasPrefix("Timed out") == true)
+            // The pane's Reconnect, as its click sends it: pressed by an agent in this process beside other tests, an AppKit
+            // button's click ended the test run (PLAN.md's backlog, "Test infrastructure"); agent-session.sh presses it.
+            let reconnect = try #require(AgentServer.views(NSButton.self, in: right.view).first {
+                $0.accessibilityIdentifier() == "right.reconnect"
+            })
+            #expect(!reconnect.isHidden)
+            NSApp.sendAction(try #require(reconnect.action), to: reconnect.target, from: reconnect)
+            let reply = await call(agent, "wait", ["until": "listed", "pane": "right", "timeout": 20])
+            let rows = (reply["rows"] as? [[String: Any]] ?? []).compactMap { $0["name"] as? String }
+            #expect(reply["dir"] as? String == server.path("logs") && rows == ["app.log"], "\(reply.json) \(reply.error ?? "")")
+            await main.selectedWorkspace?.connection.disconnect()
+        }
+    }
+}

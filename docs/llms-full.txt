@@ -685,6 +685,8 @@ transfers.
 
 - Reconnecting never asks you anything. If logging in needs an answer (a password that isn't saved, a passphrase, a
   verification code, a new server key), AirSCP stops and shows **Disconnected** with a **Reconnect** button.
+- After **Host ▸ Disconnect**, or when AirSCP stops trying, the server's pane shows no files: they could be out of
+  date. Click **Reconnect** there to connect again and see the same folder.
 - Tunnels that were on come back on when AirSCP reconnects by itself. After you click **Reconnect**, switch them on
   again in the **Tunnels** tab.
 - A connected host stays connected while you look at another host.
@@ -2109,13 +2111,14 @@ common ones.
 When a connection fails and the message doesn't say enough (often through a proxy or a jump host), the debug log shows
 each step: which server answered, what the proxy said, and where it stopped.
 
-1. Open **AirSCP ▸ Settings…** and turn on **Debug logging** (under **Advanced**). Or click **Turn On Debug Logging
-   and Try Again** in the error message.
+1. Choose **Help ▸ Turn On Debug Logging**. Or turn on **Debug logging** in **AirSCP ▸ Settings…** (under
+   **Advanced**), or click **Turn On Debug Logging and Try Again** in the error message.
 2. Connect again, or do again what failed.
 3. Choose **Help ▸ Show Debug Log in Finder**. The file is `AirSCP-debug.log` in `~/Library/Logs/AirSCP`.
 4. Attach the file to your report (**Help ▸ Report a Problem**). **Help ▸ Copy Diagnostics** copies your versions and
    the last lines of the log.
-5. Turn **Debug logging** off when you are done.
+5. Turn it off when you are done: click **Turn Off** next to **Debug logging on** at the bottom of the sidebar, or
+   choose **Help ▸ Turn Off Debug Logging**.
 
 (Picture: With debug logging on, the sidebar says so and an error offers Show Debug Log)
 
@@ -2256,6 +2259,13 @@ Source: https://kleash.github.io/airscp/whats-new.html
 - **Check copies with SHA-256**: **Verify with Checksum** compares a copied file with the original, and **Settings ▸
   Verify transfers with SHA-256** checks every file as it arrives. A damaged copy shows **Mismatch**, and **Retry**
   copies it again. See [Check a copy with its checksum](https://kleash.github.io/airscp/transfers/verify-checksums.html).
+- The toolbar's **+** lists **New Host…** first. Before, it showed only **New Remote Desktop…** and **New Group…**.
+- In the New Host and Remote Desktop sheets, the blue ring around the field you type in fits the field.
+- After **Disconnect**, the server's pane no longer shows files that may be out of date. It says it is disconnected,
+  and **Reconnect** shows the same folder again.
+- The horizontal scroll bar no longer covers the last file in a long folder.
+- **Debug logging on**, at the bottom of the sidebar, has a **Turn Off** button. **Help ▸ Turn On Debug Logging**
+  (**Turn Off Debug Logging** while it is on) switches it too.
 
 ## AirSCP 1.0
 
@@ -2452,7 +2462,9 @@ AirSCP was installed with `./install.sh`).
   `prompt.answer`; set it and press OK). A question asked again begins "That password wasn't accepted" (a code:
   "That answer wasn't accepted"). Then `wait until=connected`.
   Disconnect: `menu path="Host > Disconnect"`. A lost connection reconnects by itself when it can (banner
-  "Reconnecting…"); `snapshot` → workspace.banner says what happened, with its buttons ("Reconnect").
+  "Reconnecting…"); `snapshot` → workspace.banner says what happened, with its buttons ("Reconnect"). Once
+  disconnected, the server pane has no rows (its dir stays) and isn't "listed"; `press id=right.reconnect` connects
+  and lists that folder again (`wait until=listed pane=right`).
 - Import from ~/.ssh/config: `menu path="File > Import from ~/.ssh/config…"` → a sheet with a checkbox per alias
   (titled "<alias>, <user@host>"): `set title=<alias> value=false` leaves one out → `press title=Import`.
   Hosts to and from a file: `menu path="File > Export Hosts…" file=/tmp/hosts.json`,
@@ -2703,15 +2715,18 @@ AirSCP was installed with `./install.sh`).
   AirSCP (MCP)". The bridge talks to the AirSCP of its own settings folder (AIRSCP_SUPPORT_DIR, when set). "AirSCP
   didn't answer": it is busy with many calls at once, or quitting; check with snapshot before doing it again.
 - A connect or transfer fails and its message doesn't say enough (often through a proxy or a jump host): turn on the
-  debug log with `set id=settings.debugLogging value=true in="window:Settings"` (or, in the "Can't connect" sheet or
-  a Disconnected banner, `press title="Turn On Debug Logging and Try Again"`, which connects again), make it happen
-  again, then read the plain-text file at `snapshot` → debugLog.path. Each line has the time and the host.
+  debug log with `menu path="Help > Turn On Debug Logging"` or `set id=settings.debugLogging value=true
+  in="window:Settings"` (or, in the "Can't connect" sheet or a Disconnected banner,
+  `press title="Turn On Debug Logging and Try Again"`, which connects again), make it happen again, then read the
+  plain-text file at `snapshot` → debugLog.path. Each line has the time and the host.
   "Couldn't connect: it stopped at …" names the hop that failed (the HTTP proxy, the jump host or the server) in plain
   words; the lines before it are ssh's own (-vv: "Authenticated to bastion", "channel 0: open failed"), the proxy's
   answer ("proxy-connect: the proxy 127.0.0.1:3128 answered CONNECT bastion:22 with “HTTP/1.1 407 …”") and the
   questions ssh asked (never the answers: no password is ever in the file). `menu path="Help > Copy Diagnostics"`
   copies the versions and the log's last lines; "Help > Show Debug Log in Finder" shows the file to the user. Turn the
-  log off when done (`value=false`). AIRSCP_DEBUG=1 in AirSCP's environment turns it on from the start.
+  log off when done: `value=false`, `press id=debugLog.turnOff` (the sidebar's Turn Off) or
+  `menu path='Help > Turn Off Debug Logging'`. AIRSCP_DEBUG=1 in AirSCP's environment turns it on from the start (and
+  keeps it on).
 - "… is disabled now: <reason>": the reason says what is missing (no selection, not connected, sftp only, the Files
   tab not shown…).
   "Nothing to press called …" / "No field …": `snapshot include=["sheets","elements"]` shows what is there (add

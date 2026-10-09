@@ -1128,10 +1128,11 @@ final class AgentServer {
     /// Lists `path` in `pane` as Go to Folder does (its Back list and path bar follow) and gives the pane the focus, as
     /// Return in that field does. A folder that can't be listed is this request's error, not a sheet left to close.
     private func go(_ pane: FilePane, to path: String, select: [String] = []) async throws -> [String: Any] {
-        // Just connected, the pane lists its start folder a moment after the state changed: that listing would take this
-        // one's place, so it goes first (as a person sees the first folder before typing another).
+        // Just connected, the pane lists its start folder (or, reconnected, its folder again) a moment after the state
+        // changed: that listing would take this one's place, so it goes first (as a person sees the first folder before
+        // typing another).
         let deadline = Date().addingTimeInterval(30)
-        while pane.dir == nil && Date() < deadline { try await Task.sleep(nanoseconds: 50_000_000) }
+        while (pane.dir == nil || pane.unlisted) && Date() < deadline { try await Task.sleep(nanoseconds: 50_000_000) }
         let before = pane.dir
         var failure: Error?
         guard await pane.open(path, select: select, quiet: true, failed: { failure = $0 }) else {
@@ -1501,7 +1502,8 @@ final class AgentServer {
             let name = arguments["pane"] as? String ?? "right", path = arguments["path"] as? String, text = arguments["text"] as? String
             check = { [self] in
                 let pane = try pane(name)
-                guard let dir = pane.dir, pane.activities.isEmpty, !pane.rebuilding, path.map({ pane.resolve($0) == dir }) ?? true,
+                guard let dir = pane.dir, !pane.unlisted, pane.activities.isEmpty, !pane.rebuilding,
+                      path.map({ pane.resolve($0) == dir }) ?? true,
                       text.map({ text in pane.items.contains { $0.name == text } }) ?? true else { return nil }
                 return paneJSON(pane, rows: 50)
             }

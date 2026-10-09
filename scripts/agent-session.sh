@@ -2,8 +2,9 @@
 # A scripted agent-control session, the one CI runs after ./build.sh (.github/workflows/ci.yml). A throwaway AirSCP
 # (its own settings and ssh folders, agent control on) connects to a throwaway sshd on this Mac, trusts its key,
 # uploads a folder through its sheet, renames and deletes a file through their questions, previews Synchronize,
-# answers MCP, edits a file that changes on the server meanwhile, and quits. Each step leaves its snapshot (JSON) and screenshots (light and dark) in the output folder;
-# a failed step leaves what AirSCP showed instead (failed.png, failed.json) and stops the script.
+# answers MCP, edits a file that changes on the server meanwhile, disconnects and reconnects from the emptied pane,
+# and quits. Each step leaves its snapshot (JSON) and screenshots (light and dark) in the output folder; a failed step
+# leaves what AirSCP showed instead (failed.png, failed.json) and stops the script.
 #
 #   scripts/agent-session.sh [output folder]     default: build/agent-session
 #
@@ -204,6 +205,13 @@ for _ in $(seq 1 60); do grep -q navy "$T/server/home/site/site.css" && break; s
 grep -q navy "$T/server/home/site/site.css" || { echo "Save didn't replace the server's version." >&2; exit 1; }
 a menu path='File > Close' in=window:site.css
 
+a menu path='Host > Disconnect'
+a wait until=disconnected host=test-server timeout=30
+# Disconnected, the server pane shows no rows (they'd be stale) and offers Reconnect, which lists that folder again.
+snapshot 10-disconnected include='["panes"]'
+shot 10-disconnected
+a press id=right.reconnect
+a wait until=listed pane=right path="$T/server/home/site" text=site.css timeout=30
 a menu path='Host > Disconnect'
 a wait until=disconnected host=test-server timeout=30
 a menu path='AirSCP > Quit AirSCP'

@@ -22,6 +22,13 @@ nav_order: 18
 - **Check copies with SHA-256**: **Verify with Checksum** compares a copied file with the original, and **Settings ▸
   Verify transfers with SHA-256** checks every file as it arrives. A damaged copy shows **Mismatch**, and **Retry**
   copies it again. See [Check a copy with its checksum](transfers/verify-checksums.md).
+- The toolbar's **+** lists **New Host…** first. Before, it showed only **New Remote Desktop…** and **New Group…**.
+- In the New Host and Remote Desktop sheets, the blue ring around the field you type in fits the field.
+- After **Disconnect**, the server's pane no longer shows files that may be out of date. It says it is disconnected,
+  and **Reconnect** shows the same folder again.
+- The horizontal scroll bar no longer covers the last file in a long folder.
+- **Debug logging on**, at the bottom of the sidebar, has a **Turn Off** button. **Help ▸ Turn On Debug Logging**
+  (**Turn Off Debug Logging** while it is on) switches it too.
 
 ## AirSCP 1.0
 

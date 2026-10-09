@@ -92,12 +92,20 @@ struct Sidebar: View {
                 .help("HTTP proxies a host's connection can go through; most people need none")
                 if model.agentControlOn { AgentIndicator(model: model) }
                 if model.debugLoggingOn {
-                    Button(action: revealDebugLog) {
-                        Label("Debug logging on", systemImage: "ladybug").font(.caption).foregroundColor(.secondary)
+                    HStack(spacing: 6) {
+                        Button(action: revealDebugLog) {
+                            Label("Debug logging on", systemImage: "ladybug").font(.caption).foregroundColor(.secondary)
+                        }
+                        .buttonStyle(.borderless)
+                        .help("Debug logging is on (Settings ▸ Advanced). Click to show AirSCP-debug.log in Finder")
+                        .accessibilityIdentifier("debugLog.indicator")
+                        Button("Turn Off") { model.data.settings.debugLogging = false }
+                            .buttonStyle(.link)
+                            .font(.caption)
+                            .disabled(DebugLog.forced)
+                            .help(DebugLog.forced ? DebugLogButton.forcedReason : DebugLogButton.turnOffTip)
+                            .accessibilityIdentifier("debugLog.turnOff")
                     }
-                    .buttonStyle(.borderless)
-                    .help("Debug logging is on (Settings ▸ Advanced). Click to show AirSCP-debug.log in Finder")
-                    .accessibilityIdentifier("debugLog.indicator")
                 }
             }
             .frame(maxWidth: .infinity, alignment: .leading)

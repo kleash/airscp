@@ -605,9 +605,13 @@ extension View {
     /// An editor sheet's form, in a scroll view as high as a screen of `screenHeight` points has room for (the sheet's
     /// title and buttons, and the window's toolbar above it): with Advanced open, the host and Remote Desktop editors
     /// (821 points) ran off screens under about 860 points. A form that fits shows whole, without scrolling.
+    /// A field's focus ring is drawn 3 points outside it, inside the scroll view, which cuts off what goes past its edges
+    /// (the first field's ring lost its top, every field's its right edge, and the ring seemed to sit below the field):
+    /// the form has 4 points of room inside the scroll view, which reaches 4 points further out, so nothing moves.
     func scrollingOnShortScreens(screenHeight: CGFloat = NSScreen.main?.visibleFrame.height ?? 900) -> some View {
-        ScrollView { fixedSize(horizontal: false, vertical: true) }
+        ScrollView { fixedSize(horizontal: false, vertical: true).padding(4) }
             .frame(maxHeight: max(240, screenHeight - 260))
+            .padding(-4)
     }
 }
 
