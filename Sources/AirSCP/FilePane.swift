@@ -824,8 +824,8 @@ final class FilePane: NSViewController, NSTableViewDataSource, NSTableViewDelega
         "size": "File size; folders show — until View ▸ Calculate Folder Sizes",
         "modified": "When the item last changed",
         "permissions": "Who may read (r), write (w) and run (x) it: owner, group, others",
-        "owner": "The account that owns it",
-        "group": "The group that owns it",
+        "owner": "The account that owns it; point at one to see its user ID",
+        "group": "The group that owns it; point at one to see its group ID",
         "kind": "What kind of item it is",
     ]
 
@@ -929,6 +929,7 @@ final class FilePane: NSViewController, NSTableViewDataSource, NSTableViewDelega
         let cell = tableView.makeView(withIdentifier: id, owner: nil) as? NSTableCellView ?? makeCell(id)
         let item = rows[row]
         let text: String
+        var tip: String?
         switch id.rawValue {
         case "name":
             text = item.name
@@ -944,15 +945,26 @@ final class FilePane: NSViewController, NSTableViewDataSource, NSTableViewDelega
             }
         case "modified": text = item.modified.map { item.dateOnly ? FileList.day($0) : Self.dates.string(from: $0) } ?? "—"
         case "permissions": text = item.permissions
-        case "owner": text = item.owner
-        case "group": text = item.group
+        case "owner":
+            text = item.owner
+            tip = Self.idTip(item.owner, item.ownerID, "user")
+        case "group":
+            text = item.group
+            tip = Self.idTip(item.group, item.groupID, "group")
         default: text = FileList.kind(of: item)
         }
         cell.textField?.stringValue = text
+        cell.toolTip = tip
         return cell
     }
 
     func tableView(_ tableView: NSTableView, rowViewForRow row: Int) -> NSTableRowView? { FileRowView() }
+
+    /// An Owner or Group cell's tooltip: the name (the column may cut it off) with its number, "dev (user ID 1000)"; the
+    /// number alone when the server has no name for it.
+    static func idTip(_ name: String, _ id: Int?, _ kind: String) -> String? {
+        id.map { name == String($0) ? "\(kind.capitalized) ID \($0)" : "\(name) (\(kind) ID \($0))" }
+    }
 
     private func makeCell(_ id: NSUserInterfaceItemIdentifier) -> NSTableCellView {
         let cell = FileCellView()

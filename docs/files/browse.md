@@ -27,6 +27,8 @@ Move around a server's folders like in Finder.
 - Click a column heading to sort by it. Click again to reverse.
 - Right-click the headings (or **View ▸ Columns**) to show or hide columns: size, date modified, permissions, owner,
   group and kind.
+- **Owner** and **Group** show names, as **Get Info** does. Point at one to see its number (user ID or group ID).
+  Servers that allow only file transfers (sftp) show the names without numbers.
 - Folders show “—” as their size. **View ▸ Calculate Folder Sizes** (the **Σ** button) works them out. **Settings** can
   do it always.
 

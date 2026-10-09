@@ -70,6 +70,36 @@ import Testing
     }
 }
 
+/// Owners and groups are listed by name, as Get Info shows them (the panes showed numbers): with a shell their numbers
+/// come too, in the same command (for the tooltip); an sftp-only account gets the names sftp's `ls -l` shows.
+@Test func ownersAndGroupsAreListedByName() async throws {
+    var info = stat()
+    func owner(of path: String) throws -> (user: String, group: String, gid: Int) {
+        #expect(lstat(path, &info) == 0)
+        return (String(cString: try #require(getpwuid(info.st_uid)).pointee.pw_name),
+                String(cString: try #require(getgrgid(info.st_gid)).pointee.gr_name), Int(info.st_gid))
+    }
+    try await withServer { server in
+        let session = try await server.connectedSession()
+        try write("x", to: server.path("mine.txt"))
+        let expected = try owner(of: server.path("mine.txt"))
+        let before = await server.logEntries().count
+        let entry = try #require(try await session.list(server.home).first { $0.name == "mine.txt" })
+        #expect(entry.owner == expected.user && entry.group == expected.group, "\(entry)")
+        #expect(entry.ownerID == Int(getuid()) && entry.groupID == expected.gid, "\(entry)")
+        #expect((await server.logEntries()).count == before + 1)  // one command, as before
+        let details = try await session.info(entry)
+        #expect(details.owner == entry.owner && details.group == entry.group)
+    }
+    try await withServer(TestServer.Options(sftpOnly: true)) { server in
+        let session = try await server.connectedSession()
+        try write("x", to: server.path("mine.txt"))
+        let expected = try owner(of: server.path("mine.txt"))
+        let entry = try #require(try await session.list(server.home).first { $0.name == "mine.txt" })
+        #expect(entry.owner == expected.user && entry.group == expected.group && entry.ownerID == nil, "\(entry)")
+    }
+}
+
 /// Files and links on a shell host go in one command: sftp's rm takes two round trips a file (50 files took half a
 /// minute over a 300 ms link). Every one goes, with its exact name; a link to a folder only as the link. Without a
 /// shell: sftp's rm, in one batch.

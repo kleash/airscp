@@ -80,3 +80,38 @@ import Testing
     // sftp's ls prints no targets: there all of the rest is the name, and one with a "/" can't be a file's.
     #expect(Listing.parse(output, in: "/d", now: now).map(\.name) == ["before", "after"])
 }
+
+/// Owners and groups come by name, as Get Info shows them (the panes showed uid and gid numbers). Their numbers come
+/// from the same folder listed with them (`ls -n`), cut down to a line per pair: each name gets the number of a sample
+/// that has it, whichever entry the sample was; a name without a sample gets none.
+@Test func ownersAndGroupsAreNamedAndKeepTheirNumbers() throws {
+    let names = """
+        total 24
+        drwxr-xr-x 2 dev  dev          4096 Oct  2 15:54 .
+        drwxr-xr-x 3 root root         4096 Oct  2 15:54 ..
+        -rw-r--r-- 1 dev  dev             6 Oct  2 11:54 a.txt
+        -rw-r--r-- 1 dev  dev             6 Oct  2 11:54 b.txt
+        -rw-r--r-- 1 root domain users    6 Oct  2 11:54 shared
+        -rw-r--r-- 1 1234 1234            6 Oct  2 11:54 orphan
+        -rw-r--r-- 1 www-data dev         6 Oct  2 11:54 made since
+        -rw-r--r-- 1 dev  dev             6 Oct  2 11:54 caf\u{E9}
+        -rw-r--r-- 1 root root            6 Oct  2 11:54 cafe\u{301}
+        """
+    let samples = """
+        total 24
+        -rw-r--r-- 1 1000 1000 6 Oct  2 11:54 a.txt
+        -rw-r--r-- 1 0 513 6 Oct  2 11:54 shared
+        -rw-r--r-- 1 1234 1234 6 Oct  2 11:54 orphan
+        -rw-r--r-- 1 0 0 6 Oct  2 11:54 cafe\u{301}
+        """
+    let entries = try #require(Session.shellListing(Data(names.utf8), in: "/d"))
+    #expect(entries.map(\.owner) == ["dev", "dev", "root", "1234", "www-data", "dev", "root"])
+    #expect(entries.map(\.group) == ["dev", "dev", "domain users", "1234", "dev", "dev", "root"])
+    #expect(entries.allSatisfy { $0.ownerID == nil && $0.groupID == nil })
+    let numbered = Session.numbered(entries, samples: try #require(Session.shellListing(Data(samples.utf8), in: "/d")))
+    #expect(numbered.map(\.ownerID) == [1000, 1000, 0, 1234, nil, 1000, 0])
+    #expect(numbered.map(\.groupID) == [1000, 1000, 513, 1234, 1000, 1000, 0])
+    #expect(numbered.map(\.name) == entries.map(\.name) && numbered.map(\.owner) == entries.map(\.owner))
+    // No samples (awk missing, or another ls): the names alone.
+    #expect(Session.numbered(entries, samples: []) == entries)
+}

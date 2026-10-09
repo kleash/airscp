@@ -416,6 +416,8 @@ extension AgentServer {
                 var row: [String: Any] = ["name": item.name, "kind": "\(item.kind)", "perm": item.permissions,
                                           "owner": item.owner, "group": item.group]
                 if item.kind == .file { row["size"] = item.size } else if let size = pane.folderSizes[item.name] { row["size"] = size }
+                if let id = item.ownerID { row["ownerID"] = id }
+                if let id = item.groupID { row["groupID"] = id }
                 if let modified = item.modified { row["modified"] = (item.dateOnly ? days : dates).string(from: modified) }
                 if item.name.hasPrefix(".") { row["hidden"] = true }
                 return row

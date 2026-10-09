@@ -40,7 +40,7 @@ map with tests is [feature-map.md](feature-map.md).
   AirSCP started (checked by pid ancestry). The proxy helper gets the proxy's address and password the same way,
   never from the command line or the environment.
 - **Quoting** (`Quote.swift`): three contexts (shell, sftp batch, scp remote path). Listing is `cd "<dir>"` then
-  `ls -lan` in one script (`ls "<dir>"` would brace-expand). Only scp *download sources* are glob-escaped. AirSCP's own
+  `ls -la` in one script (`ls "<dir>"` would brace-expand). Only scp *download sources* are glob-escaped. AirSCP's own
   shell operations run through `sh` whatever the login shell is (csh/fish don't know `$?`), and the login shell only
   ever sees `exec sh -s`: the script is piped to `sh` on standard input (`OpenSSH.longScript`), so a server-supplied
   name in it is never re-parsed by a non-POSIX login shell (fish, csh, tcsh mis-read even correct POSIX quoting on the
@@ -52,10 +52,15 @@ map with tests is [feature-map.md](feature-map.md).
 
 ## Files and transfers
 
-- **Listing** (`RemoteFS.swift`): a byte-level `ls -lan` parser (50 000 entries in about a second), sftp's `ls` as
-  the fallback (sftp-only accounts; BusyBox when names aren't ASCII: BusyBox prints every such byte as `?`). Names
-  with `/` are dropped at the parse boundary (path traversal from a hostile server). A folder that can't be read is an
-  error, never an empty folder.
+- **Listing** (`RemoteFS.swift`): a byte-level `ls -la` parser (50 000 entries in about a second), sftp's `ls` as
+  the fallback (sftp-only accounts; BusyBox when names aren't ASCII: BusyBox prints every such byte as `?`). Owners
+  and groups come by name, as Get Info shows them; with a shell, the same command lists the folder again with `-n`,
+  cut by awk to a line per owner and group pair, for their numbers (the cells' tooltips). Names with `/` are dropped
+  at the parse boundary (path traversal from a hostile server). A folder that can't be read is an error, never an
+  empty folder.
+- **Editor** (`RemoteEditor.swift`): Save reads the file again first and compares it byte for byte with what the
+  editor last read or wrote (sftp gives sizes and times to the minute only); when someone saved it meanwhile it asks:
+  Overwrite, Show Server Version (read-only, in a window beside it), Cancel.
 - **Transfers** (`Transfer.swift`): one queue per host (one job at a time per host, hosts in parallel). Single files
   go with scp on the pty (its meter drives progress); folders, 200+ items and Synchronize batches go as **one tar
   stream** (bsdtar here, GNU/BSD/BusyBox tar there), optionally gzip-compressed, with Leave out patterns as

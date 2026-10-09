@@ -802,6 +802,8 @@ Move around a server's folders like in Finder.
 - Click a column heading to sort by it. Click again to reverse.
 - Right-click the headings (or **View ▸ Columns**) to show or hide columns: size, date modified, permissions, owner,
   group and kind.
+- **Owner** and **Group** show names, as **Get Info** does. Point at one to see its number (user ID or group ID).
+  Servers that allow only file transfers (sftp) show the names without numbers.
 - Folders show “—” as their size. **View ▸ Calculate Folder Sizes** (the **Σ** button) works them out. **Settings** can
   do it always.
 
@@ -984,6 +986,9 @@ Open a server file in its Mac app, preview it, or edit a text file right in AirS
 - Saving is safe: the new text is written next to the file and then renamed over it, so a full disk can't leave it half
   written. The file keeps its permissions.
 - Closing an editor with unsaved changes asks first.
+- If someone saved the file on the server after you opened it, **Save** asks first. **Overwrite** replaces their
+  changes with your text. **Show Server Version** opens their text in another window, so you can copy what you need;
+  then save again. **Cancel** lets you keep editing.
 
 ## If something goes wrong
 
@@ -2174,6 +2179,9 @@ Source: https://kleash.github.io/airscp/whats-new.html
   name, and get the folder's list back at once. You still see each step in the window.
 - **Synchronize** leaves out what matches the server's **Leave out** patterns (the same list as for folder
   transfers, shown and changed in the sheet), and you can untick items in the list before you click **Synchronize**.
+- **The editor never overwrites someone else's changes unasked**: when a file changed on the server after you opened
+  it, **Save** asks first and can show you the server's version.
+- **Owner and Group show names** on servers, as **Get Info** does. Point at one to see its number.
 
 ## AirSCP 1.0
 
@@ -2435,7 +2443,8 @@ AirSCP was installed with `./install.sh`).
 
 ## files
 - The Files tab (`press title=Files`) has two panes: left = this Mac (or another connected server), right = the host.
-  `snapshot` → panes.left/right: dir, rows, selected, status ("12 items, 2 selected — 30 GB available").
+  `snapshot` → panes.left/right: dir, rows, selected, status ("12 items, 2 selected — 30 GB available"). A row's owner
+  and group are names, as Get Info shows them; ownerID and groupID are their numbers where the server tells them.
 - Through folders without a click: connect (`select pane=sidebar names=["web"]` → `menu path="Host > Connect"` → `wait
   until=connected`) → `go path=/var/www` (the reply lists the folder; `open name=site` opens a row, `open name=..` goes
   up) → `select pane=right names=["index.html"]` → its command: `menu path="File > Download To…" file=/Users/me/Downloads`,
@@ -2455,8 +2464,11 @@ AirSCP was installed with `./install.sh`).
   (`set id=compress.format value=zip` or `tar.gz`, press Compress), Extract Here / Extract to New Folder, Get Info
   (sheet with kind, size, dates, owner; press Done), Edit in AirSCP (an editor window titled "<file name> — <host>":
   `set id=editor.text value=… in="window:<file name>"` (a byte order mark the file starts with stays: JSON can't
-  carry one), `press title=Save in="window:<file name>"`; read it with
-  `snapshot include=["elements"] in="window:<file name>"`; close it with `menu path="File > Close"
+  carry one), `press title=Save in="window:<file name>"` (when someone saved the file on the server after it was
+  opened, Save asks first, a sheet on the editor: press Overwrite, Cancel, or Show Server Version, which opens their
+  text read-only in a window titled "<file name> on the server — <host>": read it with
+  `snapshot include=["elements"] in="window:<file name> on the server"`, then press Save again to overwrite it); read
+  it with `snapshot include=["elements"] in="window:<file name>"`; close it with `menu path="File > Close"
   in="window:<file name>"`, which asks first when it has unsaved changes).
 - Handed to other apps, so their result isn't visible here: Open (the default app), Show in Finder, Open Terminal
   Here, Run in Terminal, Copy Path (the clipboard). Quick Look is refused: download the file and read it instead.

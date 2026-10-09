@@ -15,6 +15,9 @@ struct FileItem: Equatable {
     let mode: Int
     let owner: String
     let group: String
+    /// The owner's and group's numbers (uid, gid), when known (`RemoteEntry.ownerID`).
+    let ownerID: Int?
+    let groupID: Int?
     /// The server's listing gave the day only (`RemoteEntry.dateOnly`).
     let dateOnly: Bool
     /// The server's entry; nil for a file on this Mac.
@@ -30,12 +33,14 @@ struct FileItem: Equatable {
         mode = entry.mode
         owner = entry.owner
         group = entry.group
+        ownerID = entry.ownerID
+        groupID = entry.groupID
         dateOnly = entry.dateOnly
         self.entry = entry
     }
 
     init(local name: String, path: String, kind: RemoteEntry.Kind, size: Int64, modified: Date?, mode: Int,
-         owner: String, group: String) {
+         owner: String, group: String, ownerID: Int? = nil, groupID: Int? = nil) {
         self.name = name
         self.path = path
         self.kind = kind
@@ -45,6 +50,8 @@ struct FileItem: Equatable {
         self.mode = mode
         self.owner = owner
         self.group = group
+        self.ownerID = ownerID
+        self.groupID = groupID
         dateOnly = false
         entry = nil
     }
@@ -92,7 +99,7 @@ enum FileList {
         return FileItem(local: name, path: path, kind: kind, size: Int64(info.st_size),
                         modified: Date(timeIntervalSince1970: TimeInterval(info.st_mtimespec.tv_sec)),
                         mode: Int(info.st_mode & 0o7777), owner: userName(info.st_uid, &users),
-                        group: groupName(info.st_gid, &groups))
+                        group: groupName(info.st_gid, &groups), ownerID: Int(info.st_uid), groupID: Int(info.st_gid))
     }
 
     /// The names in a folder on this Mac, exactly as stored (for conflict checks).

@@ -431,7 +431,7 @@ import Testing
         let comparison = try await Sync.compare(local: local, remote: there, on: session) { _ in }
         #expect(comparison.folders == 21 && comparison.differences.map(\.path) == ["d3/e 3/new.txt"] && comparison.leftOut == 1,
                 "\(comparison.folders) \(comparison.differences.map(\.path)) \(comparison.leftOut)")
-        let listings = (await server.logEntries()).dropFirst(before).filter { $0.command.contains("ls -lan") }
+        let listings = (await server.logEntries()).dropFirst(before).filter { $0.command.contains("ls -la") }
         #expect(listings.count == 3, "\(listings.count)")  // the folder, its 4 folders, and their 16
 
         // A folder that can't be read: listed alone, so the compare names it.

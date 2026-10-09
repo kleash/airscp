@@ -1054,11 +1054,6 @@ requests and by hand; security.yml also before every release; Dependabot monthly
 ## Release 2 backlog
 Worth doing, not cheap enough for v1: one line each (feature — why — smallest form). From the round-1 fix step
 (2026-10-05, verify-r1 findings); later fix steps add to it.
-- Owner/Group as names on servers — the list shows uid/gid numbers while Get Info shows names — `ls -la` in
-  `Session.lsFunction` (the parser already reads multi-word groups) and sftp `ls -l`.
-- Editor warns before Save overwrites a file changed on the server since it was opened — today the other change is
-  silently lost — remember size and modification time at open and compare them in `RemoteEditor.save`, asking
-  Overwrite or Cancel.
 - Dark-mode Blue tag — in Night Harbor a Blue tag looks the same as an untagged host — draw untagged chips neutral in
   dark (as Paper does), or give tagged chips a stronger fill.
 - Workspace header route line — middle-truncated while the pulse strip takes the room — put the route on its own line,
@@ -1075,7 +1070,9 @@ Worth doing, not cheap enough for v1: one line each (feature — why — smalles
   `nc -X connect -x host:port %h %p` for proxies without a user name.
 - Test infrastructure — in in-process tests, ticking an NSAlert checkbox through the agent and then pressing OK ends the
   test process's run loop: `swift test` exits 0 mid-test, so a failure goes unseen (the real app is fine) — find out
-  why; meanwhile tests tick such checkboxes directly.
+  why; meanwhile tests tick such checkboxes directly. Also seen (1.1.0): an agent's press whose action opens an alert
+  sheet, with another agent test running; the process exits from `swift_task_asyncMainDrainQueue` (its `CFRunLoopRun`
+  returned: something stopped the main run loop).
 
 Dropped (owner, 2026-10-06): Keep remote directory up to date (watch a Mac folder and upload changes), synchronized
 browsing, Remote Desktop Gateway, showing names with a line break in server listings, and the Cline MCP Marketplace listing.

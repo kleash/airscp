@@ -130,12 +130,12 @@ private func allViews<T: NSView>(_ type: T.Type, in view: NSView?) -> [T] {
         browser.stateChanged(session.state)
         #expect(await eventually { browser.right.dir == server.home })
         try await Task.sleep(nanoseconds: 500_000_000)
-        let listingsBefore = (await server.logEntries()).filter { $0.command.contains("ls -lan") }.count
+        let listingsBefore = (await server.logEntries()).filter { $0.command.contains("ls -la") }.count
         for index in 0..<30 { session.transfers.upload(local + "/u\(index).txt", to: server.path("u\(index).txt"), isFolder: false) }
         await session.transfers.waitUntilIdle()
         #expect(await eventually { browser.right.rows.count == 30 })
         try await Task.sleep(nanoseconds: 1_000_000_000)
-        let listings = (await server.logEntries()).filter { $0.command.contains("ls -lan") }.count - listingsBefore
+        let listings = (await server.logEntries()).filter { $0.command.contains("ls -la") }.count - listingsBefore
         #expect(listings <= 3, "\(listings) listings for 30 uploads")
     }
 }

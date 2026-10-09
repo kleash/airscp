@@ -525,6 +525,11 @@ func field(_ sheet: [String: Any]?, _ id: String) -> [String: Any]? {
         reply = await call(agent, "sort", ["pane": "right", "column": "name", "ascending": false])
         let descending = ((reply["pane"] as? [String: Any])?["rows"] as? [[String: Any]])?.compactMap { $0["name"] as? String }
         #expect(descending == Array(ascending.reversed()) && descending == right.rows.map(\.name), "\(ascending) \(descending ?? [])")
+        // By owner: the rows name their owner, as Get Info does, with its number.
+        reply = await call(agent, "sort", ["pane": "right", "column": "owner"])
+        let owned = (reply["pane"] as? [String: Any])?["rows"] as? [[String: Any]] ?? []
+        #expect(!owned.isEmpty && owned.allSatisfy { $0["owner"] as? String == NSUserName() && $0["ownerID"] as? Int == Int(getuid()) },
+                "\(owned)")
         _ = await call(agent, "sort", ["pane": "right", "column": "name"])
 
         // A pop-up's option by its words: "zip" is “ZIP archive (.zip)”, not “Gzipped tar archive (.tar.gz)”.

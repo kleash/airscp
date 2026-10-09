@@ -25,7 +25,7 @@ public enum RemotePath {
     }
 }
 
-/// A file, folder or link on the server, from `sftp ls -lan`.
+/// A file, folder or link on the server, from `ls -la` (a shell's or sftp's).
 public struct RemoteEntry: Hashable, Identifiable {
     public enum Kind: Hashable { case file, directory, symlink, other }
 
@@ -40,16 +40,20 @@ public struct RemoteEntry: Hashable, Identifiable {
     public let permissions: String
     /// The permission bits, e.g. 0o755 (setuid, setgid and sticky included).
     public let mode: Int
+    /// Names, as ls shows them (a number when the server has no name for it).
     public let owner: String
     public let group: String
     /// The listing gave the day only (ls and sftp do for a time over six months ago, or after the server's clock): show
     /// it as a day, and compare it by the day.
     public var dateOnly = false
+    /// The owner's and group's numbers (uid and gid), where the server told them: listings with a shell.
+    public var ownerID: Int?
+    public var groupID: Int?
 
     public var isHidden: Bool { name.hasPrefix(".") }
 }
 
-/// `sftp ls -lan` output.
+/// `ls -la` output.
 public enum Listing {
     private static let months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
 
@@ -60,7 +64,7 @@ public enum Listing {
         return calendar
     }
 
-    /// The entries of `dir` in sftp's `ls -lan` output, without "." and ".." and sftp's echoed commands. A name with
+    /// The entries of `dir` in sftp's `ls -la` output, without "." and ".." and sftp's echoed commands. A name with
     /// a newline in it spills onto the next line; such entries are left out (the line before the spill parses, but
     /// with a cut-off name). So is a name with "/" in it, which no file can have: only a hostile server sends one,
     /// to make a download land outside the folder chosen for it. Reads the bytes directly (no regular expression): a
@@ -69,7 +73,7 @@ public enum Listing {
         parse(output, in: dir, now: now, calendar: .current, linkTargets: false) ?? []
     }
 
-    /// `linkTargets`: the output of a shell's `ls -lan`, where a link's line ends in " -> <target>" (and dates are in
+    /// `linkTargets`: the output of a shell's `ls -la`, where a link's line ends in " -> <target>" (and dates are in
     /// `calendar`'s time zone). nil when such a line has " -> " more than once: its name can't be told then.
     static func parse(_ output: String, in dir: String, now: Date, calendar: Calendar, linkTargets: Bool) -> [RemoteEntry]? {
         parse(Data(output.utf8), in: dir, now: now, calendar: calendar, linkTargets: linkTargets)
@@ -283,11 +287,11 @@ public struct DiskFree: Equatable {
 /// File operations on the server. sftp ones work everywhere; shell ones need `capabilities.shell` and throw
 /// `.sftpOnly` (with the reason) without it. Paths are absolute.
 extension Session {
-    /// A folder's entries. With a shell whose ls prints names exactly as they are (GNU and BSD ls; not BusyBox's),
-    /// `cd <dir> && ls -lan`: one round trip, where sftp needs one per 100 entries (500 for a 50 000-entry folder).
-    /// Else one sftp invocation of `cd "<dir>"` and `ls -lan` (unlike `ls "<dir>"`, that doesn't glob, so names with
-    /// {braces} work). A symlink to a folder lists the folder; anything else throws. Cancelling the calling task
-    /// stops it (a huge folder the user has left).
+    /// A folder's entries, owners and groups by name. With a shell whose ls prints names exactly as they are (GNU and
+    /// BSD ls; not BusyBox's), `cd <dir> && ls -la`: one round trip, where sftp needs one per 100 entries (500 for a
+    /// 50 000-entry folder). Else one sftp invocation of `cd "<dir>"` and `ls -la` (unlike `ls "<dir>"`, that doesn't
+    /// glob, so names with {braces} work). A symlink to a folder lists the folder; anything else throws. Cancelling the
+    /// calling task stops it (a huge folder the user has left).
     public func list(_ dir: String) async throws -> [RemoteEntry] {
         try await list(dir, slot: .control)
     }
@@ -301,7 +305,7 @@ extension Session {
                 // entry ls may not look at).
             }
         }
-        let batch = "cd \(Quote.sftp(dir))\nls -lan\n"
+        let batch = "cd \(Quote.sftp(dir))\nls -la\n"
         let argv = OpenSSH.sftpBatch(host, jump: jump, socket: socketPath)
         let result = try await cancellable { cancellation in
             slot == .control ? try await runControl(argv, input: batch, cancellation: cancellation)
@@ -314,11 +318,39 @@ extension Session {
         return Listing.parse(result.stdout, in: dir, now: Date(), calendar: .current, linkTargets: false) ?? []
     }
 
-    /// `ls -lan` in a shell (`lsFunction`). nil for another ls, BusyBox's listing with a "?", or when a link's line
-    /// can't be split into name and target.
+    /// `ls -la` in a shell (`lsFunction`), then the owners' and groups' numbers (ls prints names or numbers, not both):
+    /// the folder listed again with `-n`, of which awk keeps a line for each pair of numbers.
+    /// nil for another ls, BusyBox's listing with a "?", or when a link's line can't be split into name and target.
     private func listWithShell(_ dir: String, slot: Slot) async throws -> [RemoteEntry]? {
-        let script = "cd \(Quote.shell(dir)) && { \(Session.lsFunction) l; }"
-        return Session.shellListing(try await cancellable { try await shellBytes(script, slot: slot, cancellation: $0) }, in: dir)
+        let marker = "__AIRSCP_IDS_\(UUID().uuidString.prefix(8))__"
+        let script = "cd \(Quote.shell(dir)) && { \(Session.lsFunction) l && { echo \(marker); "
+            + "l -n | awk '$NF != \".\" && $NF != \"..\" && !s[$3 \" \" $4]++' 2>/dev/null; true; }; }"
+        let output = try await cancellable { try await shellBytes(script, slot: slot, cancellation: $0) }
+        guard let split = output.range(of: Data(("\n" + marker + "\n").utf8)) else { return Session.shellListing(output, in: dir) }
+        return Session.shellListing(output[..<split.lowerBound], in: dir).map {
+            Session.numbered($0, samples: Session.shellListing(output[split.upperBound...], in: dir) ?? [])
+        }
+    }
+
+    /// `entries` with their owners' and groups' numbers, from `samples`: entries of the same folder listed with numbers.
+    /// A name's number is that of a sample with the name of an entry that has it.
+    static func numbered(_ entries: [RemoteEntry], samples: [RemoteEntry]) -> [RemoteEntry] {
+        var wanted = Dictionary(samples.map { ($0.name, $0) }) { first, _ in first }
+        var owners: [String: Int] = [:], groups: [String: Int] = [:]
+        for entry in entries where !wanted.isEmpty {
+            // Exactly that name: "café" composed and decomposed are two files on Linux, and equal Strings.
+            guard let sample = wanted[entry.name], sample.name.utf8.elementsEqual(entry.name.utf8) else { continue }
+            wanted[entry.name] = nil
+            owners[entry.owner] = Int(sample.owner)
+            groups[entry.group] = Int(sample.group)
+        }
+        guard !owners.isEmpty else { return entries }
+        return entries.map { entry in
+            var entry = entry
+            entry.ownerID = owners[entry.owner]
+            entry.groupID = groups[entry.group]
+            return entry
+        }
     }
 
     /// Several folders listed in one command (Synchronize compares a level of the tree at a time: a command per folder
@@ -360,7 +392,7 @@ extension Session {
         var result: [[RemoteEntry]?] = []
         while result.count < dirs.count {
             let chunk = Array(dirs[result.count...].prefix(200))
-            let batch = chunk.map { "cd \(Quote.sftp($0))\nls -lan\n" }.joined()
+            let batch = chunk.map { "cd \(Quote.sftp($0))\nls -la\n" }.joined()
             let run = try await cancellable { cancellation in
                 try await runControl(OpenSSH.sftpBatch(host, jump: jump, socket: socketPath), input: batch, cancellation: cancellation)
             }
@@ -381,14 +413,14 @@ extension Session {
         return result
     }
 
-    /// Defines the shell function `l`: `ls -lan` in the C locale with dates in UTC; GNU ls also told to print names
-    /// literally, sizes in bytes and dates the classic way, whatever the environment says. BusyBox's ls turns every
-    /// byte it can't print (in the C locale: all outside ASCII) into "?": its listing says so first. Another ls says
-    /// only that it isn't one of these.
+    /// Defines the shell function `l`: `ls -la` (and its arguments, e.g. `-n`) in the C locale with dates in UTC; GNU ls
+    /// also told to print names literally, sizes in bytes and dates the classic way, whatever the environment says.
+    /// BusyBox's ls turns every byte it can't print (in the C locale: all outside ASCII) into "?": its listing says so
+    /// first. Another ls says only that it isn't one of these.
     static let lsFunction = "if ls --version 2>/dev/null | grep -q GNU; then "
-        + "l() { LC_ALL=C TZ=UTC0 ls -lan --quoting-style=literal --time-style=locale --block-size=1; }; "
-        + "else case $(uname -s) in Darwin|*BSD) l() { LC_ALL=C TZ=UTC0 ls -lan; };; *) if ls --help 2>&1 | grep -q BusyBox; "
-        + "then l() { echo __AIRSCP_BUSYBOX__; LC_ALL=C TZ=UTC0 ls -lan; }; else l() { echo __AIRSCP_NO_LS__; }; fi;; esac; fi;"
+        + "l() { LC_ALL=C TZ=UTC0 ls -la \"$@\" --quoting-style=literal --time-style=locale --block-size=1; }; "
+        + "else case $(uname -s) in Darwin|*BSD) l() { LC_ALL=C TZ=UTC0 ls -la \"$@\"; };; *) if ls --help 2>&1 | grep -q BusyBox; "
+        + "then l() { echo __AIRSCP_BUSYBOX__; LC_ALL=C TZ=UTC0 ls -la \"$@\"; }; else l() { echo __AIRSCP_NO_LS__; }; fi;; esac; fi;"
 
     /// The entries in what `l` printed for `dir`; nil when it can't be used: another ls, BusyBox's listing with a "?"
     /// in it, or a link's line that can't be split into name and target.
