@@ -46,7 +46,7 @@ brew install --cask kleash/tap/airscp
 ```
 
 Or download the zip from [Releases](https://github.com/kleash/airscp/releases).
-The first time you open AirSCP, macOS says it can't check the app for malware (1.0.0 isn't notarized yet): click **Done**,
+The first time you open AirSCP, macOS says it can't check the app for malware (AirSCP isn't notarized yet): click **Done**,
 then **System Settings ▸ Privacy & Security ▸ Open Anyway**. On macOS 14 or earlier, right-click AirSCP ▸ **Open** works too.
 Every file has its SHA-256, and the ones GitHub built have signed build provenance: [check a download](SECURITY.md#check-a-download).
 

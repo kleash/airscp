@@ -3,7 +3,7 @@
   "name": "io.github.kleash/airscp",
   "title": "AirSCP",
   "description": "Drive AirSCP, the Mac app for SCP/SFTP file transfers, SSH servers and Windows Remote Desktop",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "websiteUrl": "https://kleash.github.io/airscp/ai-agents.html",
   "repository": {
     "url": "https://github.com/kleash/airscp",
@@ -19,7 +19,7 @@
   "packages": [
     {
       "registryType": "mcpb",
-      "identifier": "https://github.com/kleash/airscp/releases/download/v1.0.0/airscp.mcpb",
+      "identifier": "https://github.com/kleash/airscp/releases/download/v1.1.0/airscp.mcpb",
       "transport": {
         "type": "stdio"
       }
