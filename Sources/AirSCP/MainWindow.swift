@@ -382,7 +382,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
     @objc func disconnectHost(_ sender: Any?) { sidebar.selection.map { disconnect($0.id) } }
     @objc func runCommand(_ sender: Any?) { selectedHost.map { open($0.id) { $0.showRunCommand() } } }
     @objc func showTunnels(_ sender: Any?) { selectedWorkspace?.showTunnels() }
-    @objc func copySSHCommand(_ sender: Any?) { selectedHost.map { copyCommand($0, jump: model.jump(for: $0)) } }
+    @objc func copySSHCommand(_ sender: Any?) { selectedHost.map { copyCommand($0, in: model.data) } }
     @objc func editHost(_ sender: Any?) { sidebar.selection.map(edit) }
     @objc func duplicateHost(_ sender: Any?) { sidebar.selection.map(duplicate) }
     @objc func deleteHost(_ sender: Any?) { sidebar.selection.map(delete) }
@@ -449,7 +449,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
             return (false, capabilities?.noShellReason ?? "This server doesn't run commands.")
         case #selector(copySSHCommand(_:)):
             guard let host = selectedHost else { return (false, noHost) }
-            let problem = copyCommandProblem(host, jump: model.jump(for: host))
+            let problem = copyCommandProblem(host, in: model.data)
             return (problem == nil, problem)
         case #selector(openTerminal(_:)), #selector(showTunnels(_:)), #selector(toggleCommandLog(_:)), #selector(setColorTag(_:)):
             return (selectedHost != nil, noHost)

@@ -44,6 +44,12 @@ nav_order: 18
   copies the path. When Windows' policy blocks shared folders (Explorer shows an empty **tsclient**), the bar says so,
   and to copy and paste files instead.
 
+- Smaller things: in dark mode a Blue tag no longer looks like an untagged host; the host's route has a line of its
+  own above the tabs; in light mode the server figures above the tabs show their units, totals and free space; a host
+  whose Other options connect through ProxyCommand or ProxyJump shows that route in the sidebar; **Copy ssh Command**
+  works for hosts behind an HTTP proxy without a login; AI agents see every alias of **Import from ~/.ssh/config**,
+  however many there are; AirSCP clears the temporary folders a stopped copy of it left behind.
+
 ## AirSCP 1.0
 
 The first release.

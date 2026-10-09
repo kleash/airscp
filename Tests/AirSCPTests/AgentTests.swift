@@ -440,6 +440,21 @@ func field(_ sheet: [String: Any]?, _ id: String) -> [String: Any]? {
     #expect(importer.chosen == ["other"])
     _ = await call(server, "press", ["title": "Cancel"])
     #expect(await call(server, "wait", ["until": "no_sheet", "timeout": 2]).error == nil)
+    // 150 aliases, most of them never made into rows: all in the snapshot, each reached by its name.
+    let many = ConfigImport(aliases: (1...150).map { "host\($0)" } + ["web"], model: model)
+    presentSheet(on: try #require(main.window)) { close in ConfigImportView(importer: many, importChosen: { _ in }, close: close) }
+    let listed = await call(server, "snapshot", ["include": ["configImport"], "rows": 500])["configImport"] as? [String: Any]
+    let aliases = listed?["aliases"] as? [[String: Any]] ?? []
+    #expect(listed?["count"] as? Int == 151 && aliases.count == 151, "\(listed ?? [:])")
+    #expect(aliases.last?["added"] as? Bool == true && aliases.last?["chosen"] as? Bool == false)
+    #expect(await call(server, "set", ["title": "host140", "value": false]).error == nil)
+    #expect(many.chosen.count == 149 && !many.chosen.contains("host140"))
+    #expect(await call(server, "set", ["title": "web", "value": true]).error?.contains("in AirSCP already") == true)
+    #expect(await call(server, "select", ["in": "sheet", "names": ["host7", "host149"]]).error == nil)
+    #expect(many.chosen == ["host7", "host149"])
+    #expect(await call(server, "select", ["in": "sheet", "names": ["nope"]]).error?.contains("Not in the list: nope") == true)
+    _ = await call(server, "press", ["title": "Cancel"])
+    #expect(await call(server, "wait", ["until": "no_sheet", "timeout": 2]).error == nil)
 
     // Quick Look's panel would stay on the user's screen, unseen and unclosable by the agent: refused.
     keysWindow.orderOut(nil)

@@ -324,6 +324,32 @@ private func askpassHelper(_ prompt: String, environment: [String: String]) asyn
     #expect(try saved(Keychain.porterService) == ["host": "porter secret", "proxy:1": "proxy secret"])
 }
 
+/// An AirSCP stopped without quitting (killed, or a test run cut off) left its askpass folder in /tmp: the next one
+/// removes it once it is a minute old and no one listens on its socket, and leaves a running AirSCP's (and new) folders.
+@Test func staleAskpassFoldersAreRemoved() throws {
+    let live = try AskpassServer(helperPath: TestEnvironment.airscpBinary)
+    defer { live.close() }
+    let stale = "/tmp/airscp-askpass.stale\(getpid())", fresh = "/tmp/airscp-askpass.fresh\(getpid())"
+    for folder in [stale, fresh] {
+        try FileManager.default.createDirectory(atPath: folder, withIntermediateDirectories: false)
+        // A socket that was bound, then its process went: connecting to it is refused.
+        let fd = socket(AF_UNIX, SOCK_STREAM, 0)
+        var address = try #require(Askpass.unixAddress(folder + "/sock"))
+        #expect(withUnsafePointer(to: &address) { $0.withMemoryRebound(to: sockaddr.self, capacity: 1) {
+            bind(fd, $0, socklen_t(MemoryLayout<sockaddr_un>.size)) } } == 0)
+        close(fd)
+    }
+    defer { [stale, fresh].forEach { try? FileManager.default.removeItem(atPath: $0) } }
+    let old = Date().addingTimeInterval(-300)
+    for folder in [stale, URL(fileURLWithPath: live.socketPath).deletingLastPathComponent().path] {
+        try FileManager.default.setAttributes([.modificationDate: old], ofItemAtPath: folder)
+    }
+    AskpassServer.removeStaleFolders()
+    #expect(!FileManager.default.fileExists(atPath: stale))
+    #expect(FileManager.default.fileExists(atPath: fresh))
+    #expect(FileManager.default.fileExists(atPath: live.socketPath))
+}
+
 /// The askpass socket answers only requests that carry the server's token, which AirSCP puts in the environment of the
 /// commands it starts. Another program of the same user can reach the socket (and read the host and proxy ids in
 /// airscp.json), but gets neither a saved password nor a proxy's credentials from it.

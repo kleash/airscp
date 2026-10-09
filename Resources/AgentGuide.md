@@ -52,8 +52,8 @@ AirSCP was installed with `./install.sh`).
 - `snapshot {include?, rows?, log?, in?}` — AirSCP's state. Default sections: windows, selection, sidebar, workspace
   (host, tab, banner, shell, tunnels), panes (left/right: source, dir, rows, selected, sort, filter, status, busy,
   hiddenColumns, favourites), transfers (summary, speedLimit, jobs with their ids), rdp, sheets, and while their sheet
-  is open find (Find Files' results) and sync (Synchronize's plan); always debugLog (on, path: the debug log's file,
-  see troubleshooting). Add "log" (command log), "monitor" (connected, the figures, and the processes as the table
+  is open find (Find Files' results), sync (Synchronize's plan) and configImport (Import from ~/.ssh/config's
+  aliases); always debugLog (on, path: the debug log's file, see troubleshooting). Add "log" (command log), "monitor" (connected, the figures, and the processes as the table
   lists them: its search, sort and selection; the ports while Monitor ▸ Ports is shown), "menus", "elements",
   "settings"; `in="window:Keys"` makes "elements" that window's. Example: `snapshot {"include": ["panes", "transfers"], "rows": 50}`.
 - `screenshot {target?, scale?}` — a PNG drawn by AirSCP: target "main" (default; sheets and panels composited),
@@ -170,8 +170,9 @@ AirSCP was installed with `./install.sh`).
   "Reconnecting…"); `snapshot` → workspace.banner says what happened, with its buttons ("Reconnect"). Once
   disconnected, the server pane has no rows (its dir stays) and isn't "listed"; `press id=right.reconnect` connects
   and lists that folder again (`wait until=listed pane=right`).
-- Import from ~/.ssh/config: `menu path="File > Import from ~/.ssh/config…"` → a sheet with a checkbox per alias
-  (titled "<alias>, <user@host>"): `set title=<alias> value=false` leaves one out → `press title=Import`.
+- Import from ~/.ssh/config: `menu path="File > Import from ~/.ssh/config…"` → a sheet with a checkbox per alias;
+  `snapshot` → configImport: every alias (chosen, added, refused, resolved), however many. `set title=<alias>
+  value=false` leaves one out, `select in=sheet names=[…]` chooses only those (`all`, `none`) → `press title=Import`.
   Hosts to and from a file: `menu path="File > Export Hosts…" file=/tmp/hosts.json`,
   `menu path="File > Import Hosts…" file=/tmp/hosts.json` (the reply's sheet says how many were imported).
   WinSCP's sites: `menu path="File > Import from WinSCP…" file=/path/WinSCP.ini` (its .ppk keys beside it; the
@@ -363,7 +364,7 @@ AirSCP was installed with `./install.sh`).
   "OpenSSH (default)", "PEM (PKCS#1 or SEC1)", "PKCS#8"; Ed25519 is OpenSSH only) and `newKey.publicFormat` →
   `press title=Generate` → `wait until=sheet text="Key pair created"`: the fingerprint and the public key (in the
   format of `keyResult.format`) are the sheet's text; "Copy Public Key", "Install on Host…", "Show in Finder",
-  "Export as PuTTY Key (.ppk)…", "Done".
+  "Export .ppk…", "Done".
 - PuTTY keys: `press title="Import Key…" in="window:Keys" file=/path/key.ppk` (or drop it on the window, as a drag
   there does: `drop files=["/path/key.ppk"] target=keys`) → `importKey.ppkPassphrase` (an encrypted .ppk),
   `importKey.name`, `importKey.same` (keep the same passphrase; false: `importKey.passphrase` and

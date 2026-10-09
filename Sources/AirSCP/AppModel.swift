@@ -419,7 +419,7 @@ extension AirSCPData {
     /// The route of a host through its jump host and the HTTP proxy of its first hop (with a jump host, the jump
     /// host's own proxy); nil for a host that connects directly.
     func route(for host: SSHHost) -> Route? {
-        guard let hops = hops(for: host) else { return nil }
+        guard let hops = hops(for: host) else { return Self.optionRoute(host) }
         return Self.route(hops, target: host.address, verb: "Connects to")
     }
 
@@ -463,6 +463,26 @@ extension AirSCPData {
             }
         }
         return hops
+    }
+
+    /// The route a host's Other options give it (ProxyCommand, ProxyJump), which would look direct otherwise; nil
+    /// without one. (A jump host or proxy of its own wins: ssh is then given those, and the option is refused.)
+    private static func optionRoute(_ host: SSHHost) -> Route? {
+        for option in host.extraOptions {
+            let parts = option.split(maxSplits: 1, whereSeparator: { $0 == "=" || $0 == " " })
+            guard parts.count == 2 else { continue }
+            let value = parts[1].trimmingCharacters(in: .whitespaces)
+            switch parts[0].lowercased() {
+            case "proxycommand" where value.lowercased() != "none":
+                return Route(short: "via a proxy command", full: "Connects to \(host.address) through the command in its "
+                             + "Other options: ProxyCommand \(value)", missing: false)
+            case "proxyjump" where value.lowercased() != "none":
+                return Route(short: "via " + value, full: "Connects to \(host.address) through \(value) (ProxyJump in its "
+                             + "Other options).", missing: false)
+            default: continue
+            }
+        }
+        return nil
     }
 
     private static func hop(_ host: SSHHost) -> String {

@@ -580,7 +580,7 @@ a press title=Generate in=window:Keys
 a wait until=sheet text='Key pair created' timeout=30
 sleep 0.4
 shot new-key-result target=sheet
-a press 'title=Export as PuTTY Key (.ppk)…' in=window:Keys
+a press 'title=Export .ppk…' in=window:Keys
 sleep 0.5
 shot export-putty-key target=sheet
 a press 'title=Export…' in=window:Keys file="$T/web.ppk"

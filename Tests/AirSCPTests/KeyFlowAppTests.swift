@@ -77,7 +77,7 @@ extension FeatureRoundAppTests {
         #expect(keys.selected?.privateKey == key && keys.selected?.type == "ECDSA" && keys.selected?.bits == 384)
 
         // Export for PuTTY from the result: the key's passphrase is the one just typed (no question).
-        #expect(await call(agent, "press", ["title": "Export as PuTTY Key (.ppk)…", "in": "window:Keys"]).error == nil)
+        #expect(await call(agent, "press", ["title": "Export .ppk…", "in": "window:Keys"]).error == nil)
         let ppk = downloads + "/id_work.ppk"
         reply = await call(agent, "press", ["title": "Export…", "in": "window:Keys", "file": ppk])
         #expect(reply.error == nil, "\(reply.error ?? "")")

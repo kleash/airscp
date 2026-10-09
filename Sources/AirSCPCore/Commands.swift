@@ -16,8 +16,9 @@ public enum OpenSSH {
     /// The host's settings as -o options, shared verbatim by ssh, scp, sftp, ssh-copy-id and ssh -O. Only -o:
     /// ssh's -p (port) means "preserve" to scp and sftp. The first hop goes through the host's HTTP proxy, or with a
     /// jump host through the jump host's own proxy (nested in its ProxyCommand). `silent` (an automatic reconnect's
-    /// master): the jump host's ssh tries one password at most, as the master itself does.
-    public static func options(_ host: SSHHost, jump: SSHHost?, silent: Bool = false) -> [String] {
+    /// master): the jump host's ssh tries one password at most, as the master itself does. `plain`: the first hop's
+    /// proxy when it needs no login, for a command line that runs without AirSCP (macOS's nc then reaches it).
+    public static func options(_ host: SSHHost, jump: SSHHost?, silent: Bool = false, plain: Proxy? = nil) -> [String] {
         var options: [String] = []
         func add(_ key: String, _ value: String) { options += ["-o", key + "=" + value] }
         if let port = host.port { add("Port", String(port)) }
@@ -33,9 +34,9 @@ public enum OpenSSH {
             break
         }
         if let jump {
-            add("ProxyCommand", proxyCommand(through: jump, silent: silent))
+            add("ProxyCommand", proxyCommand(through: jump, silent: silent, plain: plain))
         } else if let proxy = host.proxyID {
-            add("ProxyCommand", proxyCommand(proxy))
+            add("ProxyCommand", proxyCommand(proxy, plain: plain))
         }
         if host.forwardAgent { add("ForwardAgent", "yes") }
         switch host.hostKeyCheck {
@@ -67,8 +68,8 @@ public enum OpenSSH {
 
     /// One hop through `jump`, with the jump's own options: ssh <options> -W %h:%p <jump>. ssh runs it with
     /// /bin/sh after expanding % tokens, so the words are shell-quoted and the jump's own % doubled.
-    static func proxyCommand(through jump: SSHHost, silent: Bool = false) -> String {
-        let words = ([ssh] + config + (silent ? onePrompt : []) + connectTimeout(jump, jump: nil) + options(jump, jump: nil))
+    static func proxyCommand(through jump: SSHHost, silent: Bool = false, plain: Proxy? = nil) -> String {
+        let words = ([ssh] + config + (silent ? onePrompt : []) + connectTimeout(jump, jump: nil) + options(jump, jump: nil, plain: plain))
             .map { Quote.shellWord($0).replacingOccurrences(of: "%", with: "%%") }
         return (words + ["-W", "%h:%p", Quote.shellWord(jump.hostname).replacingOccurrences(of: "%", with: "%%")])
             .joined(separator: " ")
@@ -77,8 +78,13 @@ public enum OpenSSH {
     /// Through a saved HTTP proxy: AirSCP's own binary in proxy-connect mode (`ProxyConnect`). The path comes from
     /// $AIRSCP_HELPER, which the askpass environment sets (`AskpassServer.environment(for:)`, and for Terminal
     /// `terminalEnvironment`), as does the socket the helper asks the app for the proxy's address and password on.
-    static func proxyCommand(_ proxy: UUID) -> String {
-        "\"$AIRSCP_HELPER\" --proxy-connect \(proxy.uuidString) %h %p"
+    /// A proxy without a login (`plain`) is reached with macOS's own nc instead, for a command line used outside AirSCP.
+    static func proxyCommand(_ proxy: UUID, plain: Proxy? = nil) -> String {
+        if let plain, plain.id == proxy, plain.username.isEmpty {
+            let address = Quote.shellWord(plain.host + ":\(plain.port)").replacingOccurrences(of: "%", with: "%%")
+            return "/usr/bin/nc -X connect -x \(address) %h %p"
+        }
+        return "\"$AIRSCP_HELPER\" --proxy-connect \(proxy.uuidString) %h %p"
     }
 
     // MARK: Master connection
@@ -216,8 +222,8 @@ public enum OpenSSH {
     }
 
     /// The ssh command for "Copy ssh command" (a fresh connection, no master).
-    public static func interactive(_ host: SSHHost, jump: SSHHost?) -> [String] {
-        [ssh] + config + options(host, jump: jump) + [host.hostname]
+    public static func interactive(_ host: SSHHost, jump: SSHHost?, plain: Proxy? = nil) -> [String] {
+        [ssh] + config + options(host, jump: jump, plain: plain) + [host.hostname]
     }
 
     // MARK: Keys and config

@@ -711,7 +711,7 @@ struct PulseStrip: View {
     private func cpu(_ snapshot: MonitorSnapshot) -> some View {
         cell("CPU", fraction: snapshot.cpu.map { $0 / 100 }, hue: .systemTeal, history: monitor.pulse.map(\.cpu),
              value: snapshot.cpu.map { String(format: "%.0f%%", $0) } ?? "—",
-             detail: snapshot.load.first.map { String(format: "load %.2f", $0) } ?? "", chip: cpuChange,
+             detail: snapshot.load.first.map { String(format: "load %.2f", $0) } ?? "", paperDetail: "", chip: cpuChange,
              help: "CPU in use, of all cores; load average " + snapshot.load.map { String(format: "%.2f", $0) }
                 .joined(separator: " ") + " over 1, 5 and 15 minutes. The Monitor tab shows more")
     }
@@ -731,7 +731,8 @@ struct PulseStrip: View {
             let used = Double(disk.used) / Double(max(disk.size, 1)), free = Self.figure(disk.available)
             cell("Disk " + disk.mountPoint, fraction: used, hue: .systemOrange, history: monitor.pulse.map(\.disk),
                  value: scheme == .dark ? String(format: "%.0f%%", used * 100) : free.number,
-                 detail: "\(free.number) \(free.unit) free", chip: free.unit,
+                 detail: "\(free.number) \(free.unit) free", paperDetail: "\(free.unit) free",
+                 chip: String(format: "%.0f%%", used * 100),
                  help: "The disk at \(disk.mountPoint): \(FileList.size(disk.available)) free of "
                     + FileList.size(disk.size) + String(format: " (%.0f %% used)", used * 100))
         }
@@ -752,8 +753,9 @@ struct PulseStrip: View {
         return (String(format: gigabytes >= 10 ? "%.0f" : "%.1f", gigabytes), "GB")
     }
 
+    /// `detail` follows the value ("of 8.3 GB"); `paperDetail` instead in Paper, where the value is a different figure.
     private func cell(_ key: String, fraction: Double?, hue: NSColor, history: [Double?], value: String, detail: String,
-                      chip: String, help: String) -> some View {
+                      paperDetail: String? = nil, chip: String, help: String) -> some View {
         HStack(spacing: 8) {
             if scheme == .dark { PulseRing(fraction: fraction ?? 0, hue: Color(nsColor: hue)) }
             VStack(alignment: .leading, spacing: 1) {
@@ -766,6 +768,11 @@ struct PulseStrip: View {
                 } else {
                     HStack(alignment: .firstTextBaseline, spacing: 4) {
                         Text(value).font(.system(size: 17, weight: .heavy)).monospacedDigit().fixedSize()
+                        // Its unit, total or "free", as Night Harbor shows them (a percentage needs none).
+                        if !(paperDetail ?? detail).isEmpty {
+                            Text(paperDetail ?? detail).font(.system(size: 10.5, weight: .medium)).foregroundColor(.secondary)
+                                .monospacedDigit().lineLimit(1).fixedSize()
+                        }
                         if !chip.isEmpty {
                             let level = UsageBar.color(fraction ?? 0, normal: Color(nsColor: .systemGreen))
                             Text(chip).font(.system(size: 10, weight: .bold)).monospacedDigit().fixedSize()
@@ -784,8 +791,9 @@ struct PulseStrip: View {
         .background(RoundedRectangle(cornerRadius: 9)
             .fill(scheme == .dark ? Color.primary.opacity(0.04) : Color(nsColor: .controlBackgroundColor)))
         .overlay(RoundedRectangle(cornerRadius: 9).strokeBorder(Color.primary.opacity(scheme == .dark ? 0.07 : 0.1)))
-        .help(help)
+        // Combined first, then the help: on the one element it makes (after, VoiceOver read it once per text).
         .accessibilityElement(children: .combine)
+        .help(help)
     }
 
     /// Green below 80 %, orange from 80 %, red from 90 %.

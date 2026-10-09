@@ -17,11 +17,11 @@ public enum AgentBridge {
     public static let tools: [[String: Any]] = [
         tool("snapshot", "AirSCP's state as JSON: windows, sidebar (hosts, groups, connected, RDP, proxies), the selection, "
              + "the workspace (tab, banner), both file panes (folder, rows, selection, sort), transfers, open sheets with "
-             + "their fields and buttons, the RDP session, and while their sheet is open Find Files' results (find) and "
-             + "Synchronize's plan (sync). On request also the command log, monitor, menus (with why an item is "
+             + "their fields and buttons, the RDP session, and while their sheet is open Find Files' results (find), "
+             + "Synchronize's plan (sync) and Import from ~/.ssh/config's aliases (configImport). On request also the command log, monitor, menus (with why an item is "
              + "disabled), elements (every control with id, role, title, value and frame; with in: of another window, "
              + "such as Keys), settings.",
-             ["include": array("Sections: sidebar, workspace, panes, transfers, log, monitor, rdp, sheets, find, sync, menus, "
+             ["include": array("Sections: sidebar, workspace, panes, transfers, log, monitor, rdp, sheets, find, sync, configImport, menus, "
                                + "elements, settings"),
               "rows": integer("Rows per pane (default 200)"), "log": integer("Command log entries (default 20)"),
               "in": string("window:<title> | sheet: whose elements (default: the main window)")]),

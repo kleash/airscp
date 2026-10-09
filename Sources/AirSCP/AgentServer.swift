@@ -663,6 +663,14 @@ final class AgentServer {
         let query = (arguments["id"] as? String) ?? (arguments["title"] as? String)
         guard let query else { throw Failure("set needs an id or a title (a label, title or placeholder).") }
         let windows = try reachable(arguments["in"] as? String)
+        // An alias's box in Import from ~/.ssh/config, by the alias: its list makes rows only where it shows them.
+        if arguments["id"] == nil, let importer = (windows.first?.contentViewController as? NSHostingController<ConfigImportView>)?.rootView.importer,
+           let index = importer.rows.firstIndex(where: { $0.alias == query }) {
+            let row = importer.rows[index]
+            if let why = row.added ? "It is in AirSCP already." : row.refused { throw Failure("“\(query)” can't be chosen: \(why)") }
+            importer.rows[index].chosen = (value as? Bool) ?? ["true", "on", "yes", "1"].contains("\(value)".lowercased())
+            return await acted(["chosen": importer.chosen.count])
+        }
         // A row's box in Synchronize's list, by the item's path: its list makes rows only where it shows them.
         if arguments["id"] == nil, let sync = (windows.first?.contentViewController as? NSHostingController<SyncView>)?.rootView.model,
            let step = sync.plan.steps.first(where: { $0.path == query || $0.path + "/" == query }) {
@@ -1253,6 +1261,19 @@ final class AgentServer {
                 else { throw Failure("No result shows \(name).") }
                 find.selection = path
                 return await acted(["selected": 1])
+            }
+            // Import from ~/.ssh/config: the aliases chosen, by name (its list makes rows only where it shows them).
+            if let importer = configImport, let sheet = try scopes(spec).first,
+               (sheet.contentViewController as? NSHostingController<ConfigImportView>) != nil {
+                let aliases = Set(importer.rows.map(\.alias)), wanted = Set(names)
+                let missing = wanted.subtracting(aliases)
+                guard missing.isEmpty else {
+                    throw Failure("Not in the list: \(missing.sorted().joined(separator: ", ")) (snapshot → configImport: its aliases).")
+                }
+                for index in importer.rows.indices {
+                    importer.rows[index].chosen = all || (!none && wanted.contains(importer.rows[index].alias))
+                }
+                return await acted(["chosen": importer.chosen.count])
             }
             // Synchronize's list: the items ticked, by their paths (its list makes rows only where it shows them): only
             // these, all of them, or none.
