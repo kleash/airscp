@@ -7,6 +7,10 @@ nav_order: 18
 
 ## AirSCP 1.1.0
 
+- **Certificate Manager**: **Tools ▸ Certificate Manager…** opens certificates, keys, chains, PKCS#12 files and Java
+  keystores, shows their details and expiry, and saves them as PEM, DER, chains, keys or PKCS#12, each with the
+  `openssl` command that does the same. **Tools ▸ View Server Certificate…** shows what a TLS server sends. See
+  [Certificates and keystores](certificates/index.md).
 - **A terminal inside AirSCP**: each host has a **Terminal** tab (**Host ▸ Terminal Tab**, <kbd>⌃⌘T</kbd>) with a
   shell on the server, through the same connection. Right-click a file name in its output to show it in Files,
   download it, edit it or copy its path; drop Finder files on it to upload them where you are. See
