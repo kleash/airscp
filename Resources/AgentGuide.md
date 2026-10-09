@@ -71,8 +71,8 @@ AirSCP was installed with `./install.sh`).
   "Monitor"}`.
 - `set {id | title, value, in?, file?}` — a text or password field, a checkbox or switch (true/false), a pop-up menu
   or segmented control (by the option's title, or words of it: "zip" is "ZIP archive (.zip)"). Text is set as it is
-  (no smart quotes). A pane's filter replies with the filtered rows. Example: `set {"id": "hostEditor.login",
-  "value": "id_lab"}`.
+  (no smart quotes). A pane's filter replies with the filtered rows. Synchronize's list: a row's box by the item's path
+  as title. Example: `set {"id": "hostEditor.login", "value": "id_lab"}`.
 - `key {combo, target?, in?}` — keys as events: "cmd+shift+n", "return", "escape", "down", "f5", "cmd+delete",
   "capslock". "delete" is the Mac's ⌫ (Backspace); "forwarddelete" is the Delete key (⌦, Windows' Del: in Explorer
   "delete" goes up a folder, "forwarddelete" deletes). They go to the frontmost sheet, else the main window (or the
@@ -101,7 +101,8 @@ AirSCP was installed with `./install.sh`).
 - `select {pane | in, names | ids | all | none}` — rows: pane "left"/"right" (file names, byte for byte: "café" in
   its two Unicode forms are two names), "sidebar" (names: one host or desktop), "processes" (a process name, PID or part
   of its command, among those the Monitor lists with its search), "transfers" (a job's name, or `ids` from snapshot);
-  with `in` instead of pane, a list in that window or sheet (keys, snippets, the Proxies sheet, Find Files' results).
+  with `in` instead of pane, a list in that window or sheet (keys, snippets, the Proxies sheet, Find Files' results;
+  Synchronize's list: the items ticked, by path).
   Example: `select {"pane": "right", "names": ["a.txt", "b"]}`, `select {"in": "window:Keys", "names": ["id_lab"]}`.
 - `sort {pane, column, ascending?}` — a file pane: name, size, modified, permissions, owner, group, kind; pane
   "processes": pid, user, cpu, mem (% of RAM), memory (its size: RSS), time (running time), state, command. Example:
@@ -263,14 +264,20 @@ AirSCP was installed with `./install.sh`).
 - Synchronize (one pane shows a folder on this Mac, the other a folder on the server: go to them as above):
   `focus pane=right` → `menu path="File > Synchronize…"` (the "Synchronize Folders" sheet; when either folder is a home
   folder or /, it waits for `press title=Compare`, as comparing can take minutes: see `started` in the snapshot's sync) →
-  `wait until=compared`: sync with direction, delete, steps
+  `wait until=compared`: sync with direction, delete, leaveOut, steps
   (action upload, download, trash = to the Trash on this Mac, delete = on the server; path below the two folders,
-  size, replaces), summary ("The folders are the same." when nothing differs) and failure. Change the plan with
+  size, replaces; `"ticked": false` when unticked), count, ticked (how many), summary ("The folders are the same."
+  when nothing differs; the ticked ones counted with their sizes) and failure. Change the plan with
   `set id=sync.direction value="Both ways"` (or "This Mac → <host>", "<host> → This Mac") and `set id=sync.delete
-  value=true` (one way only: delete what is only on the destination); `snapshot` shows the new steps. `press
-  title=Synchronize` queues the copies (times kept; 20 or more files of one folder go as one stream) and runs the
-  deletions → `wait until=transfers_done`, then `wait until=listed` for each pane. `press title=Cancel` closes the
-  sheet, also while it compares. A folder that can't be listed is named in the failure.
+  value=true` (one way only: delete what is only on the destination); `snapshot` shows the new steps. Leave out (the
+  server's patterns, as in the folder-transfer sheet; remembered once you synchronize): `set id=sync.leaveOut
+  value="*.log, node_modules"` → it compares again (`wait until=compared`); what matches isn't compared, copied or
+  deleted, at any depth. Untick an item to leave it as it is: `set title="logs/app.log" value=false` (a row's box, by
+  its path; true ticks it again); `select in=sheet names=["a.txt", "docs/"]` ticks only those, `select in=sheet
+  all=true` / `none=true` every one or none (the sheet's Select All / Select None). `press title=Synchronize` queues
+  the ticked copies (times kept; 20 or more files of one folder go as one stream) and runs the ticked deletions →
+  `wait until=transfers_done`, then `wait until=listed` for each pane. `press title=Cancel` closes the sheet, also
+  while it compares. A folder that can't be listed is named in the failure: add it to Leave out to compare without it.
 - A command the server can't run (sftp-only account, no zip) is refused with the reason.
 
 ## monitor

@@ -25,6 +25,7 @@ Downloading a folder works the same way, with the same sheet.
 ## Tips
 
 - `*`, `?` and `[ ]` work in Leave out: `*.psd` leaves out every Photoshop file.
+- [Synchronize](../synchronize.md) uses the same Leave out list for the server.
 - 200 or more loose files at once get the same sheet, and go as one stream too.
 - Symbolic links stay links.
 - The **?** button in the sheet opens this page.

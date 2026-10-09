@@ -5,13 +5,15 @@ nav_order: 18
 
 # What's new
 
-## AirSCP 1.0.1
+## AirSCP 1.1.0
 
 - **Tunnels say where they lead**: **Add Tunnel…** reads as a sentence (open port 8080 on this Mac, through your
   server, to the server itself, port 80), and the whole route shows as you type and in the list. The second port is
   the same as the first until you change it.
 - **AI agents go through folders without clicking**: they go to a folder by its path and open a file or folder by its
   name, and get the folder's list back at once. You still see each step in the window.
+- **Synchronize** leaves out what matches the server's **Leave out** patterns (the same list as for folder
+  transfers, shown and changed in the sheet), and you can untick items in the list before you click **Synchronize**.
 
 ## AirSCP 1.0
 

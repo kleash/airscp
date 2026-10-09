@@ -251,6 +251,56 @@ private func filesTab(_ session: Session) async -> BrowserContentController {
     }
 }
 
+/// The host's Leave out patterns: what matches is neither compared (a folder that matches isn't listed), copied nor
+/// deleted, also inside a folder copied whole; other patterns compare again. Unticked items are neither copied nor
+/// deleted, and the summary counts and adds up only the ticked ones.
+@MainActor @Test func synchronizeLeavesOutWhatMatchesAndDoesOnlyTheTickedItems() async throws {
+    _ = NSApplication.shared
+    try await withServer { @MainActor server in
+        var host = server.host()
+        let local = try server.scratch(), there = server.path("site")
+        host.lastLocalDir = local
+        for path in ["keep.txt", "debug.log", "node_modules/x/index.js", "sub/c.txt", "sub/trace.log", "newdir/a.txt",
+                     "newdir/b.log", "skip-me.txt"] {
+            try write(path == "keep.txt" ? "keep" : "x", to: local + "/" + path)
+        }
+        for path in ["node_modules/y.js", "old.log", "stale.txt", "gone.txt"] { try write("gone", to: there + "/" + path) }
+        try rawMkdir(there + "/sub")
+        let session = try await server.connectedSession(host)
+        let browser = await filesTab(session)
+
+        let model = SyncModel(session: session, localDir: local, remoteDir: there, leaveOut: "*.log, node_modules/")
+        model.delete = true
+        model.compare()
+        #expect(await eventually { model.comparison != nil })
+        #expect(model.patterns == ["*.log", "node_modules"] && model.comparison?.folders == 2)  // not node_modules
+        #expect(model.plan.steps.map(\.path) == ["gone.txt", "keep.txt", "newdir", "skip-me.txt", "stale.txt", "sub/c.txt"],
+                "\(model.plan.steps.map(\.path))")
+        model.unticked = ["skip-me.txt", "stale.txt"]
+        #expect(model.chosen.steps.map(\.path) == ["gone.txt", "keep.txt", "newdir", "sub/c.txt"])
+        #expect(model.summary.hasPrefix("3 uploads (\(FileList.size(5)) and 1 folder), 1 deletion on \(model.server) "
+                                        + "(\(FileList.size(4)))\n2 unticked: left as they are."), "\(model.summary)")
+        browser.apply(model.chosen, on: session, excluding: model.patterns)
+        await session.transfers.waitUntilIdle()
+        #expect(await eventually { !exists(there + "/gone.txt") })
+        #expect(files(below: there) == ["keep.txt", "newdir/a.txt", "node_modules/y.js", "old.log", "stale.txt", "sub/c.txt"],
+                "\(files(below: there))")
+
+        // The same patterns as typed otherwise: the plan stays. Others: compared again (the unticked stay unticked).
+        model.leaveOut = "*.log,node_modules"
+        #expect(model.comparison != nil)
+        model.leaveOut = "node_modules"
+        #expect(model.comparison == nil && model.chosen.steps.isEmpty)  // Synchronize is off until then
+        #expect(await eventually { model.comparison != nil })
+        #expect(model.plan.steps.map(\.path) == ["debug.log", "newdir/b.log", "old.log", "skip-me.txt", "stale.txt", "sub/trace.log"],
+                "\(model.plan.steps.map(\.path))")
+        #expect(model.chosen.steps.map(\.path) == ["debug.log", "newdir/b.log", "old.log", "sub/trace.log"])
+        model.unticked = Set(model.plan.steps.map(\.path))  // Select None
+        #expect(model.chosen.steps.isEmpty && model.summary.hasPrefix("Nothing ticked.\n6 unticked: left as they are."),
+                "\(model.summary)")
+    }
+}
+
 /// The commands' menu items: on when the panes allow them, else off with the reason.
 @MainActor @Test func synchronizeAndFindFilesNeedTheirPanes() async throws {
     _ = NSApplication.shared

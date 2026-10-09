@@ -44,8 +44,8 @@ public enum AgentBridge {
              ["id": string("Accessibility id"), "title": string("Button title"), "in": string("sheet | window:<title>"),
               "file": string("A Mac path for its panel"), "files": array("Mac paths for its panel")]),
         tool("set", "Set a field: text or password field, checkbox (true/false), pop-up menu or segmented control "
-             + "(by option title). Find it by id, label, title or placeholder. file: what a panel the choice opens takes "
-             + "(Log in with ▸ Other Key File…).",
+             + "(by option title). Find it by id, label, title or placeholder (a row's box in Synchronize's list: the "
+             + "item's path). file: what a panel the choice opens takes (Log in with ▸ Other Key File…).",
              ["id": string("Accessibility id"), "title": string("Label, title or placeholder"), "value": any("New value"),
               "in": string("sheet | window:<title>"), "file": string("A Mac path for its panel")], required: ["value"]),
         tool("key", "Press keys, e.g. \"cmd+shift+n\", \"return\", \"escape\", \"down\", \"cmd+v\". target: window "
@@ -79,7 +79,8 @@ public enum AgentBridge {
         tool("select", "Select rows: pane left|right (file names, exactly; also focuses the pane), sidebar (a host or "
              + "Remote Desktop name), processes (a process name, PID or part of its command, among those the Monitor "
              + "lists with its search), transfers (a job's name, or ids from snapshot); or, with in, a list in that window "
-             + "or sheet (keys, snippets, proxies, Find Files' results: rows containing the text).",
+             + "or sheet (keys, snippets, proxies, Find Files' results: rows containing the text; Synchronize's list: the "
+             + "items ticked, by path).",
              ["pane": string("left | right | sidebar | processes | transfers"), "names": array("Names"),
               "ids": array("Transfer job ids"), "all": boolean("Select all"), "none": boolean("Select nothing"),
               "in": string("window:<title> | sheet")]),

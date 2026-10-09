@@ -514,7 +514,7 @@ extension AgentServer {
     }
 
     /// The comparison and, once it is done, the plan for the direction chosen, as the sheet shows them. Actions:
-    /// upload, download, trash (on this Mac), delete (on the server).
+    /// upload, download, trash (on this Mac), delete (on the server); an unticked step has "ticked": false.
     func syncJSON(_ sync: SyncModel, rows limit: Int = 200) -> [String: Any] {
         let direction: String
         switch sync.direction {
@@ -525,11 +525,12 @@ extension AgentServer {
         var json: [String: Any] = ["local": sync.localDir, "remote": sync.remoteDir, "server": sync.server,
                                    "comparing": sync.started && sync.comparison == nil && sync.failure == nil,
                                    "started": sync.started, "folders": sync.folders,
-                                   "direction": direction, "delete": sync.delete]
+                                   "direction": direction, "delete": sync.delete, "leaveOut": sync.leaveOut]
         if let failure = sync.failure { json["failure"] = failure }
         guard sync.comparison != nil else { return json }
         json["summary"] = sync.summary
         json["count"] = sync.plan.steps.count
+        json["ticked"] = sync.chosen.steps.count
         json["steps"] = sync.plan.steps.prefix(limit).map { step -> [String: Any] in
             let action: String
             switch step.action {
@@ -541,6 +542,7 @@ extension AgentServer {
             var row: [String: Any] = ["action": action, "path": step.path + (step.item.isFolder ? "/" : "")]
             if !step.item.isFolder { row["size"] = step.item.size }
             if step.replaces { row["replaces"] = true }
+            if sync.unticked.contains(step.path) { row["ticked"] = false }
             return row
         }
         return json
