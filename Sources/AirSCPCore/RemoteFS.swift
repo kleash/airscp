@@ -18,6 +18,16 @@ public enum RemotePath {
         return String(trimmed[trimmed.index(after: slash)...])
     }
 
+    /// An absolute path without "." and ".." parts or doubled slashes ("/a/./b/../c" → "/a/c").
+    public static func normalized(_ path: String) -> String {
+        var parts: [Substring] = []
+        for part in path.split(separator: "/") {
+            if part == "." { continue }
+            if part == ".." { _ = parts.popLast() } else { parts.append(part) }
+        }
+        return "/" + parts.joined(separator: "/")
+    }
+
     private static func trimmingSlashes(_ path: String) -> String {
         var trimmed = path
         while trimmed.count > 1 && trimmed.hasSuffix("/") { trimmed.removeLast() }

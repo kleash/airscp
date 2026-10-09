@@ -81,6 +81,7 @@ enum MenuHelp {
         (#selector(MainWindowController.disconnectHost(_:)), "Close the connection; asks first while transfers run"),
         (#selector(MainWindowController.runCommand(_:)), "Run one command on the host and read its output here (sudo and editors: Terminal)"),
         (#selector(MainWindowController.showTunnels(_:)), "Show the host's port forwards (its Tunnels tab)"),
+        (#selector(MainWindowController.showTerminal(_:)), "Show a shell on the host inside AirSCP (its Terminal tab), through this connection"),
         (#selector(MainWindowController.copySSHCommand(_:)), "Copy the ssh command line for this host, to paste into any terminal"),
         (#selector(MainWindowController.editHost(_:)), "Change the selected host's or desktop's settings"),
         (#selector(MainWindowController.duplicateHost(_:)), "Make a copy of the selected host or desktop, with its tunnels and saved password"),
