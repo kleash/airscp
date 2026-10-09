@@ -87,7 +87,9 @@ intro = (
     "before AirSCP is open).\n"
     "- Driving it: `snapshot` → one action (`menu`, `press`, `set`, `select`, `drop`) → `wait` → `snapshot`. "
     "AirSCP's questions (Trust, passwords, Replace, Delete) come back as a `sheet` to answer. The `guide` tool has "
-    "every tool and a recipe per feature; agents never see saved passwords.\n"
+    "every tool and a recipe per feature. Agents never see saved passwords, but can type one they were given into "
+    "AirSCP's password question (`set id=prompt.answer value=…`; from a shell, `value=-` with the password on "
+    "standard input).\n"
 )
 
 def entry(path):
