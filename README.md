@@ -12,6 +12,7 @@
   <a href="https://github.com/kleash/airscp/actions/workflows/codeql.yml?query=branch%3Amain"><img src="https://github.com/kleash/airscp/actions/workflows/codeql.yml/badge.svg?branch=main" alt="CodeQL"></a>
   <a href="https://github.com/kleash/airscp/actions/workflows/security.yml?query=branch%3Amain"><img src="https://github.com/kleash/airscp/actions/workflows/security.yml/badge.svg?branch=main" alt="Vulnerability scan"></a>
   <a href="https://scorecard.dev/viewer/?uri=github.com/kleash/airscp"><img src="https://api.scorecard.dev/projects/github.com/kleash/airscp/badge" alt="OpenSSF Scorecard"></a>
+  <a href="https://glama.ai/mcp/servers/kleash/airscp"><img src="https://glama.ai/mcp/servers/kleash/airscp/badges/score.svg" alt="Glama MCP server score"></a>
   <a href="https://github.com/kleash/airscp/blob/main/LICENSE"><img src="https://img.shields.io/github/license/kleash/airscp" alt="Licence"></a>
   <a href="https://github.com/kleash/airscp/releases/latest"><img src="https://img.shields.io/github/v/release/kleash/airscp" alt="Latest release"></a>
 </p>
