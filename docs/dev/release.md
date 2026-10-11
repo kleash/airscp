@@ -146,6 +146,10 @@ Three workflows put live results behind the README's badges (each badge is the l
    - two `swift/weak-password-hashing` in `PuTTYKey.deriveKeys`: the SHA-1 key derivation that PuTTY's .ppk version 2
      format prescribes. AirSCP writes version 3 only (Argon2id) and reads version 2 so that old keys still import.
      Dismiss both as "Won't fix": required to read the legacy format (PuTTY .ppk version 2); AirSCP never writes it.
+   - 1.1.0's Certificate Manager added three `swift/weak-sensitive-data-hashing` in `JKS.read` and `JKS.open`: the
+     SHA-1 integrity check and key protection that Java's JKS format prescribes (AirSCP reads JKS, never writes it).
+     Dismissed as "Won't fix": required to read Java keystores. A `cpp/overflowing-snprintf` in `add_san` was fixed
+     (one call formats an IPv6 address).
 4. README: every badge shows a result and links to a green run (or, for Scorecard, to its page).
 5. Protect `main` with the ruleset below and allow squash merges only.
 6. An OpenSSF Best Practices entry at https://www.bestpractices.dev: sign in with GitHub (an OAuth grant, so ask the
@@ -258,7 +262,7 @@ Links point to the public repository and site.
 | crypto_call | Met | Calls OpenSSH, OpenSSL (Argon2, X.509), CommonCrypto (AES) and CryptoKit (HMAC, SHA); implements no primitive itself. |
 | crypto_floss | Met | OpenSSH and OpenSSL are FLOSS; what CommonCrypto and CryptoKit do here OpenSSL can do too. |
 | crypto_keylength | Met | New keys are Ed25519 by default; RSA from 2048 bits, ECDSA from 256. |
-| crypto_working | Met | No broken algorithm by default; SHA-1 only to read PuTTY .ppk version 2 files (that format's key derivation), and old ssh algorithms only when the user adds them. |
+| crypto_working | Met | No broken algorithm by default; SHA-1 only to read PuTTY .ppk version 2 files and Java JKS keystores (what those formats prescribe), and old ssh algorithms only when the user adds them. |
 | crypto_weaknesses | Met | Defaults avoid SHA-1; AirSCP writes PuTTY keys in format 3 only (Argon2id). |
 | crypto_pfs | Met | SSH key exchange (OpenSSH's defaults) and TLS 1.2+ with ECDHE for Remote Desktop. |
 | crypto_password_storage | N/A | AirSCP authenticates nobody; it keeps passwords for outgoing connections in the login Keychain (the criterion is for inbound authentication). |
