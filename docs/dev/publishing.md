@@ -63,24 +63,28 @@ then complete the draft (name, description, features, connection details: the in
 
 ## 5. Smithery (smithery.ai)
 
-A local server is published as its MCPB bundle with Smithery's CLI (a Smithery account; npm package `smithery`):
+Listed as https://smithery.ai/servers/kleash/airscp (namespace `kleash`, created 2026-10-11). A local server is
+published as its MCPB bundle with Smithery's CLI (npm package `smithery`; log in once with `npx -y smithery@latest auth login`, which opens an Authorize CLI page):
 
 ```sh
-npx -y smithery@latest auth login                                   # OAuth in the browser
-npx -y smithery@latest mcp publish ./airscp.mcpb -n kleash/airscp   # the airscp.mcpb from the release
+npx -y smithery@latest namespace use kleash
+npx -y smithery@latest mcp publish ./airscp-smithery.mcpb -n kleash/airscp
 ```
 
-Known issue ([arcadeai-labs/smithery-cli#806](https://github.com/arcadeai-labs/smithery-cli/issues/806), open on
-2026-10-06): its publish wants an `inputSchema` per tool, which the MCPB manifest format forbids;
-if it refuses the bundle, note it here and retry when fixed (the listing's quality score also stays low without
-schemas).
+Smithery wants an `inputSchema` per tool, which the MCPB manifest leaves out
+([arcadeai-labs/smithery-cli#806](https://github.com/arcadeai-labs/smithery-cli/issues/806), open), so the release's
+`airscp.mcpb` is refused with 400 "expected object, received undefined" once per tool. Publish a copy whose manifest
+tools carry the real schemas instead: run `AirSCP --mcp` with a throwaway `AIRSCP_SUPPORT_DIR` (testenv/AGENT.md),
+send `initialize` and `tools/list`, copy each tool's `inputSchema` into the bundle's `manifest.json`, and zip
+`manifest.json`, `icon.png` and `server/` as `airscp-smithery.mcpb`. Only Smithery gets that copy; the release keeps
+its own bundle. The server's name, description, homepage, repository and icon are set on its Settings page.
 
 ## 6. Other MCP directories (web forms)
 
 | Directory | How | Notes |
 |---|---|---|
 | mcpservers.org | https://mcpservers.org/submit: name, category (Development or File System), short description, repository URL, registry name `io.github.kleash/airscp`, contact email | Free plan: review within 2 weeks; skip the paid option |
-| MCP Market (mcpmarket.com) | the site's **Submit** form | Thin details; repository URL and description |
+| MCP Market (mcpmarket.com) | https://mcpmarket.com/submit: repository URL, contact email, **Free Queue** | In its free queue (4–6 weeks); skip the paid option |
 | Cline MCP Marketplace | Don't submit: dropped by the owner (2026-10-06, PLAN.md) | |
 | LobeHub MCP (lobehub.com/mcp) | Nothing to submit: it listed AirSCP by itself, https://lobehub.com/mcp/kleash-airscp (Unvalidated) | Claim it there (GitHub login) to manage it. It keeps its own copy of the README: after a README change, a person clicks **Refresh Metadata** there (a Cloudflare human check) |
 
