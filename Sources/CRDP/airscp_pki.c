@@ -292,8 +292,9 @@ static void add_san(Lines *lines, GENERAL_NAMES *names) {
             if (ip->length == 4) {
                 snprintf(text, sizeof text, "IP:%d.%d.%d.%d", ip->data[0], ip->data[1], ip->data[2], ip->data[3]);
             } else if (ip->length == 16) {
-                int at = snprintf(text, sizeof text, "IP:");
-                for (int j = 0; j < 16; j += 2) at += snprintf(text + at, sizeof text - (size_t)at, j ? ":%x" : "%x", ip->data[j] << 8 | ip->data[j + 1]);
+                const unsigned char *b = ip->data;
+                snprintf(text, sizeof text, "IP:%x:%x:%x:%x:%x:%x:%x:%x", b[0] << 8 | b[1], b[2] << 8 | b[3], b[4] << 8 | b[5],
+                         b[6] << 8 | b[7], b[8] << 8 | b[9], b[10] << 8 | b[11], b[12] << 8 | b[13], b[14] << 8 | b[15]);
             }
         }
         if (text[0]) add(lines, "san", text);

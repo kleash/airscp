@@ -42,7 +42,7 @@ private func fixtures() throws -> String {
     let folder = try scratch(), o = try #require(openssl)
     func s(_ arguments: String) throws { try run(o, arguments.components(separatedBy: " "), in: folder) }
     try "basicConstraints=critical,CA:TRUE,pathlen:0\nkeyUsage=critical,keyCertSign,cRLSign\n".write(toFile: folder + "/ca.ext", atomically: true, encoding: .utf8)
-    try "subjectAltName=DNS:web.example.com,DNS:www.example.com,IP:10.0.0.5\nkeyUsage=digitalSignature,keyEncipherment\nextendedKeyUsage=serverAuth,clientAuth\n"
+    try "subjectAltName=DNS:web.example.com,DNS:www.example.com,IP:10.0.0.5,IP:2001:db8::1\nkeyUsage=digitalSignature,keyEncipherment\nextendedKeyUsage=serverAuth,clientAuth\n"
         .write(toFile: folder + "/leaf.ext", atomically: true, encoding: .utf8)
     try s("genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:2048 -out ca.key")
     try s("req -new -x509 -key ca.key -subj /O=Example/CN=Example-Root-CA -days 3650 -out ca.pem -addext basicConstraints=critical,CA:TRUE,pathlen:0 -addext keyUsage=critical,keyCertSign,cRLSign")
@@ -74,7 +74,7 @@ func certificateManagerReadsEveryFormat() throws {
     let leaf = try #require(try items(f + "/leaf.pem").first)
     let details = PKI.details(leaf)
     #expect(PKI.Details.commonName(details.subject) == "web.example.com" && PKI.Details.commonName(details.issuer) == "Example-Root-CA")
-    #expect(details.sans == ["DNS:web.example.com", "DNS:www.example.com", "IP:10.0.0.5"])
+    #expect(details.sans == ["DNS:web.example.com", "DNS:www.example.com", "IP:10.0.0.5", "IP:2001:db8:0:0:0:0:0:1"])
     #expect(details.first("serial") == "1234" && details.key == "EC 256 (prime256v1)" && !details.isCA && !details.selfIssued)
     #expect(details.first("keyUsage") == "Digital Signature, Key Encipherment")
     #expect(details.first("extendedKeyUsage") == "TLS Server, TLS Client")
