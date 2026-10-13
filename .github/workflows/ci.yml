@@ -83,9 +83,11 @@ jobs:
 
       # The tests wait on conditions, not timings, so the suite passes as it is on a busy 3-core runner. A test that
       # fails anyway is run once more on its own, with a warning (a timing bug to fix); one that fails again fails the run.
+      # Only after a full run, though: one that ended before Swift Testing's summary left tests unrun, and fails here.
       - name: Tests (./test.sh)
         run: |
           if ./test.sh 2>&1 | tee build/test.log; then exit 0; fi
+          grep -qE '^. Test run with [0-9]+ tests? ' build/test.log || exit 1
           failed=$(sed -n -E 's/^✘ Test ([A-Za-z0-9_]+)\(.*/\1/p' build/test.log | sort -u | paste -sd '|' -)
           [ -n "$failed" ] || exit 1
           echo "::warning::Failed under the full suite, running them again alone: $failed"
