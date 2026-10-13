@@ -8,31 +8,21 @@ own OpenSSH tools. AI agents drive it over MCP (agent control). The app was call
 may say Porter.
 
 Knowledge beyond this file: `docs/dev/` (architecture, feature map, regression history, agent control, UX copy,
-release, publishing, self-hosted runner). The plan of record is `PLAN.md` (sections Q–AD are binding; the newest
-sections win). User docs: `docs/` (published at https://kleash.github.io/airscp/).
-
-## How work is done here (the maintainer's operating model)
-
-- **Fable plans and orchestrates**: reads the codebase, writes the brief, splits the work.
-- **Opus 5.5 at max effort implements, reviews and verifies, through Workflow agents.** Every Workflow `agent()` call
-  sets the model explicitly, e.g. `const OPUS = { model: 'claude-opus-5-5', effort: 'max' }` spread into each call;
-  an agent without it inherits the session model and auto-compacts, which has killed long lanes.
-- **Every brief carries the simplicity rule**: the smallest change that solves the problem, no speculative
-  abstractions, no new layers or settings unless required.
-- **Fable does the final verification** and rejects anything over-engineered.
-- Don't message an agent that runs inside a Workflow (it starts a duplicate); steer it through a file it reads.
+release, self-hosted runner) and `CONTRIBUTING.md`. User docs: `docs/` (published at https://kleash.github.io/airscp/).
 
 ## Rules for every change
 
-- **Simplicity first** (above). Read the surrounding code and follow its patterns; comments say why, not what.
+- **Simplicity first**: the smallest change that solves the problem; no speculative abstractions, no new layers or
+  settings unless the problem needs them. Read the surrounding code and follow its patterns; comments say why, not
+  what.
 - **Toolchain**: Command Line Tools only (no Xcode project), Swift 5 language mode, code that compiles with Swift 5.9,
   deployment target macOS 13.1. No third-party Swift packages. Nothing from Homebrew in the build or the app.
   FreeRDP + OpenSSL come from `scripts/build-freerdp.sh` (pinned, checksummed, static, universal).
-- **The app explains itself (PLAN.md U, binding)**: every interactive control and menu item has a one-line tooltip
-  (`.help` / `toolTip`, verb first, no full stop); disabled items say why; non-obvious fields get a grey caption and
-  "Optional" where optional; plain words before jargon ("Jump host — connect through another server first
-  (ProxyJump)"); rare options under Advanced; empty states say what to do next. `HelpTests.everyControlSaysWhatItDoes`
-  and `everyMenuItemSaysWhatItDoes` fail on a control without help. Wording conventions: docs/dev/ux-copy.md.
+- **The app explains itself**: every interactive control and menu item has a one-line tooltip (`.help` / `toolTip`,
+  verb first, no full stop); disabled items say why; non-obvious fields get a grey caption and "Optional" where
+  optional; plain words before jargon ("Jump host — connect through another server first (ProxyJump)"); rare options
+  under Advanced; empty states say what to do next. `HelpTests.everyControlSaysWhatItDoes` and
+  `everyMenuItemSaysWhatItDoes` fail on a control without help. Wording conventions: docs/dev/ux-copy.md.
 - **Docs follow the code**: the user page in `docs/` (very simple English, task-first; `DocsTests` checks links,
   pictures and that every menu command is named), `Resources/AgentGuide.md` for anything agents reach (the MCP server
   serves it; `AgentBridgeTests` check it names only real tools, menu paths and ids), then `scripts/llms.sh` (CI fails
@@ -40,19 +30,21 @@ sections win). User docs: `docs/` (published at https://kleash.github.io/airscp/
 - **Versions**: `VERSION` is the source of truth; `plugins/airscp/.claude-plugin/plugin.json`, `mcpb/manifest.json` and
   `server.json` must match it (CI checks). After changing `VERSION` or a pin in `scripts/build-freerdp.sh`, run
   `scripts/sbom.sh` (`SBOMTests` checks `sbom.spdx.json`; security.yml scans it for known vulnerabilities).
-- **Commits**: short imperative messages, no attribution trailers. Never commit build outputs, `vendor/`,
-  `testenv/.keys`, `testenv/.windows`, `testenv/.uidriver`.
-- PLAN.md section W (the smart terminal) is a future release: don't build it unless asked.
+- **Commits**: short imperative messages that say what the code now does, no attribution trailers. Never commit
+  build outputs, `vendor/`, `testenv/.keys`, `testenv/.windows`, `testenv/.uidriver`.
+- **The repository is public**: no passwords, keys, real server names, personal paths or e-mail addresses in code,
+  tests, docs, screenshots or commit messages (the Docker lab's documented throwaway credentials excepted).
 
-## Safety (this is the user's own Mac and accounts)
+## Safety (you are working on someone's own Mac and accounts)
 
 - Never read or write `~/.ssh`. A throwaway AirSCP follows `testenv/AGENT.md`: its own `AIRSCP_SUPPORT_DIR` and an
-  `AIRSCP_SSH_DIR` whose `config` sets `UserKnownHostsFile`, `IdentityAgent none` and `IdentityFile none`. A throwaway AirSCP never touches
-  the login Keychain; don't write it any other way either.
+  `AIRSCP_SSH_DIR` whose `config` sets `UserKnownHostsFile`, `IdentityAgent none` and `IdentityFile none`. A throwaway
+  AirSCP never touches the login Keychain; don't write it any other way either.
 - Test against the local throwaway sshd (the tests make their own), the shared Docker lab (never recreate or stop it;
   destructive tests in your own `porter-*` containers) and the Windows VM (never toggle its network adapter — that
   crashes Windows — and never stop or destroy it; one RDP session at a time).
-- Never run the x86_64 slice. Don't install into `~/Applications` (`./install.sh` is for the user). Kill what you start.
+- Never run the x86_64 slice. Don't install into `~/Applications` (`./install.sh` is for the person at the Mac). Kill
+  what you start.
 - **Never wait blind** when driving the app: if nothing changes for ~20–30 s, take a snapshot and a screenshot you look
   at, and answer the sheet that is open (Trust, password, conflict…). A wait that times out reports what was on screen.
 
@@ -77,7 +69,7 @@ sections win). User docs: `docs/` (published at https://kleash.github.io/airscp/
 | `…/TransfersPanel.swift`, `MonitorTab.swift`, `Tunnels.swift`, `TerminalTab.swift`, `RDPWorkspace.swift`, `RDPDesktopView.swift` | Panels and tabs (TerminalTab: the shell inside AirSCP over Core's `TerminalScreen` + `TerminalSession`) |
 | `…/AgentServer.swift`, `AgentSnapshot.swift` | Agent control inside the app: socket, tools, in-process accessibility tree, screenshots |
 | `…/Help.swift` | Tooltips of menu commands, Help menu, the docs URL table (`HelpPage`) |
-| `…/Themes.swift` | The Night Harbor (dark) and Paper (light) looks from system colours: ground, content, bar, pill; chips, dots, pills, bars, cards (`card()`), and `primaryTint()` for a sheet's default button (PLAN.md O.1) |
+| `…/Themes.swift` | The Night Harbor (dark) and Paper (light) looks from system colours: ground, content, bar, pill; chips, dots, pills, bars, cards (`card()`), and `primaryTint()` for a sheet's default button |
 | `Resources/` | Info.plist, entitlements (release signing), icon, licences, `AgentGuide.md` |
 | `Tests/AirSCPTests/` | Swift Testing; `Support.swift` = throwaway sshd harness; `Lab*` need `AIRSCP_DOCKER=1`, RDP VM tests `AIRSCP_WINDOWS=1` |
 | `testenv/` | Docker lab, Windows VM, `uidriver` (real-screen `ui` tool), `AGENT.md` |
@@ -104,23 +96,23 @@ of a throwaway AirSCP in light and dark; `AgentLabTests` (agent control end to e
 is newer than the sources; run it as `testenv/AGENT.md` says, with the shared lab left as it is). Tests wait on conditions,
 not timings, so the suite passes on a busy runner (docs/dev/regression-history.md); don't add fixed sleeps or tight bounds.
 
-## The cloud loop (Claude cloud sessions: Linux, no macOS)
+## Without a Mac (a cloud session on Linux)
 
-A cloud session can't build or run the app. It edits, pushes, and lets GitHub's Macs do the rest:
+Such a session can't build or run the app. It edits, pushes, and lets GitHub's Macs do the rest:
 
 1. Branch, edit, commit, `git push -u origin <branch>`.
 2. CI (`.github/workflows/ci.yml`, macos-26, Command Line Tools) runs: versions + `docs/llms*.txt` up to date,
    FreeRDP (cached by `scripts/build-freerdp.sh`'s hash), `swift build` (fails on any warning), `./test.sh`,
    `./build.sh --native`, `scripts/agent-session.sh`, and uploads the session's screenshots + snapshot JSON as the
    `agent-session` artifact.
+   A second job, `xcode`, builds the same commit with Xcode: the App Intents metadata (checked by
+   `scripts/check-intents.sh`) and the signature; artifact `AirSCP-xcode`.
 3. `gh run watch` (or `gh run list --branch <branch>`), then `gh run view <id> --log-failed`; download the pictures:
    `gh run download <id> -n agent-session -D /tmp/agent-session` and look at them (`failed.png` / `failed.json` say
    what AirSCP showed when a step failed).
 4. Fix and push again; when green, `gh pr create`. The skill `.claude/skills/airscp-dev/SKILL.md` has the details.
 
-**What only the maintainer's Mac can do** (self-hosted runner, label `porter-mac-lab`, `.github/workflows/lab.yml`):
-the Docker lab suite (GitHub's Macs have no Docker), the Windows VM's Remote Desktop suite, and real-screen checks
-(menus, Quick Look, Open panels, appearance with the `ui` tool). Trigger it — owner only, never from a PR:
-`gh workflow run lab.yml -r <branch> -f suite=all` (or `docker`, `windows`, `screen`), then read the run's summary and
-the `screen-smoke` artifact. Signing and notarization need the Developer ID: on that Mac (`scripts/release-local.sh`),
-or in `release.yml` once its signing secrets exist.
+The Docker lab suite (GitHub's Macs have no Docker), the Windows VM's Remote Desktop suite and real-screen checks
+(menus, Quick Look, Open panels, appearance with the `ui` tool) run only on the maintainer's Mac, through a
+self-hosted runner (`.github/workflows/lab.yml`, `docs/dev/self-hosted-runner.md`): a maintainer starts them, after
+reading the change, when it needs them.

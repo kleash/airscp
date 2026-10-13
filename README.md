@@ -21,11 +21,12 @@
   with SHA-256, limit the speed.
 - **Folders as one fast stream**, with compression and "leave out" patterns (`node_modules, *.log`).
 - **Synchronize** two folders with a preview first; **Find Files** on a server by name or pattern.
-- **Every way in**: keys, passwords, 2FA codes, jump hosts, HTTP proxies. Your `~/.ssh/config` just works.
+- **Every way in**: keys, passwords, 2FA codes, jump hosts, HTTP and SOCKS5 proxies. Your `~/.ssh/config` just works.
 - **Remote Desktop for Windows** built in, with the clipboard and files both ways.
 - **Monitor** a Linux server (CPU, memory, disks, processes, ports), open **tunnels**, run commands and snippets.
 - **Keys**: make any key type, put it on a server, import and export PuTTY `.ppk`.
-- **AI agents can drive it** over MCP when you allow it, and they never see your passwords.
+- **AI agents can drive it** over MCP when you allow it: their changes wait for your OK, and they never see your
+  passwords.
 - Uses the `ssh`, `scp` and `sftp` built into macOS, shows every command it runs. No account. macOS 13.1+.
 
 <table>

@@ -21,6 +21,8 @@ final class HostWorkspace: NSViewController {
     private(set) var monitor: MonitorController!
     let tabs = NSTabViewController()
     private var tunnels: NSViewController!
+    /// The Tunnels tab's model: intents and Ask switch tunnels through it, so that the tab shows the change.
+    private(set) var tunnelsModel: TunnelsModel!
     /// The Terminal tab: kept across new Sessions, as Tunnels is (its shell starts again on the new connection).
     private(set) var terminal: TerminalController!
     /// The host's name, state, address and route, and the server's pulse, above the tabs.
@@ -43,8 +45,8 @@ final class HostWorkspace: NSViewController {
         super.init(nibName: nil, bundle: nil)
         tabs.tabStyle = .segmentedControlOnTop
         tabs.canPropagateSelectedChildViewControllerTitle = false
-        tunnels = NSHostingController(rootView: TunnelsView(tunnels: TunnelsModel(connection: connection, model: model),
-                                                            connection: connection, app: model))
+        tunnelsModel = TunnelsModel(connection: connection, model: model)
+        tunnels = NSHostingController(rootView: TunnelsView(tunnels: tunnelsModel, connection: connection, app: model))
         terminal = TerminalController(workspace: self)
         makeTabs(for: connection.session)
         connection.ask = { [weak self] prompt, reply in
@@ -141,8 +143,13 @@ final class HostWorkspace: NSViewController {
         showError(error, title: title, on: window)
     }
 
-    /// Opens Terminal (or iTerm) with ssh riding this host's connection; `directory`: "Open Terminal Here".
+    /// Opens Terminal (or iTerm) with ssh riding this host's connection; `directory`: "Open Terminal Here", which goes
+    /// to the Terminal tab instead when Settings says so.
     func openTerminal(in directory: String? = nil) {
+        if let directory, model.data.settings.openTerminalHereInTab {
+            terminal.openShell(in: directory)
+            return showTerminal()
+        }
         openTerminal(command: directory.map(OpenSSH.shellIn))
     }
 
@@ -163,9 +170,10 @@ final class HostWorkspace: NSViewController {
 
     /// The Run Command sheet, with `command` filled in (and run at once when `run`); `sh`: AirSCP's own command, run
     /// by sh (`RunCommandModel.sh`).
-    func showRunCommand(_ command: String = "", run: Bool = false, sh: Bool = false) {
+    func showRunCommand(_ command: String = "", run: Bool = false, sh: Bool = false, finished: (() -> Void)? = nil) {
         guard let window else { return }
         let runner = RunCommandModel(connection: connection, command: command, sh: sh)
+        runner.finished = finished
         presentSheet(on: window) { close in
             RunCommandView(model: runner, app: model, runInTerminal: { [weak self] in self?.openTerminal(command: $0) },
                            close: close)
@@ -342,7 +350,7 @@ final class HostWorkspace: NSViewController {
         guard error.kind != .cancelled, !connection.cancelledByUser, let window else { return }
         let name = host.displayName
         guard error.kind == .hostKeyChanged else {
-            // With the way to the debug log (PLAN.md AE), as the Disconnected banner has.
+            // With the way to the debug log, as the Disconnected banner has.
             let alert = errorAlert(error, title: "Can't connect to “\(name)”")
             alert.addOK()
             let logging = model.debugLoggingOn
@@ -438,7 +446,7 @@ func copyCommandProblem(_ host: SSHHost, in data: AirSCPData) -> String? {
     let jump = data.jump(for: host)
     if OpenSSH.missingJump(host, jump: jump) != nil { return "Its jump host no longer exists: edit the host to choose another" }
     if let id = (jump ?? host).proxyID, data.proxy(id)?.username.isEmpty != true {
-        return "Its HTTP proxy's password is given through AirSCP only: use Open Terminal (⌘T) instead"
+        return "Its proxy's password is given through AirSCP only: use Open Terminal (⌘T) instead"
     }
     return nil
 }
@@ -460,7 +468,7 @@ struct ConnectionBanner: View {
         }
     }
 
-    /// The host's server key checks are off: the strip shows it in every state (PLAN.md U.4).
+    /// The host's server key checks are off: the strip shows it in every state.
     private var checksOff: Bool { model.host(connection.hostID)?.hostKeyCheck == .off }
 
     /// The strip's text while connected to a host whose server key isn't checked (agents read it too).
@@ -530,7 +538,7 @@ struct ConnectionBanner: View {
     }
 }
 
-/// The top of a host's workspace (PLAN.md O.1): its name and state, its address, the route to it and its keep-alive,
+/// The top of a host's workspace: its name and state, its address, the route to it and its keep-alive,
 /// and the server's pulse (CPU, memory, disk) while it is connected.
 struct WorkspaceHeader: View {
     @ObservedObject var connection: HostConnection

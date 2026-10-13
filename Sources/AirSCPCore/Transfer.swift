@@ -450,6 +450,21 @@ public final class TransferQueue {
         publish()
     }
 
+    /// Moves a queued job before the queued job ahead of it (`up`) or after the one behind it, so that it runs sooner
+    /// or later. Running, paused and finished jobs keep their place. Whether it moved.
+    @discardableResult
+    public func move(_ id: UUID, up: Bool) -> Bool {
+        let moved: Bool = lock.locked {
+            guard let index = _jobs.firstIndex(where: { $0.id == id && $0.status == .queued }) else { return false }
+            let others = up ? Array(_jobs.indices.prefix(index).reversed()) : Array(_jobs.indices.suffix(from: index + 1))
+            guard let other = others.first(where: { _jobs[$0].status == .queued }) else { return false }
+            _jobs.swapAt(index, other)
+            return true
+        }
+        if moved { publish() }
+        return moved
+    }
+
     /// Removes a finished job from the list (a queued or running one stays: cancel it first).
     public func remove(_ id: UUID) {
         discardPartials(lock.locked {
@@ -690,9 +705,10 @@ public final class TransferQueue {
                     setTotal(job.id, TransferQueue.localSize(job.source))
                 }
                 if try await !resume(job, into: target, session: session, cancellation: cancellation) {
-                    let argv = OpenSSH.upload(job.source, to: target, folder: job.isFolder, preserveTimes: job.preserveTimes,
-                                              session.host, jump: session.jump, socket: session.socketPath, limit: limit)
-                    let result = try await session.runMuxed(argv, cancellation: cancellation, terminal: { self.progress(job.id, $0) })
+                    let (argv, input) = try copy(upload: true, job.source, target, folder: job.isFolder, preserveTimes: job.preserveTimes,
+                                             session: session)
+                    let result = try await session.runMuxed(argv, input: input, cancellation: cancellation,
+                                                            terminal: { self.progress(job.id, $0) })
                     if result.status != 0 {
                         guard job.isFolder && result.status == 1 && filesDone(job.id) > 0 else {
                             throw ErrorMapping.map(result.stderr, status: result.status)
@@ -721,6 +737,24 @@ public final class TransferQueue {
         }
     }
 
+    /// scp copying `local` to `remote` (upload) or `remote` to `local`; for a host browsed as another user, sftp's put or
+    /// get instead (scp can't run as another user), its batch as the input, with sftp's progress meter (scp's format).
+    private func copy(upload: Bool, _ local: String, _ remote: String, folder: Bool, preserveTimes: Bool,
+                      session: Session) throws -> (argv: [String], input: String?) {
+        guard session.copiesWithSFTP else {
+            let argv = upload
+                ? OpenSSH.upload(local, to: remote, folder: folder, preserveTimes: preserveTimes, session.host, jump: session.jump,
+                                 socket: session.socketPath, limit: limit)
+                : OpenSSH.download(remote, to: local, folder: folder, preserveTimes: preserveTimes, session.host, jump: session.jump,
+                                   socket: session.socketPath, limit: limit)
+            return (argv, nil)
+        }
+        let flags = (folder ? " -r" : "") + (preserveTimes ? " -p" : "")
+        let line = upload ? "put\(flags) \(Quote.sftp(local)) \(Quote.sftp(remote))" : "get\(flags) \(Quote.sftp(remote)) \(Quote.sftp(local))"
+        if let tooLong = Session.tooLongForSFTP([line]) { throw tooLong }
+        return (session.sftpArgv(limit: limit), "progress\n" + line + "\n")
+    }
+
     /// The job's single file stopped with its partial copy intact, for the next try to continue: a lost connection cut
     /// it off, or Pause stopped it (`pausing`, set before its processes were stopped).
     private func keepsPartial(_ job: TransferJob, after error: Error) -> Bool {
@@ -736,12 +770,13 @@ public final class TransferQueue {
         guard !job.isFolder, lock.locked({ resumable.contains(job.id) }) else { return false }
         // A download's kept part must still be there: sftp's reget would start again from 0 into a missing one.
         if job.direction == .download && (TransferQueue.localSize(partial) ?? 0) == 0 { return false }
+        let command = (job.direction == .download ? "reget" : "reput") + (job.preserveTimes ? " -p" : "")
+            + " \(Quote.sftp(job.source)) \(Quote.sftp(partial))"
+        // A line too long for sftp would be cut in two, its rest read as a command of its own: it starts afresh instead.
+        if Session.tooLongForSFTP([command]) != nil { return false }
         try session.ensureConnected()  // (not yet reconnected: nothing resumed)
         setResumed(job.id, true)
-        let command = (job.direction == .download ? "reget" : "reput") + (job.preserveTimes ? " -p" : "")
-        let result = try await session.runMuxed(OpenSSH.sftpBatch(session.host, jump: session.jump, socket: session.socketPath,
-                                                                  limit: limit),
-                                                input: "progress\n\(command) \(Quote.sftp(job.source)) \(Quote.sftp(partial))\n",
+        let result = try await session.runMuxed(session.sftpArgv(limit: limit), input: "progress\n" + command + "\n",
                                                 cancellation: cancellation, terminal: { self.progress(job.id, $0) })
         if result.status != 0 { setResumed(job.id, false) }
         return result.status == 0
@@ -818,9 +853,10 @@ public final class TransferQueue {
                 if !folder, let tooLong = TransferQueue.tooLong(job.source) { throw tooLong }
                 if try await !resume(job, into: part, session: session, cancellation: cancellation) {
                     try? fileManager.removeItem(atPath: part)  // what sftp couldn't continue
-                    let argv = OpenSSH.download(job.source, to: part, folder: folder, preserveTimes: job.preserveTimes,
-                                                session.host, jump: session.jump, socket: session.socketPath, limit: limit)
-                    let result = try await session.runMuxed(argv, cancellation: cancellation, terminal: { self.progress(job.id, $0) })
+                    let (argv, input) = try copy(upload: false, part, job.source, folder: folder, preserveTimes: job.preserveTimes,
+                                             session: session)
+                    let result = try await session.runMuxed(argv, input: input, cancellation: cancellation,
+                                                            terminal: { self.progress(job.id, $0) })
                     let partial = folder && result.status == 1 && fileManager.fileExists(atPath: part)
                     guard result.status == 0 || partial else { throw ErrorMapping.map(result.stderr, status: result.status) }
                     if partial { errors = result.stderr }
@@ -1020,10 +1056,10 @@ public final class TransferQueue {
         var errors: [String] = []
         var fetched: [String] = []
         for name in job.names {
-            let argv = OpenSSH.download(RemotePath.join(job.source, name), to: temp + "/" + name, folder: true,
-                                        preserveTimes: true, source.host, jump: source.jump, socket: source.socketPath,
-                                        limit: limit)
-            let result = try await source.runMuxed(argv, cancellation: cancellation, terminal: { self.progress(job.id, $0) })
+            let (argv, input) = try copy(upload: false, temp + "/" + name, RemotePath.join(job.source, name), folder: true,
+                                     preserveTimes: true, session: source)
+            let result = try await source.runMuxed(argv, input: input, cancellation: cancellation,
+                                                   terminal: { self.progress(job.id, $0) })
             if result.status != 0 {
                 guard result.status == 1 && access(temp + "/" + name, F_OK) == 0 else {
                     throw ErrorMapping.map(result.stderr, status: result.status)
@@ -1035,9 +1071,10 @@ public final class TransferQueue {
         try? await session.deleteFolders([staging], slot: .transfer)  // an earlier try's
         try await session.sftp(["mkdir \(Quote.sftp(staging))"], slot: .transfer)
         for name in fetched {
-            let argv = OpenSSH.upload(temp + "/" + name, to: RemotePath.join(staging, name), folder: true, preserveTimes: true,
-                                      session.host, jump: session.jump, socket: session.socketPath, limit: limit)
-            let result = try await session.runMuxed(argv, cancellation: cancellation, terminal: { self.progress(job.id, $0) })
+            let (argv, input) = try copy(upload: true, temp + "/" + name, RemotePath.join(staging, name), folder: true,
+                                     preserveTimes: true, session: session)
+            let result = try await session.runMuxed(argv, input: input, cancellation: cancellation,
+                                                    terminal: { self.progress(job.id, $0) })
             if result.status != 0 {
                 guard result.status == 1 else { throw ErrorMapping.map(result.stderr, status: result.status) }
                 errors.append(result.stderr)
@@ -1194,14 +1231,15 @@ public final class TransferQueue {
                 + "Rename that folder on the server, then try again.", details: RemotePath.parent(folder))
         }
         let script = "echo >&2; echo __AIRSCP__ >&2; IFS= read -r d && rm -rf -- \"$d\" && mkdir -- \"$d\" && cd -- \"$d\" && " + unpack
-        return (OpenSSH.remote("exec sh -c " + Quote.shell(script), session.host, jump: session.jump, socket: session.socketPath),
+        let sudo = session.host.sudoUser.isEmpty ? "" : "sudo -n -u \(Quote.shell(session.host.sudoUser)) "
+        return (OpenSSH.remote("exec \(sudo)sh -c " + Quote.shell(script), session.host, jump: session.jump, socket: session.socketPath),
                 Data((folder + "\n").utf8))
     }
 
     /// ssh running a stream's `script` on `session`'s server, and what goes to its standard input: the script itself
     /// when it is too long for a command line (many names).
     static func remoteScript(_ script: String, on session: Session) -> (argv: [String], input: String?) {
-        let (command, input) = OpenSSH.longScript(script)
+        let (command, input) = OpenSSH.longScript(script, sudo: session.host.sudoUser)
         return (OpenSSH.remote(command, session.host, jump: session.jump, socket: session.socketPath), input)
     }
 
@@ -1242,7 +1280,7 @@ public final class TransferQueue {
     /// The SHA-256 of a file on the server, in lower-case hex: sha256sum (GNU's or BusyBox's), else shasum (Perl's, as
     /// on macOS), else the BSDs' sha256. A shell account only (`Session.shell`); the transfer slot, so a check waits for
     /// no listing and holds none up.
-    static func sha256(_ path: String, on session: Session, cancellation: Cancellation) async throws -> String {
+    public static func sha256(_ path: String, on session: Session, cancellation: Cancellation) async throws -> String {
         let file = Quote.shell(path)
         let output = try await session.shell("if command -v sha256sum >/dev/null 2>&1; then sha256sum -- \(file); "
             + "elif command -v shasum >/dev/null 2>&1; then shasum -a 256 -- \(file); "
@@ -1258,7 +1296,7 @@ public final class TransferQueue {
     }
 
     /// The SHA-256 of a file on this Mac, in lower-case hex, read a megabyte at a time.
-    static func sha256(_ path: String, cancellation: Cancellation) throws -> String {
+    public static func sha256(_ path: String, cancellation: Cancellation) throws -> String {
         let file = open(path, O_RDONLY | O_CLOEXEC)
         guard file >= 0 else {
             let failure = errno
@@ -1495,6 +1533,10 @@ public final class TransferCenter: ObservableObject {
 
     /// Checks the copies of the finished single files among `ids` against their originals (`TransferQueue.verify`).
     public func verify(_ ids: Set<UUID>) { queues().forEach { $0.verify(ids) } }
+
+    /// Moves a queued job up or down its host's queue (`TransferQueue.move`).
+    @discardableResult
+    public func move(_ id: UUID, up: Bool) -> Bool { queue(of: id)?.move(id, up: up) ?? false }
 
     /// Removes a finished job from the list.
     public func remove(_ id: UUID) { queue(of: id)?.remove(id) }

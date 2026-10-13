@@ -40,6 +40,10 @@ How to work with AirSCP:
   refused. Commands that hand over to another app (Terminal, Finder, the default app, the clipboard) run, unseen.
 - Agent control is off unless the user turned it on (AirSCP ▸ Settings ▸ "Allow AI agents to control AirSCP (MCP)");
   the sidebar then shows the user your name, your actions and a way to turn it off. `snapshot` → agent: client, actions.
+- Changes wait for the person at the Mac (Settings ▸ "Ask before agents change things"; `snapshot` → agent.asksFirst):
+  deleting, replacing, renaming, copying or opening files, permissions, keys for a server or the ssh agent, tunnels,
+  commands, kills, disconnecting, quitting, typing into a terminal or Windows desktop. "The person at the Mac declined"
+  or "didn't answer": nothing was done; don't try another way, tell the user (guide topic troubleshooting).
 - A first run with no hosts shows the "Welcome to AirSCP" sheet: press Start first. The Help menu's AirSCP Help items
   and a sheet's "?" button (id `help`) open the browser, outside AirSCP; Tips and Agent Guide open short texts.
 
@@ -132,6 +136,10 @@ AirSCP was installed with `./install.sh`).
 - `guide {topic?}` — this guide.
 
 ## hosts
+- Facts about a connected host: `menu path="Host > Server Info…"` (a sheet: key fingerprint, software, cipher, what it
+  can do, free space; Copy, Done). `menu path="Host > Copy Link"` puts an sftp:// link on the clipboard. `menu
+  path="Host > Change Password…"` runs passwd in the Terminal tab for the user to answer: never type a password there
+  unasked.
 - New host: `menu path="File > New Host…"` → a sheet. Fields: `hostEditor.name`, `hostEditor.hostname` (Address),
   `hostEditor.port`, `hostEditor.username` (User name), `hostEditor.login` (pop-up: "Keys in ~/.ssh and the ssh agent
   (default)", the keys of ~/.ssh as "id_ed25519 · ED25519 · me@mac", "Password", or a key elsewhere: `set
@@ -141,7 +149,7 @@ AirSCP was installed with `./install.sh`).
   Host"), `hostEditor.password` (only with Password),
   `hostEditor.jump` ("Connect through": another host's name), `hostEditor.remoteFolder` (Start in folder),
   `hostEditor.group`. Under Advanced (`press title=Advanced` shows them; an edited host that uses one shows them
-  already): `hostEditor.proxy` (HTTP proxy; its "Add Proxy…" opens the proxy editor on the host editor),
+  already): `hostEditor.proxy` (Proxy; its "Add Proxy…" opens the proxy editor on the host editor),
   `hostEditor.keepAlive`, `hostEditor.autoReconnect`, `hostEditor.forwardAgent` ("Let the server use my ssh agent"),
   `hostEditor.hostKey` (Server key: "Ask (default)", "Trust new servers automatically" (accept-new: a changed key is
   still refused), "Don't check (insecure)"; Other options can't set StrictHostKeyChecking),
@@ -182,16 +190,42 @@ AirSCP was installed with `./install.sh`).
   terminal: running, lines (the last `rows`, scrollback included), cursor, fullScreen, directory/title when the shell
   says them. `wait until=text text=…` waits for output while the tab is shown. After `exit`, `key
   target=terminal combo=return` starts a new shell. Prefer `go`/`open`/menus for files; the terminal is for commands.
+  With bash and zsh the shell marks its commands: the terminal section then has `atPrompt` (true: the shell waits at an
+  empty prompt, so a command typed now runs in it) and `commands`, the last 20: each one's `command` line, `status`
+  (exit status), `seconds`, `output` (its last 50 lines) and `running`. Read a command's result there, not from
+  `lines`: type it, then snapshot until its entry has a status. Other shells (BusyBox sh, fish) have neither. The tab's
+  bar: `set id=terminal.follow value=true` (Follow in Files: the server pane follows the shell's folder), `set
+  id=terminal.snippets value=<snippet name>` (typed at the prompt, not run; as any text for the terminal, it waits for
+  the person at the Mac), `press id=terminal.find` then `set id=terminal.findText value=<text>` (find;
+  `terminal.findCount` reads "2 of 5" in `snapshot include=["elements"]`), `press id=terminal.findDone`. Settings'
+  `settings.openTerminalHereInTab` sends Open Terminal Here to this tab: `cd` typed at an empty prompt, else a question
+  "Type cd into the Terminal tab?" first (its Type cd waits for the person at the Mac).
 - Certificate Manager: `menu path="Tools > Certificate Manager…"` (its controls `in="window:Certificate Manager"`);
   open files with `press id=certificates.open files=[…]` (a password sheet: `set id=certificates.password`, `press
   title=Open`); `select in="window:Certificate Manager" names=["Certificate: web.example.com"]` (rows read "Certificate: …",
   "CA certificate: …", "Private key: RSA 2048"); `snapshot include=["elements"]` reads the details; buttons "Save PEM…",
   "Save DER…", "Save Chain…", "PKCS#12…" (`certificates.p12Name`, `certificates.p12Password`, then "Save…" with
-  `file=`), "Save Key…" (`certificates.keyPassphrase`), "Public Key…", all taking `file=`. A server's chain: `menu
-  path="Tools > View Server Certificate…"`, `set id=certificates.server value=host:port`, `press title=View`.
+  `file=`), "JKS…" (the same sheet: alias and password), "Save Key…" (`certificates.keyPassphrase`), "Public Key…", all
+  taking `file=`. A server's chain: `menu path="Tools > View Server Certificate…"`, `set id=certificates.server
+  value=host:port`, `press title=View`. A new key with a request or a self-signed certificate: `press
+  id=certificates.new`, `set id=certificates.newKind value="Self-signed certificate"` (or "Certificate request (CSR)"),
+  `certificates.commonName`, `certificates.names` (more host names and IPs, commas between), `certificates.organization`,
+  `certificates.unit`, `certificates.locality`, `certificates.state`, `certificates.country`, `certificates.keyType`
+  ("RSA 2048", "RSA 3072", "RSA 4096", "EC P-256", "EC P-384", "Ed25519"), `certificates.days`,
+  `certificates.newPassphrase`, then `press title=Create… file=/path/web.crt` (a request: .csr; the key goes beside it as
+  web.key; a file that exists is never replaced, and nothing is saved). With a certificate selected: "Truststore…" (tick
+  or untick entries by their row titles with `press`, `certificates.trustFormat` "PKCS#12 (.p12)" or "Java keystore
+  (.jks)", `certificates.trustPassword`, "Save…" with `file=`) and "Verify…" (`certificates.verifyAgainst` "Authorities
+  this Mac trusts" or "A CA bundle file", then `press id=certificates.chooseBundle file=/path/ca.pem`;
+  `certificates.verifyHost`; `press title=Verify`): the result is the line under the certificate's title and the status
+  line (`snapshot include=["elements"]`).
 - The same actions are reachable three ways: the menus (a person), these tools (you), and App Intents (Shortcuts, Siri,
-  Spotlight: Connect to Host, Open a Shell on Host, Open Remote Desktop, Disconnect All, Get Transfer Status). Help >
-  Ask AirSCP… is the user's own Apple Intelligence: don't use it for them.
+  Spotlight: Connect to Host, Open a Shell on Host, Open Remote Desktop, Upload Files, Download Files, Find Files, Run
+  Snippet, Start Tunnel, Stop Tunnel, Open Favourite Folder, Disconnect All, Get Transfer Status), all running the same
+  code. Help >
+  Ask AirSCP… (with Do It…, `ask.doIt`, `ask.plan`, `ask.run`), the Explain/Summarize buttons (`monitor.explain`,
+  `log.summarize`, `snippet.explain`) and Suggest (`suggest.<field>`) are the user's own Apple Intelligence: don't use
+  them for them.
 - Terminal: `menu path="Host > Open Terminal"` opens Terminal.app, and "Copy ssh Command" fills the clipboard: their
   result is outside AirSCP. Run a command and read its output: `menu path="Host > Run Command…"` →
   `set id=runCommand.command value="uname -a"` (or a snippet: `set id=runCommand.snippet value=<its name>`) →
@@ -207,6 +241,9 @@ AirSCP was installed with `./install.sh`).
   the host, its exit status and error output.
 
 ## proxies
+- A proxy is HTTP or SOCKS5: `set id=proxyEditor.kind value=SOCKS5` in New Proxy… (Digest logins are answered by
+  themselves). Root's files: Host > Edit… > Advanced, `set id=hostEditor.sudoUser value=root` (needs NOPASSWD sudo on the
+  server; connecting says why when it can't).
 - Proxies: `menu path="Host > Proxies…"` → sheet → `press title="Add Proxy…"` → `proxyEditor.name`, `proxyEditor.host`,
   `proxyEditor.port`, `proxyEditor.username`, then `proxyEditor.password` (it appears once there is a user name) →
   `press title=Add` → `press title=Done` (or `key combo=escape`).
@@ -219,6 +256,12 @@ AirSCP was installed with `./install.sh`).
 - A proxy that refuses the password: the connect fails with "The proxy rejected the user name or password".
 
 ## transfers
+- Move instead of copy: select items, then `menu path="File > Upload and Delete…"` (this Mac's pane) or `"File >
+  Download and Delete…"` (a server's), `press title=Move`; originals go once each copy is done. Queued jobs: `menu
+  path="context > Move Up" pane=transfers` / "Move Down". `set id=transfers.whenDone value="Notify"` (Do Nothing,
+  Disconnect, Sleep This Mac, Notify) acts once when every transfer has finished: never choose Sleep This Mac unasked.
+- Get Info: `set id=info.checksumAlgorithm value=SHA-256`, `press id=info.calculateChecksum`, read `info.checksum`; Permissions…
+  also has `permissions.owner` and `permissions.group`.
 - Upload: `drop files=["/path/a.txt", "/path/folder"] pane=right` (into the folder the right pane shows, or `into`).
   A folder (or 200+ items) asks first: "Upload … to “dev”?" with the checkbox "Compress during transfer — faster on
   slow links and for many small files" and the field
@@ -271,6 +314,18 @@ AirSCP was installed with `./install.sh`).
   up) → `select pane=right names=["index.html"]` → its command: `menu path="File > Download To…" file=/Users/me/Downloads`,
   `menu path="File > Upload…" files=["/Users/me/a.txt"]`, `menu path="File > Rename…"`, `menu path="context > Delete…"`.
 - Also `menu path="Go > Back"`, `"Go > Enclosing Folder"`, `"Go > Home"`; this Mac's side: `go pane=left path=~/Downloads`.
+- Find Files' results: `select in=sheet names=["a.log", "deep/b.log"]` (several, or `all: true`), then `press
+  id=find.download file=<Mac folder>`, `press id=find.delete` (then Delete), or `press id=find.copyPaths`.
+- Synchronize's options: `set id=sync.criterion value="Contents (SHA-256)"` (Size and date, Size only, Date only),
+  `set id=sync.onlyBoth value=true`, `set id=sync.mirror value=true`. Editor: `press title="Go to Line…"` (`editor.line`),
+  `press title="Revert to Server Version"`.
+- Snippets with {file}, {files}, {name} or {folder} run on the selection: `select pane=right names=[…]`, then `menu
+  path="context > Run Snippet > <snippet>" pane=right` (a Run Command sheet shows the output).
+- Many at once: `menu path="Edit > Select by Pattern…"`, `set id=select.pattern value="*.log"`, `press title=Select`
+  (Deselect by Pattern, Select Same Kind, Invert Selection likewise). `menu path="File > Move To…"` / `"File > Copy To…"`
+  ask for a server folder (`set id=transfer.folder`, then Move or Copy); `menu path="File > New Symbolic Link…"` asks its
+  name (`link.name`, Next) then its target (`link.target`, Create). `menu path="File > Compare Folders"` marks the rows
+  that differ (snapshot rows carry `mark`, e.g. "Newer here").
 - Favourites (a server's folders, kept per host): `focus pane=right` → `menu path="Go > Add to Favourites"` keeps the
   folder shown; `menu path='Go > Favourites > /var/log'` goes back to it, `menu path='Go > Favourites > Remove >
   /var/log'` drops it. `snapshot` → the pane's favourites (and `include=["menus"]` lists them).
@@ -292,7 +347,8 @@ AirSCP was installed with `./install.sh`).
   it with `snapshot include=["elements"] in="window:<file name>"`; close it with `menu path="File > Close"
   in="window:<file name>"`, which asks first when it has unsaved changes).
 - Handed to other apps, so their result isn't visible here: Open (the default app), Show in Finder, Open Terminal
-  Here, Run in Terminal, Copy Path (the clipboard). Quick Look is refused: download the file and read it instead.
+  Here (unless `settings.openTerminalHereInTab` is on: then the Terminal tab), Run in Terminal, Copy Path (the
+  clipboard). Quick Look is refused: download the file and read it instead.
 - Copy / cut / paste within a server: select → `menu path="Edit > Copy"` (or Cut) → select the target folder's pane
   → `menu path="Edit > Paste"`. Move by dropping: `drop from=right to=right into=/home/dev/dir move=true`. Replace
   keeps the old item until the copy is complete.
@@ -398,7 +454,9 @@ AirSCP was installed with `./install.sh`).
   the folder for new keys (`press id=settings.keyFolder in="window:Settings" file=/folder`; "Use ~/.ssh" goes back),
   `settings.agentControl` (turning it off ends
   agent control at once; `settings.mcpCommand` is the `claude mcp add` command it shows, `settings.copyMCPCommand`
-  copies it), `settings.debugLogging` (Advanced: the debug log, see troubleshooting). Downloads folder: `press
+  copies it), `settings.askBeforeAgentChanges` (changes wait for the person at the Mac, see overview: only they can
+  change it, an agent's `set` or `press` of it is refused), `settings.debugLogging` (Advanced: the debug log, see
+  troubleshooting). Downloads folder: `press
   title=Choose… in="window:Settings" file=/Users/me/Downloads`. It is where Download To… opens (its reply's
   `panelFolder`) and where Download as .tar.gz puts the archive when the other pane shows a server too.
 - `snapshot include=["settings"]` reads them all. The window opens 600 points tall and its form scrolls; the controls
@@ -473,7 +531,7 @@ AirSCP was installed with `./install.sh`).
   in="window:Settings"` (or, in the "Can't connect" sheet or a Disconnected banner,
   `press title="Turn On Debug Logging and Try Again"`, which connects again), make it happen again, then read the
   plain-text file at `snapshot` → debugLog.path. Each line has the time and the host.
-  "Couldn't connect: it stopped at …" names the hop that failed (the HTTP proxy, the jump host or the server) in plain
+  "Couldn't connect: it stopped at …" names the hop that failed (the proxy, the jump host or the server) in plain
   words; the lines before it are ssh's own (-vv: "Authenticated to bastion", "channel 0: open failed"), the proxy's
   answer ("proxy-connect: the proxy 127.0.0.1:3128 answered CONNECT bastion:22 with “HTTP/1.1 407 …”") and the
   questions ssh asked (never the answers: no password is ever in the file). `menu path="Help > Copy Diagnostics"`
@@ -481,6 +539,21 @@ AirSCP was installed with `./install.sh`).
   log off when done: `value=false`, `press id=debugLog.turnOff` (the sidebar's Turn Off) or
   `menu path='Help > Turn Off Debug Logging'`. AIRSCP_DEBUG=1 in AirSCP's environment turns it on from the start (and
   keeps it on).
+- Questions to the person at the Mac (Settings ▸ "Ask before agents change things", on unless they turned it off).
+  These wait up to 45 s for their Allow Once, Allow for 15 Minutes (no more questions until then) or Deny: a request
+  that deletes, replaces or renames files (Rename's button), copies them (`drop`, Upload…, Download…, Paste,
+  Synchronize), opens a file in its app, changes permissions or owners (Permissions' Apply, Make Executable), puts a
+  key on a server (Keys' Install) or in the ssh agent (Add to Agent), switches a tunnel on or off, runs a command, a
+  file or a snippet, kills a process, disconnects, quits, cancels, retries or resumes transfers, types text (a snippet
+  too) or presses keys in a Terminal tab, types, presses keys or clicks on a Windows desktop, or presses a button that
+  a question marks as destructive (Delete, Replace, Kill, Type cd…). A question AirSCP asks itself (Delete's) comes
+  first, as always: its Delete button is what waits. Looking, selecting, going to folders, opening AirSCP's own sheets
+  and typing into its fields never wait, and only the person can turn the setting off.
+  "The person at the Mac declined: <what>": they said no; nothing was done. Don't try it another way (another tool or
+  menu): tell the user what you wanted to do and why. "The person at the Mac didn't answer within 45 s: <what>":
+  nothing was done; ask the user to look at the Mac, then try once more. "What … acts on changed while the person at
+  the Mac decided": the selection or the question changed meanwhile; nothing was done: `snapshot`, then try again.
+  "Agent control was turned off: nothing was done.": the user ended agent control while a question waited.
 - "… is disabled now: <reason>": the reason says what is missing (no selection, not connected, sftp only, the Files
   tab not shown…).
   "Nothing to press called …" / "No field …": `snapshot include=["sheets","elements"]` shows what is there (add

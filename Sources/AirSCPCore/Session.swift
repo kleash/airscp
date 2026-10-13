@@ -19,6 +19,10 @@ public struct Capabilities: Equatable {
     public var caseInsensitive = false
     /// The account's login shell ("bash", "fish"), when it has a shell.
     public var loginShell = ""
+    /// For a host browsed as another user (`SSHHost.sudoUser`): the server's sftp-server program, and why sudo can't be
+    /// used (nil when it can).
+    public var sftpServer: String?
+    public var sudoProblem: String?
 
     public init() {}
 }
@@ -256,6 +260,11 @@ public final class Session {
         }
         saveRememberedPasswords()
         await probe()
+        // Browse and transfer as another user: without sudo for it (NOPASSWD), nothing would work as asked.
+        if let problem = capabilities.sudoProblem {
+            await disconnect()
+            throw AirSCPError(.permissionDenied, problem)
+        }
         if silent {  // before Connected is shown: the Tunnels tab then shows them on
             for tunnel in lock.locked({ tunnelsToRestore }) { try? await startTunnel(tunnel) }
             lock.locked { tunnelsToRestore = [] }
@@ -632,11 +641,28 @@ public final class Session {
     /// sftp batch lines (one invocation: the first failure stops it and is thrown, unless the line starts with "-").
     @discardableResult
     func sftp(_ lines: [String], slot: Slot = .control, cancellation: Cancellation? = nil) async throws -> CommandResult {
-        let result = try await runOver(slot, OpenSSH.sftpBatch(host, jump: jump, socket: socketPath),
+        if let tooLong = Self.tooLongForSFTP(lines) { throw tooLong }
+        let result = try await runOver(slot, sftpArgv(),
                                        input: lines.joined(separator: "\n") + "\n", cancellation: cancellation)
         guard result.status == 0 else { throw ErrorMapping.map(result.stderr, status: result.status) }
         return result
     }
+
+    /// sftp reads a batch line into 2,048 bytes and takes what doesn't fit as a line of its own: such a line isn't sent.
+    static func tooLongForSFTP(_ lines: [String]) -> AirSCPError? {
+        guard let line = lines.first(where: { $0.utf8.count >= 2047 }) else { return nil }
+        return AirSCPError(.other, "The paths are too long for sftp, which takes at most 2,046 bytes a command: use a folder "
+                           + "higher up, or shorter names.", details: line)
+    }
+
+    /// sftp reading a batch, as the user the host browses as (`SSHHost.sudoUser`: its sftp-server with sudo).
+    func sftpArgv(limit: Int? = nil) -> [String] {
+        let server = host.sudoUser.isEmpty ? nil : capabilities.sftpServer.map { "sudo -n -u \(Quote.shell(host.sudoUser)) \($0)" }
+        return OpenSSH.sftpBatch(host, jump: jump, socket: socketPath, limit: limit, server: server)
+    }
+
+    /// Whether files go with sftp instead of scp: a host browsed as another user (scp can't run as one).
+    var copiesWithSFTP: Bool { !host.sudoUser.isEmpty }
 
     /// A one-line POSIX sh script on the server; its output, throwing when it exits non-zero.
     @discardableResult
@@ -723,9 +749,10 @@ public final class Session {
     /// The sentinel-wrapped script's output, status (of the script, not of ssh) and error output (after the login
     /// noise). A long script (many names) goes to `sh -s` on standard input: a server takes a command line of at most
     /// 128 KB, and ssh's connection sharing even less.
-    private func sentinelShell(_ script: String, slot: Slot = .control, cancellation: Cancellation? = nil,
+    /// `asLoginUser`: not as the user the host browses as (the probe).
+    private func sentinelShell(_ script: String, slot: Slot = .control, cancellation: Cancellation? = nil, asLoginUser: Bool = false,
                                output: ((Data) -> Void)? = nil) async throws -> (Data, Int32, String) {
-        let (command, input) = OpenSSH.longScript(OpenSSH.sentinelScript(script))
+        let (command, input) = OpenSSH.longScript(OpenSSH.sentinelScript(script), sudo: asLoginUser ? "" : host.sudoUser)
         let argv = OpenSSH.remote(command, host, jump: jump, socket: socketPath)
         let result = try await runOver(slot, argv, input: input, cancellation: cancellation, standardOutput: output)
         guard let (output, status) = OpenSSH.parseSentinel(result.stdout) else {
@@ -876,12 +903,12 @@ public final class Session {
         DispatchQueue.main.async { self.onStateChange?(state) }
     }
 
-    // MARK: Debug log (PLAN.md AE)
+    // MARK: Debug log
 
-    /// The way to the server: "This Mac → HTTP proxy → jump host “bastion” (jump@bastion:22) → “private” (dev@private:22)".
+    /// The way to the server: "This Mac → proxy → jump host “bastion” (jump@bastion:22) → “private” (dev@private:22)".
     private var route: String {
         let proxied = (jump ?? host).proxyID != nil  // with a jump host, its proxy is the first hop's
-        return (["This Mac"] + (proxied ? ["HTTP proxy"] : []) + (jump.map { ["jump host " + Session.named($0)] } ?? [])
+        return (["This Mac"] + (proxied ? ["proxy"] : []) + (jump.map { ["jump host " + Session.named($0)] } ?? [])
                 + [Session.named(host)]).joined(separator: " → ")
     }
 
@@ -903,10 +930,10 @@ public final class Session {
     }
 
     /// Where on its way a connect that failed stopped, in words, from the error output of ssh and the proxy helper: at
-    /// the HTTP proxy of the first hop, at the jump host, or at the server itself.
+    /// the proxy of the first hop, at the jump host, or at the server itself.
     static func failedHop(_ errors: String, host: SSHHost, jump: SSHHost?) -> String {
         if errors.contains("AirSCP proxy: ") {
-            return "at the HTTP proxy, on the way to " + (jump.map { "the jump host " + named($0) } ?? named(host))
+            return "at the proxy, on the way to " + (jump.map { "the jump host " + named($0) } ?? named(host))
         }
         guard let jump else { return "at " + named(host) }
         // Through a jump host AirSCP's ssh connects nowhere itself: the jump host's ssh does, and says whether it couldn't
@@ -940,18 +967,39 @@ public final class Session {
 
     /// What can run here: a POSIX shell (with $HOME and which archive tools), else sftp's starting folder.
     private func probe() async {
-        let script = "printf '%s\\n' \"$HOME\" \"$(uname -s 2>/dev/null)\" \"$SHELL\"; for t in zip unzip tar gzip python3; do "
-            + "command -v \"$t\" >/dev/null 2>&1 && printf '%s\\n' \"$t\"; done; true"
+        var script = "printf '%s\\n' \"$HOME\" \"$(uname -s 2>/dev/null)\" \"$SHELL\"; for t in zip unzip tar gzip python3; do "
+            + "command -v \"$t\" >/dev/null 2>&1 && printf '%s\\n' \"$t\"; done; "
+        let sudo = host.sudoUser
+        if !sudo.isEmpty {
+            // As the login user: whether sudo -n works for that user, and where sftp-server is (for sftp as that user).
+            let user = Quote.shell(sudo)
+            script += "if sudo -n -u \(user) true 2>/dev/null; then echo __SUDO__ok; else echo \"__SUDO__$(sudo -n -u \(user) true 2>&1 "
+                + "| head -n 1)\"; fi; for p in /usr/lib/openssh/sftp-server /usr/libexec/openssh/sftp-server /usr/lib/ssh/sftp-server "
+                + "/usr/libexec/sftp-server /usr/lib/sftp-server; do [ -x \"$p\" ] && { echo \"__SFTP__$p\"; break; }; done; "
+        }
+        script += "true"
         var found = Capabilities()
         do {
-            let (output, status, _) = try await sentinelShell(script)
+            let (output, status, _) = try await sentinelShell(script, asLoginUser: true)
             if status == 0 {
                 let lines = String(decoding: output, as: UTF8.self).components(separatedBy: "\n")
                 found.shell = true
                 found.home = lines.first.flatMap { $0.isEmpty ? nil : $0 } ?? "/"
                 found.caseInsensitive = lines.dropFirst().first == "Darwin"
                 found.loginShell = ((lines.dropFirst(2).first ?? "") as NSString).lastPathComponent
-                found.tools = Set(lines.dropFirst(3).filter { !$0.isEmpty })
+                found.tools = Set(lines.dropFirst(3).filter { !$0.isEmpty && !$0.hasPrefix("__") })
+                if !sudo.isEmpty {
+                    let answer = lines.first { $0.hasPrefix("__SUDO__") }.map { String($0.dropFirst(8)) } ?? ""
+                    found.sftpServer = lines.first { $0.hasPrefix("__SFTP__") }.map { String($0.dropFirst(8)) }
+                    if answer != "ok" {
+                        found.sudoProblem = "AirSCP can't browse as \(sudo): sudo needs to work without a password for "
+                            + "\(host.username.isEmpty ? "this user" : host.username) (a NOPASSWD rule), and the server said: "
+                            + (answer.isEmpty ? "sudo isn't there." : answer)
+                    } else if found.sftpServer == nil {
+                        found.sudoProblem = "AirSCP can't browse as \(sudo): this server has no sftp-server program to run as "
+                            + "that user (BusyBox systems have none)."
+                    }
+                }
             }
         } catch let error as AirSCPError {
             if error.kind == .disconnected { return }
@@ -959,6 +1007,9 @@ public final class Session {
                 ? "This account allows file transfers (sftp) only."
                 : "The server doesn't run shell commands (\(error.message))"
         } catch {}
+        if !found.shell && !sudo.isEmpty {
+            found.sudoProblem = "AirSCP can't browse as \(sudo): this account can't run commands, so it can't use sudo."
+        }
         if !found.shell {
             found.noShellReason = found.noShellReason ?? "The server doesn't run shell commands."
             if let result = try? await sftp(["pwd"]),

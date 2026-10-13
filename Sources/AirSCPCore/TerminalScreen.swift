@@ -1,12 +1,13 @@
 import Foundation
 
-/// The screen of AirSCP's own terminal (PLAN.md W): an xterm-compatible emulator of the parts that shells and
-/// full-screen programs (less, vim, top, htop, nano, tmux) use: UTF-8 text, cursor movement, erasing, scroll regions,
-/// inserting and deleting lines and characters, colours (16, 256 and 24-bit), bold, italic, underline, inverse, the
-/// alternate screen, bracketed paste and application cursor keys. It also reads what the shell says about itself: the
-/// window title (OSC 0/2), the current folder (OSC 7) and the shell's process id (AirSCP's own OSC 1337;AirSCPPid, sent
-/// before the shell starts), and answers the cursor-position and device-attribute questions. Lines that scroll off the
-/// top are kept as scrollback. Not thread-safe: one queue feeds and reads it.
+/// The screen of AirSCP's own terminal: an xterm-compatible emulator of the parts that shells and full-screen programs
+/// (less, vim, top, htop, nano, tmux) use: UTF-8 text, cursor movement, erasing, scroll regions, inserting and deleting
+/// lines and characters, colours (16, 256 and 24-bit), bold, italic, underline, inverse, the alternate screen,
+/// bracketed paste and application cursor keys. It also reads what the shell says about itself: the window title
+/// (OSC 0/2), the current folder (OSC 7), the shell's process id (AirSCP's own OSC 1337;AirSCPPid, sent before the shell
+/// starts) and where each command starts and ends (OSC 133, see `Mark`), and answers the cursor-position and
+/// device-attribute questions. Lines that scroll off the top are kept as scrollback. Not thread-safe: one queue feeds
+/// and reads it.
 public final class TerminalScreen {
     public enum Color: Equatable {
         case standard
@@ -36,6 +37,9 @@ public final class TerminalScreen {
         public var cells: [Cell]
         /// The text goes on in the next line: it was wrapped, not broken by a line feed.
         public var wrapped = false
+        /// What the shell marked on this line, in the order it came. Marks travel with their line (into the
+        /// scrollback, through a resize) and go when it is erased away.
+        public var marks: [Mark] = []
         init(columns: Int, attributes: Attributes = Attributes()) {
             cells = Array(repeating: Cell(attributes: Attributes.erased(attributes)), count: columns)
         }
@@ -45,6 +49,56 @@ public final class TerminalScreen {
             while text.last == " " { text.removeLast() }
             return text
         }
+    }
+
+    /// A place in `allLines`: a line and a column (a cell).
+    public struct Position: Comparable {
+        public var line: Int
+        public var column: Int
+        public init(line: Int, column: Int) {
+            self.line = line
+            self.column = column
+        }
+        public static func < (a: Position, b: Position) -> Bool { (a.line, a.column) < (b.line, b.column) }
+    }
+
+    /// A shell integration mark (OSC 133, as the shell AirSCP starts sends them): its prompt starts (A), what is typed
+    /// starts (B), the command's output starts (C), the command ended (D, with its exit status); and what is typed goes
+    /// on after a continuation prompt (B with k=s: bash's PS2, "> "). They count only when signed with `markToken`,
+    /// which output that imitates them can't know.
+    public struct Mark: Equatable {
+        public enum Kind: Equatable { case prompt, command, output, end, continuation }
+        public var kind: Kind
+        public var column: Int
+        public var time: Date
+        /// end: the command's exit status.
+        public var status: Int32?
+        /// output: the command line, as the shell said it or (when it didn't) as the screen showed it then, before
+        /// any of the command's own output could draw over it, without its continuation prompts.
+        public var command: String?
+    }
+
+    /// A command the shell ran, from its marks: where its prompt, its command line, its output and its end are.
+    public struct Block: Equatable {
+        /// The line of its prompt.
+        public var prompt: Int
+        /// Where the command was typed.
+        public var command: Position?
+        /// Where its output starts; nil when the shell doesn't say (bash before 4.4).
+        public var output: Position?
+        /// Where it ended (the next prompt comes after); nil while it runs.
+        public var end: Position?
+        /// The command line.
+        public var text = ""
+        public var status: Int32?
+        public var started: Date?, ended: Date?
+        /// Its last line: the line before the next prompt's, or the cursor's while it runs.
+        public var lastLine: Int
+
+        public var running: Bool { end == nil }
+        public var duration: TimeInterval? { started.flatMap { start in ended.map { $0.timeIntervalSince(start) } } }
+        /// It holds `line`.
+        public func contains(_ line: Int) -> Bool { line >= prompt && line <= lastLine }
     }
 
     public private(set) var columns: Int
@@ -62,10 +116,18 @@ public final class TerminalScreen {
     public private(set) var bracketedPaste = false
     public private(set) var alternateScreen = false
     public private(set) var title = ""
-    /// The shell's current folder, as OSC 7 last said ("file://host/path").
+    /// The shell's current folder, as OSC 7 last said ("file://host/path"; signed with `markToken` when there is one).
     public private(set) var directory: String?
     /// The shell's process id on the server, from AirSCP's start-up line.
     public private(set) var shellPID: Int?
+    /// The token the shell AirSCP started signs its marks and its folder with (`Mark`, `directory`); nil: no marks are
+    /// taken.
+    public var markToken: String?
+    /// The shell has sent a mark: it marks its prompts and commands.
+    public private(set) var marksCommands = false
+    /// The shell has marked where a command's output starts: from then on a prompt left without one ran nothing (an
+    /// empty line, a line given up with ⌃C).
+    public private(set) var marksOutput = false
     /// Answers to the program's questions (cursor position, device attributes), to write back to it.
     public var respond: (Data) -> Void = { _ in }
     /// Increments on every change, for a view to know when to draw again.
@@ -82,7 +144,11 @@ public final class TerminalScreen {
     // Parser state.
     private enum State { case ground, escape, escapeIntermediate, csi, osc, oscEscape, string, stringEscape }
     private var state = State.ground
-    private var parameters = "", intermediates = "", osc = ""
+    private var parameters = "", intermediates = ""
+    /// An OSC's bytes (UTF-8), and whether some were left out (it was longer than 4096).
+    private var osc: [UInt8] = [], oscCut = false
+    /// When the bytes being fed came.
+    private var arrived = Date()
     private var utf8: [UInt8] = [], utf8Needed = 0
 
     public init(columns: Int = 80, rows: Int = 24) {
@@ -95,7 +161,10 @@ public final class TerminalScreen {
 
     // MARK: Input
 
-    public func feed(_ data: Data) {
+    /// What the program wrote; `arrived`: when it came, the time of the command marks in it (a command's time is
+    /// measured from them, whenever the main thread gets to the bytes).
+    public func feed(_ data: Data, arrived: Date = Date()) {
+        self.arrived = arrived
         for byte in data { feed(byte) }
         generation &+= 1
     }
@@ -157,8 +226,10 @@ public final class TerminalScreen {
                 operatingSystemCommand()
             } else if byte == 0x1B {
                 state = .oscEscape
-            } else if osc.utf8.count < 4096 {
-                osc.unicodeScalars.append(UnicodeScalar(byte))
+            } else if osc.count < 4096 {
+                osc.append(byte)
+            } else {
+                oscCut = true
             }
         case .oscEscape:
             state = .ground
@@ -199,7 +270,8 @@ public final class TerminalScreen {
             intermediates = ""
         case 0x5D:  // ]
             state = .osc
-            osc = ""
+            osc = []
+            oscCut = false
         case 0x50, 0x58, 0x5E, 0x5F:  // DCS, SOS, PM, APC: skipped up to ST
             state = .string
         case 0x28, 0x29, 0x2A, 0x2B, 0x23, 0x25, 0x20:  // ( ) * + # % space: one more byte
@@ -539,22 +611,70 @@ public final class TerminalScreen {
     }
 
     private func operatingSystemCommand() {
-        let parts = osc.split(separator: ";", maxSplits: 1, omittingEmptySubsequences: false)
+        let text = String(decoding: osc, as: UTF8.self)
+        let parts = text.split(separator: ";", maxSplits: 1, omittingEmptySubsequences: false)
         guard let code = parts.first else { return }
         let value = parts.count > 1 ? String(parts[1]) : ""
         switch code {
         case "0", "2": title = value
         case "7":
-            // file://host/path, the path percent-encoded.
-            if let url = URL(string: value), url.scheme == "file" {
-                directory = url.path.isEmpty ? "/" : url.path
-            } else if value.hasPrefix("/") {
-                directory = value
+            // file://host/path, the path percent-encoded (the shell AirSCP starts encodes only "%": spaces and other
+            // letters come as they are, which URL(string:) refuses). A path cut short would be another folder. With a
+            // `markToken`, only the shell's own word, signed as its marks are: a folder that a program's output names (a
+            // file shown, say) would move Follow in Files there.
+            var path = Substring(value)
+            if let token = markToken {
+                guard path.hasSuffix(";airscp=" + token) else { break }
+                path = path.dropLast(";airscp=".count + token.count)
             }
+            if path.hasPrefix("file://") {
+                path = path.dropFirst("file://".count)
+                path = path[(path.firstIndex(of: "/") ?? path.endIndex)...]
+            }
+            if path.hasPrefix("/"), !oscCut { directory = path.removingPercentEncoding ?? String(path) }
+        case "133": mark(value)
         case "1337":
             if value.hasPrefix("AirSCPPid="), let pid = Int(value.dropFirst("AirSCPPid=".count)) { shellPID = pid }
         default: break
         }
+    }
+
+    /// An OSC 133 mark ("A;airscp=<token>", "B;…", "B;k=s;…", "C;airscp=<token>[;cmdline=<the command line>]",
+    /// "D;<status>;…") at the cursor. A prompt drawn again (after a resize, say) takes the place of the one on its line.
+    private func mark(_ value: String) {
+        let fields = value.split(separator: ";", omittingEmptySubsequences: false)
+        guard let token = markToken, let kind = fields.first else { return }
+        var signed = false, continuation = false, status: Int32?, command: String?
+        for (index, field) in fields.enumerated().dropFirst() {
+            if field.hasPrefix("cmdline=") {
+                // The rest, ";" and all; a line break came through the terminal as CR LF. Not when cut short.
+                let rest = fields[index...].joined(separator: ";").dropFirst("cmdline=".count)
+                if !oscCut { command = rest.replacingOccurrences(of: "\r\n", with: "\n") }
+                break
+            }
+            if field == "airscp=" + token {
+                signed = true
+            } else if field == "k=s" {
+                continuation = true
+            } else if kind == "D", index == 1 {
+                status = Int32(field)
+            }
+        }
+        let kinds: [Substring: Mark.Kind] = ["A": .prompt, "B": continuation ? .continuation : .command, "C": .output, "D": .end]
+        guard signed, let markKind = kinds[kind] else { return }
+        var mark = Mark(kind: markKind, column: cursorX + (wrapPending ? 1 : 0), time: arrived, status: status)
+        switch markKind {
+        case .prompt: lines[cursorY].marks.removeAll { $0.kind == .prompt || $0.kind == .command }
+        case .command, .continuation: lines[cursorY].marks.removeAll { $0.kind == markKind }
+        case .output:
+            // What was typed, as the screen shows it now, when the shell didn't say (bash).
+            if command?.isEmpty ?? true { command = typedStart().map { typed(from: $0, to: cursorPosition) } }
+            mark.command = command?.trimmingCharacters(in: .whitespacesAndNewlines)
+            marksOutput = true
+        case .end: break
+        }
+        lines[cursorY].marks.append(mark)
+        marksCommands = true
     }
 
     // MARK: Cursor and reset
@@ -655,6 +775,167 @@ public final class TerminalScreen {
         if !current.isEmpty { result.append(current) }
         while result.last?.isEmpty == true { result.removeLast() }
         return result.joined(separator: "\n")
+    }
+
+    /// The cursor, as a place in `allLines`.
+    public var cursorPosition: Position { Position(line: scrollback.count + cursorY, column: cursorX + (wrapPending ? 1 : 0)) }
+
+    /// The text from `start` up to (not including) `end`: wrapped lines joined, a line break after the others, each
+    /// line's trailing blanks left out.
+    public func text(from start: Position, to end: Position) -> String {
+        let all = allLines
+        guard start < end, start.line < all.count else { return "" }
+        var text = ""
+        for index in start.line...min(end.line, all.count - 1) {
+            let cells = all[index].cells
+            let low = index == start.line ? start.column : 0, high = index == end.line ? min(end.column, cells.count) : cells.count
+            var part = low < high ? String(cells[low..<high].filter { !$0.continuation }.map(\.character)) : ""
+            let wrapped = all[index].wrapped && index != end.line
+            if !wrapped { while part.last == " " { part.removeLast() } }
+            text += part
+            if !wrapped && index < end.line && index < all.count - 1 { text += "\n" }
+        }
+        return text
+    }
+
+    /// Where what is typed at the current prompt starts: its command mark, when no other mark came after it (but the
+    /// continuation prompts of the lines it goes on in).
+    private func typedStart() -> Position? {
+        let all = allLines
+        for index in stride(from: min(scrollback.count + cursorY, all.count - 1), through: max(0, scrollback.count + cursorY - 500), by: -1) {
+            guard let mark = all[index].marks.last(where: { $0.kind != .continuation }) else { continue }
+            return mark.kind == .command ? Position(line: index, column: mark.column) : nil
+        }
+        return nil
+    }
+
+    /// What was typed from `start` up to `end`, as `text(from:to:)` reads it, without the continuation prompts of the
+    /// lines that have one: a command of several lines as it was typed.
+    private func typed(from start: Position, to end: Position) -> String {
+        let all = allLines
+        var typed = "", from = start
+        for index in stride(from: start.line + 1, through: min(end.line, all.count - 1), by: 1) {
+            guard let mark = all[index].marks.last(where: { $0.kind == .continuation }) else { continue }
+            typed += text(from: from, to: Position(line: index, column: 0))
+            from = Position(line: index, column: mark.column)
+        }
+        return typed + text(from: from, to: end)
+    }
+
+    /// The shell waits at its prompt with nothing typed before the cursor (as its marks say): a command typed now
+    /// runs in the shell, not in a program.
+    public var waitsAtPrompt: Bool {
+        guard !alternateScreen, let start = typedStart() else { return false }
+        return text(from: start, to: cursorPosition).trimmingCharacters(in: .whitespaces).isEmpty
+    }
+
+    /// The commands the shell marked, oldest first, with the one running. A prompt where nothing ran (an empty line, a
+    /// line given up) is left out, as are marks left without their prompt (the screen was cleared).
+    public var blocks: [Block] {
+        let all = allLines, cursor = cursorPosition
+        var blocks: [Block] = [], current: Block?
+        func close() {
+            guard var block = current else { return }
+            current = nil
+            if block.output == nil, let command = block.command {
+                // The shell doesn't mark output (bash before 4.4): the command is its line, and the lines it went on in
+                // after a continuation prompt, if it ended.
+                guard !marksOutput, let end = block.end else { return }
+                let last = (command.line...max(command.line, end.line)).last { all[$0].marks.contains { $0.kind == .continuation } }
+                    ?? command.line
+                block.text = typed(from: command, to: Position(line: lineEnd(last, in: all), column: Int.max))
+                    .trimmingCharacters(in: .whitespacesAndNewlines)
+            }
+            guard block.output != nil || block.command != nil, !block.text.isEmpty else { return }
+            if let end = block.end {
+                block.lastLine = max(end.column == 0 ? end.line - 1 : end.line, block.command?.line ?? block.prompt)
+            } else {
+                block.lastLine = max(cursor.line, block.prompt)
+            }
+            blocks.append(block)
+        }
+        for (index, line) in all.enumerated() {
+            for mark in line.marks {
+                let at = Position(line: index, column: mark.column)
+                switch mark.kind {
+                case .prompt:
+                    close()
+                    current = Block(prompt: index, lastLine: index)
+                case .command:
+                    if current == nil || current?.output != nil || current?.command != nil { close() }
+                    if current == nil { current = Block(prompt: index, lastLine: index) }
+                    current?.command = at
+                case .output:
+                    if current == nil || current?.output != nil { close() }
+                    if current == nil { current = Block(prompt: index, lastLine: index) }
+                    current?.output = at
+                    current?.started = mark.time
+                    current?.text = mark.command ?? ""
+                case .end:
+                    guard current != nil else { continue }
+                    current?.end = at
+                    current?.status = mark.status
+                    current?.ended = mark.time
+                    close()
+                case .continuation:
+                    continue
+                }
+            }
+        }
+        // The one running; a prompt still waiting for a command isn't one.
+        if current?.output != nil { close() }
+        return blocks
+    }
+
+    /// The last line of the wrapped lines that `line` starts or is part of.
+    private func lineEnd(_ line: Int, in all: [Line]) -> Int {
+        var last = line
+        while last < all.count - 1 && all[last].wrapped { last += 1 }
+        return last
+    }
+
+    /// A block's output (up to the cursor while it runs). Without its output mark: from the line after its command.
+    public func output(of block: Block) -> String {
+        let all = allLines
+        let start = block.output ?? block.command.map { Position(line: lineEnd($0.line, in: all) + 1, column: 0) }
+            ?? Position(line: block.prompt + 1, column: 0)
+        return text(from: start, to: block.end ?? cursorPosition).trimmingCharacters(in: .newlines)
+    }
+
+    /// Where `needle` is in every line (scrollback and screen), ignoring case: each match's first cell and the cell after
+    /// its last, oldest first. A match may go on into a wrapped line.
+    public func find(_ needle: String) -> [(start: Position, end: Position)] {
+        guard !needle.isEmpty else { return [] }
+        let all = allLines
+        var matches: [(start: Position, end: Position)] = []
+        var index = 0
+        while index < all.count {
+            // A line and the lines it wraps into, as text, with each character's cell (and one past the end).
+            var characters: [Character] = [], places: [Position] = []
+            let last = lineEnd(index, in: all)
+            for line in index...last {
+                for (column, cell) in all[line].cells.enumerated() where !cell.continuation {
+                    characters.append(cell.character)
+                    places.append(Position(line: line, column: column))
+                }
+            }
+            places.append(Position(line: last, column: all[last].cells.count))
+            index = last + 1
+            // Most lines don't have it: Foundation says so quickly. In those that do, character by character (cells
+            // put side by side can join into one character in a String, a flag's two halves, say).
+            guard String(characters).range(of: needle, options: .caseInsensitive) != nil else { continue }
+            let lowered = characters.map { $0.lowercased() }, wanted = needle.map { $0.lowercased() }
+            var start = 0
+            while start + wanted.count <= lowered.count {
+                if lowered[start..<(start + wanted.count)].elementsEqual(wanted) {
+                    matches.append((places[start], places[start + wanted.count]))
+                    start += wanted.count
+                } else {
+                    start += 1
+                }
+            }
+        }
+        return matches
     }
 
     /// The word at a column of a line of `allLines` that looks like a path or a file name, as `ls`, `find`, `grep`

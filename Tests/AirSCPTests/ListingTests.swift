@@ -3,7 +3,7 @@ import Foundation
 import Testing
 @testable import AirSCPCore
 
-/// PLAN.md S: a 50 000-entry folder must list fast; the parser reads bytes, no regular expression. (The budget is for
+/// A 50 000-entry folder must list fast; the parser reads bytes, no regular expression. (The budget is for
 /// a debug build; a release build parses this in well under 0.1 s.)
 @Test func listingParserHandles50000Entries() {
     var lines = ["sftp> cd \"/srv\"", "sftp> ls -lan",

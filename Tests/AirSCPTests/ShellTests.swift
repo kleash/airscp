@@ -115,9 +115,9 @@ private func views<T: NSView>(_ type: T.Type, in view: NSView?) -> [T] {
         Keys.KeyPair(privateKey: folder + "/" + name, publicKey: folder + "/" + name + ".pub", bits: 256,
                      fingerprint: "SHA256:x", comment: comment, type: type)
     }
-    let pairs = [pair("id_ed25519", "ED25519", "sa@mac"), pair("id_rsa", "RSA", "")]
+    let pairs = [pair("id_ed25519", "ED25519", "me@mac"), pair("id_rsa", "RSA", "")]
     // The host's key is one of them: just the keys.
-    #expect(KeyOption.options(pairs, current: folder + "/id_rsa").map(\.title) == ["id_ed25519 · ED25519 · sa@mac", "id_rsa · RSA"])
+    #expect(KeyOption.options(pairs, current: folder + "/id_rsa").map(\.title) == ["id_ed25519 · ED25519 · me@mac", "id_rsa · RSA"])
     // A key elsewhere is added; one that is gone is marked.
     let other = KeyOption.options(pairs, current: folder + "/elsewhere")
     #expect(other.count == 3 && other[2].path == folder + "/elsewhere" && !other[2].missing)
@@ -398,7 +398,7 @@ private func report(_ state: Session.State, _ workspace: HostWorkspace?) {
 // MARK: Window sizes
 
 /// A frame AppKit saved is used only when it lies on a screen: Porter's main window, saved taller than the screen,
-/// opened AirSCP full height (user report, 2026-10-05). A window's own size is made smaller on a small screen.
+/// opened AirSCP full height. A window's own size is made smaller on a small screen.
 @Test func savedFramesAreUsedOnlyWhenTheyFitTheScreen() {
     let screen = NSRect(x: 0, y: 0, width: 1728, height: 1084)
     #expect(WindowFrame.fits("336 180 1118 813 0 0 1728 1084 ", on: [screen]))
@@ -410,7 +410,7 @@ private func report(_ state: Session.State, _ workspace: HostWorkspace?) {
     #expect(!WindowFrame.fits("", on: [screen]) && !WindowFrame.fits("10 10 0 0", on: [screen]))
     #expect(!WindowFrame.fits("left top width height", on: [screen]) && !WindowFrame.fits("10 10 800 600", on: []))
 
-    let main = NSSize(width: 1100, height: 700), mainMinimum = NSSize(width: 760, height: 460)
+    let main = NSSize(width: 1180, height: 700), mainMinimum = NSSize(width: 760, height: 460)
     #expect(WindowFrame.fitted(main, minimum: mainMinimum, on: screen) == main)
     // A 13-inch MacBook Air with the largest text: 85 % of the width, 80 % of the height, never below the minimum.
     let small = NSRect(x: 0, y: 0, width: 1024, height: 615)

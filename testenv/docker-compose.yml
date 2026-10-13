@@ -1,4 +1,4 @@
-# Porter's Docker test lab (PLAN.md J and Q). Start it with testenv/up.sh, remove it with testenv/down.sh.
+# Porter's Docker test lab. Start it with testenv/up.sh, remove it with testenv/down.sh.
 # The published ports listen on 127.0.0.1 only. "inner" has no way out: there the bastion and the proxy reach the
 # target by its service name.
 name: porter-lab
@@ -25,6 +25,32 @@ services:
     hostname: minimal
     init: true
     ports: ["127.0.0.1:42202:22"]
+    networks: [edge]
+
+  # Alpine where dev may be root through sudo without a password, with OpenSSH's sftp-server (Browse and transfer
+  # as). Root's files are only in this container.
+  sudo:
+    build:
+      context: alpine
+      additional_contexts:
+        keys: .keys
+      args: {LAB_USER: dev, LAB_PASSWORD: porter-sudo, EXTRA_PACKAGES: sudo openssh-sftp-server, SUDO_NOPASSWD: "yes"}
+    hostname: sudo
+    init: true
+    ports: ["127.0.0.1:42205:22"]
+    networks: [edge]
+
+  # Alpine whose user changes their own password in tests (Host ▸ Change Password…): its own container,
+  # so no other test's password changes. A test sets it back.
+  passwd:
+    build:
+      context: alpine
+      additional_contexts:
+        keys: .keys
+      args: {LAB_USER: changer, LAB_PASSWORD: Lab-Pass-Alpha-7, EXTRA_PACKAGES: shadow}
+    hostname: passwd
+    init: true
+    ports: ["127.0.0.1:42206:22"]
     networks: [edge]
 
   bastion:
@@ -64,6 +90,22 @@ services:
     init: true
     command: ["sh", "-c", "grep -v '^BasicAuth' /etc/tinyproxy/tinyproxy.conf >/tmp/open.conf && exec tinyproxy -d -c /tmp/open.conf"]
     ports: ["127.0.0.1:42281:8888"]
+    networks: [edge, inner]
+
+  # Squid that asks for Digest login only (no Basic): user porter, password porter-proxy.
+  digestproxy:
+    build: digestproxy
+    hostname: digestproxy
+    init: true
+    ports: ["127.0.0.1:42282:8888"]
+    networks: [edge, inner]
+
+  # A SOCKS5 proxy (Dante): user porter, password porter-proxy.
+  socksproxy:
+    build: socksproxy
+    hostname: socksproxy
+    init: true
+    ports: ["127.0.0.1:42283:1080"]
     networks: [edge, inner]
 
   # Only on "inner", with no published port: reachable from the Mac only through the bastion or a proxy.

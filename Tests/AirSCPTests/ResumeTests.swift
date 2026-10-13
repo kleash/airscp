@@ -4,7 +4,7 @@ import Testing
 @testable import AirSCP
 @testable import AirSCPCore
 
-// PLAN.md S.1: a single file that a lost connection cut off continues where it stopped when retried (sftp reget and
+// A single file that a lost connection cut off continues where it stopped when retried (sftp reget and
 // reput), instead of starting again.
 
 private func job(_ id: UUID, in queue: TransferQueue) -> TransferJob? {

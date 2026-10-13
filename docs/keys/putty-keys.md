@@ -6,7 +6,7 @@ nav_order: 3
 
 # Use your PuTTY (.ppk) keys
 
-Coming from Windows, PuTTY or WinSCP? Your keys are `.ppk` files. AirSCP turns them into keys that ssh on the Mac can
+Coming from Windows or PuTTY? Your keys are `.ppk` files. AirSCP turns them into keys that ssh on the Mac can
 use, and back. Nothing else needs to be installed.
 
 ## Import a .ppk key

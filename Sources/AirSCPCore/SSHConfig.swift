@@ -65,11 +65,11 @@ public enum SSHConfig {
         return parse(result.output)
     }
 
-    // MARK: A host's Other options (the host editor, PLAN.md U.3)
+    // MARK: A host's Other options (the host editor)
 
     /// Why AirSCP refuses `line` in a host's Other options, or nil. AirSCP runs the connection itself (a master it
     /// keeps as its child, commands with their own output markers), so options that change that would break it; a
-    /// ProxyCommand or ProxyJump of a host that already goes through a jump host or an HTTP proxy (`routed`) would be
+    /// ProxyCommand or ProxyJump of a host that already goes through a jump host or a proxy (`routed`) would be
     /// ignored (ssh takes the first value it is given, and AirSCP's comes first).
     public static func refusal(_ line: String, routed: Bool) -> String? {
         let name = optionName(line)
@@ -79,7 +79,7 @@ public enum SSHConfig {
         case "remotecommand", "requesttty", "sessiontype", "stdinnull", "forkafterauthentication":
             return "\(name) would change how AirSCP's own commands run on the server, so they would fail."
         case "proxycommand" where routed, "proxyjump" where routed:
-            return "\(name) would be ignored: this host already goes through “Connect through” or an HTTP proxy."
+            return "\(name) would be ignored: this host already goes through “Connect through” or a proxy."
         case "stricthostkeychecking":
             return "Choose this with “Server key” above, so the sidebar can show when checks are off."
         default:

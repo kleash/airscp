@@ -22,6 +22,7 @@ selected server. Drag between them to copy.
 - [New folder, rename, duplicate, delete, Get Info](manage-files.md).
 - [Change permissions](permissions.md).
 - [Compress and extract on the server](compress-and-extract.md).
+- [Select by pattern, compare folders, move, link](select-and-compare.md).
 
 ## Tips
 

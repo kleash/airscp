@@ -51,6 +51,10 @@ final class FilePane: NSViewController, NSTableViewDataSource, NSTableViewDelega
     }
     /// Calculated folder sizes by name (Calculate Folder Sizes).
     private(set) var folderSizes: [String: Int64] = [:]
+    /// Compare Folders' marks by name (what differs from the other pane's folder), until the pane lists again.
+    var marks: [String: String] = [:] {
+        didSet { table.reloadData() }
+    }
     private(set) var showHidden: Bool
     /// The last error (also shown in the window); for the tests.
     private(set) var lastError: Error?
@@ -245,6 +249,7 @@ final class FilePane: NSViewController, NSTableViewDataSource, NSTableViewDelega
         }
         dir = path
         unlisted = false
+        if !marks.isEmpty { marks = [:] }  // they were for the listing before
         items = listed.items
         sortedItems = listed.sorted
         folderSizes = [:]
@@ -653,7 +658,7 @@ final class FilePane: NSViewController, NSTableViewDataSource, NSTableViewDelega
         table.gridStyleMask = .solidHorizontalGridLineMask
         table.allowsMultipleSelection = true
         table.columnAutoresizingStyle = .firstColumnOnlyAutoresizingStyle
-        // The names from before the rename (PLAN.md X): the column layouts copied from Porter's defaults still apply.
+        // The names from before the rename: the column layouts copied from Porter's defaults still apply.
         table.autosaveName = layoutName(choosesSource ? "Porter.LeftPane" : "Porter.RightPane")
         // Only with a name: without one AppKit saves the columns under "(null)" in the user's defaults.
         table.autosaveTableColumns = table.autosaveName != nil
@@ -829,7 +834,7 @@ final class FilePane: NSViewController, NSTableViewDataSource, NSTableViewDelega
             view.widthAnchor.constraint(greaterThanOrEqualToConstant: 260),
         ])
         self.view = view
-        // Stable names for agents (PLAN.md T): "left.filter", "right.refresh", …
+        // Stable names for agents: "left.filter", "right.refresh", …
         let side = choosesSource ? "left." : "right."
         let named: [(NSView, String)] = [(table, "table"), (sourceButton, "source"), (history, "history"), (up, "up"),
                                           (homeButton, "home"), (refresh, "refresh"), (filterField, "filter"),
@@ -842,7 +847,7 @@ final class FilePane: NSViewController, NSTableViewDataSource, NSTableViewDelega
     }
 
     /// `content` on a pane bar, 6 points above and below it.
-    private static func bar(_ content: NSView) -> NSView {
+    static func bar(_ content: NSView) -> NSView {
         let bar = SurfaceView(.bar)
         content.translatesAutoresizingMaskIntoConstraints = false
         bar.addSubview(content)
@@ -855,7 +860,7 @@ final class FilePane: NSViewController, NSTableViewDataSource, NSTableViewDelega
         return bar
     }
 
-    private static func separator() -> NSView {
+    static func separator() -> NSView {
         let line = NSBox()
         line.boxType = .separator
         return line
@@ -989,6 +994,10 @@ final class FilePane: NSViewController, NSTableViewDataSource, NSTableViewDelega
             cell.imageView?.image = symbol.image
             (cell as? FileCellView)?.tint = symbol.color
             cell.textField?.textColor = item.isHidden ? .secondaryLabelColor : .labelColor
+            if let mark = marks[item.name] {
+                cell.textField?.textColor = .controlAccentColor
+                tip = mark + " (Compare Folders)"
+            }
         case "size":
             if item.isFolder {
                 text = folderSizes[item.name].map(FileList.size) ?? "—"
@@ -1065,7 +1074,7 @@ final class FilePane: NSViewController, NSTableViewDataSource, NSTableViewDelega
         return icon
     }
 
-    /// The item's symbol in its kind's colour (PLAN.md O.1): Night Harbor gives folders, scripts, code, data, settings,
+    /// The item's symbol in its kind's colour: Night Harbor gives folders, scripts, code, data, settings,
     /// text and secrets each their hue; Paper draws them in labelColor (folders) and labelColor at 62 %.
     static func symbol(for item: FileItem) -> (image: NSImage, color: NSColor) {
         let name = item.name.lowercased(), ext = (name as NSString).pathExtension
@@ -1153,6 +1162,10 @@ final class FilePane: NSViewController, NSTableViewDataSource, NSTableViewDelega
             item.target = self
             item.toolTip = MenuHelp.tips[action]
             menu.addItem(item)
+        }
+        if let snippets = runSnippetMenu() {
+            menu.addItem(.separator())
+            menu.addItem(snippets)
         }
         if menu.items.last?.isSeparatorItem == true { menu.removeItem(at: menu.numberOfItems - 1) }
     }

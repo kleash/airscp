@@ -81,7 +81,7 @@ PORTER_WIN_USER=porter
 PORTER_WIN_PASSWORD=...
 ```
 
-**Address:** `@IP@` (from `windows-vm.sh ip`), port 3389, user `porter`, no domain.
+**Address:** the VM's IP (from `windows-vm.sh ip`), port 3389, user `porter`, no domain.
 
 ## Verify an NLA login (headless, from Docker)
 
@@ -96,8 +96,6 @@ echo "exit $?"   # 0 = NLA login accepted
 
 `/auth-only` only authenticates (CredSSP/NTLM over TLS), so no X display is needed.
 
-@VERIFY@
-
 ## How AirSCP's tests should use it
 
 - Treat it like the Docker lab: run the Windows tests only when asked (for example `AIRSCP_WINDOWS=1`), and
@@ -107,7 +105,8 @@ echo "exit $?"   # 0 = NLA login accepted
   - NLA/CredSSP with the right and the wrong password.
   - The certificate prompt: self-signed, CN=`PORTER-WIN`.
   - Desktop drawing, keyboard and mouse, clipboard, and resizing through the display channel.
-- Through SSH: @BASTION@
+- Through SSH: a local forward on an SSH host's connection to the VM's port 3389 (`rdpTestLoginThroughAnSSHHost`
+  forwards through a throwaway sshd on this Mac).
 - A second connection as `porter` takes over the existing session. That's normal Windows client behaviour:
   one interactive session at a time.
 

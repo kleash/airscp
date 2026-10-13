@@ -1,6 +1,6 @@
 ---
 name: airscp-dev
-description: The AirSCP development loop. On a Mac - build, test and run the gates. In a cloud session (Linux, no macOS) - push a branch, follow GitHub Actions CI with gh, read the failed logs and look at the agent-control screenshots and snapshots it uploads, fix, then open a PR; and trigger the maintainer's self-hosted lab runner for the Docker lab, Windows VM and real-screen suites. Use when changing AirSCP's code, checking or debugging CI, reading CI artifacts, or running the lab suites.
+description: The AirSCP development loop. On a Mac - build, test and run the gates. In a cloud session (Linux, no macOS) - push a branch, follow GitHub Actions CI with gh, read the failed logs and look at the agent-control screenshots and snapshots it uploads, fix, then open a PR. Also which lab suites (Docker lab, Windows VM, real screen) a change needs; they run on the maintainer's self-hosted runner. Use when changing AirSCP's code, checking or debugging CI, reading CI artifacts, or running the lab suites.
 ---
 
 # AirSCP development loop
@@ -24,6 +24,9 @@ agent-control end-to-end test) and the Windows VM suite (see `CLAUDE.md`). Drive
 `testenv/AGENT.md`. Never wait blind: after ~20–30 s without change, snapshot + screenshot and answer the open sheet.
 
 ## Cloud loop (push → CI → read → fix → PR)
+
+The session needs `gh` and `jq`, network access to github.com, api.github.com and objects.githubusercontent.com, and
+a GitHub token (`GH_TOKEN`) that can push branches, open pull requests and read Actions runs. Never push to main.
 
 1. Work on a branch: `git switch -c fix/<topic>`, edit, commit, `git push -u origin HEAD`.
 2. Find the run and follow it (a cold run builds FreeRDP first, so allow ~30–40 min; later runs reuse the cache):
@@ -56,14 +59,35 @@ agent-control end-to-end test) and the Windows VM suite (see `CLAUDE.md`). Drive
 6. Green: `gh pr create` with what changed, why, and how it was checked (CI run, screenshots looked at); then
    `gh pr checks --watch`.
 
+## Which checks each change needs
+
+ci.yml has two jobs: **build-and-test** (Command Line Tools: build with 0 warnings, tests, app, agent session) and
+**xcode** (the app with Xcode: App Intents metadata checked by `scripts/check-intents.sh`, the signature; artifact
+`AirSCP-xcode`). lab.yml's suites run on the maintainer's Mac:
+
+| Change | ci.yml | lab.yml suites |
+|---|---|---|
+| Intents, Spotlight, shared actions | both jobs | docker, intents |
+| Ask, Explain, Suggest | both jobs (stand-in model) | ai, screen |
+| File panes, transfers, Get Info, snippets, Synchronize, editor, Find | both jobs | docker, screen |
+| Server Info, Change Password, `sftp://` links | both jobs | docker, intents (links), screen |
+| Proxies, jump hosts, sudo, SOCKS5 | both jobs | docker |
+| Remote Desktop | both jobs | windows |
+| A release | both jobs | all |
+
+A pull request lists its CI run and, when a lab suite ran, that run too. Don't call a change done while a suite it
+needs is red or hasn't run; if the runner is offline (the run stays queued for minutes), say so in the pull request and
+stop instead of waiting.
+
 ## The maintainer's Mac: lab, VM, real screen
 
 CI can't run the Docker lab (no Docker on GitHub's Macs), the Windows VM (Remote Desktop) or real-screen checks
 (menus, Quick Look, Open panels, real appearance). The self-hosted runner on the maintainer's Mac does, only when
-the repository owner starts it:
+the repository owner starts it (lab.yml runs the branch's code there: read a change to `testenv/` or `.github/`
+before starting it):
 
 ```sh
-gh workflow run lab.yml -r <branch> -f suite=all        # or docker, windows, screen
+gh workflow run lab.yml -r <branch> -f suite=all        # or docker, windows, screen, ai, intents
 gh run list --workflow lab.yml --limit 1
 gh run watch <run-id> --exit-status
 gh run view <run-id>                                    # each job's summary (test totals, failures)
@@ -78,4 +102,4 @@ offline: say so instead of waiting.
 
 - The docs page and `Resources/AgentGuide.md` match the change; `scripts/llms.sh` ran.
 - New UI has tooltips and captions (the help tests check), and you looked at both screenshots.
-- Commit messages are imperative, with no attribution trailers.
+- Commit messages are imperative and say what the code now does, with no attribution trailers.

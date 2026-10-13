@@ -3,7 +3,7 @@
 <!-- The release's signature (scripts/release-local.sh) with the hardened runtime. The only entitlement it needs: AirSCP
      asks iTerm through osascript for a window with the ssh session, and the hardened runtime refuses Apple Events
      without it (NSAppleEventsUsageDescription in AirSCP-Info.plist is the question macOS then asks). Network
-     entitlements are for sandboxed apps only; this build isn't sandboxed (the App Store build of PLAN.md AB is). -->
+     entitlements are for sandboxed apps only, and this build isn't sandboxed. -->
 <plist version="1.0">
 <dict>
 	<key>com.apple.security.automation.apple-events</key>

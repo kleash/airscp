@@ -8,6 +8,46 @@ import Testing
 
 @Suite(.enabled(if: Lab.enabled, "Docker lab: AIRSCP_DOCKER=1 ./test.sh"))
 struct LabFeatureTests {
+    /// A proxy that wants Digest (squid), then the bastion, then the target.
+    @Test func digestProxyThenBastionThenTarget() async throws {
+        try await withLab { lab in
+            var bastion = Lab.host("jump", hostname: "bastion", port: 22)
+            bastion.proxyID = Lab.digestProxy.id
+            var target = Lab.host("dev", hostname: "target", port: 22)
+            target.jumpHostID = bastion.id
+            let session = try lab.session(target, jump: bastion)
+            session.askpass.proxyHandler = { id, _, _, reply in
+                reply(id == Lab.digestProxy.id ? (Lab.digestProxy, Lab.proxyPassword) : nil)
+            }
+            try await session.connect()
+            #expect(try await session.run("hostname").output.hasSuffix("target\n"))
+            await session.disconnect()
+            // A wrong password: the 407, in words.
+            let refused = try lab.session(target, jump: bastion)
+            refused.askpass.proxyHandler = { id, _, _, reply in reply(id == Lab.digestProxy.id ? (Lab.digestProxy, "wrong") : nil) }
+            await #expect(throws: AirSCPError.self) { try await refused.connect() }
+        }
+    }
+
+    /// A SOCKS5 proxy with a login (Dante), then the bastion, then the target.
+    @Test func socksProxyThenBastionThenTarget() async throws {
+        try await withLab { lab in
+            let socks = Lab.socksProxy
+            var bastion = Lab.host("jump", hostname: "bastion", port: 22)
+            bastion.proxyID = socks.id
+            var target = Lab.host("dev", hostname: "target", port: 22)
+            target.jumpHostID = bastion.id
+            let session = try lab.session(target, jump: bastion)
+            session.askpass.proxyHandler = { id, _, _, reply in reply(id == socks.id ? (socks, Lab.proxyPassword) : nil) }
+            try await session.connect()
+            #expect(try await session.run("hostname").output.hasSuffix("target\n"))
+            await session.disconnect()
+            let refused = try lab.session(target, jump: bastion)
+            refused.askpass.proxyHandler = { id, _, _, reply in reply(id == socks.id ? (socks, "wrong") : nil) }
+            await #expect(throws: AirSCPError.self) { try await refused.connect() }
+        }
+    }
+
     @Test func proxyThenBastionThenTarget() async throws {
         try await withLab { lab in
             func answerProxy(_ session: Session, password: String = Lab.proxyPassword) {

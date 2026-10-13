@@ -1,8 +1,9 @@
 #ifndef AIRSCP_PKI_H
 #define AIRSCP_PKI_H
 
-// The Certificate Manager's use of the OpenSSL linked for FreeRDP (airscp_pki.c, PLAN.md AA): reading certificates,
-// keys, requests and their containers, describing them, and writing PKCS#12 files and keys. No OpenSSL headers here.
+// The Certificate Manager's use of the OpenSSL linked for FreeRDP (airscp_pki.c): reading certificates, keys,
+// requests and their containers, describing them, making keys, requests and self-signed certificates, and writing
+// PKCS#12 files and keys. No OpenSSL headers here.
 
 #include <stddef.h>
 #include <stdint.h>
@@ -39,6 +40,27 @@ uint8_t *airscp_pki_public_key(int kind, const uint8_t *der, size_t length, size
 uint8_t *airscp_pki_pkcs12(const uint8_t *key, size_t key_length, const uint8_t *certificate, size_t certificate_length,
                            const uint8_t *const *chain, const size_t *chain_lengths, int chain_count, const char *name,
                            const char *password, int legacy, size_t *out_length);
+
+/// A truststore as a PKCS#12 file: `certificates` (DER), each named by its alias and marked as trusted the way Java's
+/// keytool marks it (else Java sees no entries), protected by `password` (AES-256, SHA-256).
+uint8_t *airscp_pki_truststore(const uint8_t *const *certificates, const size_t *lengths, const char *const *aliases,
+                               int count, const char *password, size_t *out_length);
+
+/// The keys `airscp_pki_new_key` makes.
+enum {
+    AIRSCP_PKI_RSA_2048 = 1, AIRSCP_PKI_RSA_3072 = 2, AIRSCP_PKI_RSA_4096 = 3, AIRSCP_PKI_EC_P256 = 4,
+    AIRSCP_PKI_EC_P384 = 5, AIRSCP_PKI_ED25519 = 6
+};
+
+/// A new private key of `type`, as PKCS#8 DER. NULL when it can't be made.
+uint8_t *airscp_pki_new_key(int type, size_t *out_length);
+
+/// A certificate request (`days` 0) or a self-signed certificate valid from now for `days` days, for `key` (PKCS#8
+/// DER) and signed by it with SHA-256 (Ed25519 has its own digest), as DER. `subject`: "CN=web.example.com" lines,
+/// in the order they go into the name; `extensions`: "name=value" lines as openssl's -addext reads them
+/// ("subjectAltName=DNS:web.example.com,IP:10.0.0.5"). NULL when OpenSSL refuses a part.
+uint8_t *airscp_pki_new_certificate(const uint8_t *key, size_t key_length, const char *subject, const char *extensions,
+                                    int days, size_t *out_length);
 
 /// A private key (PKCS#8 DER) as PEM: PKCS#8 encrypted with AES-256 when `passphrase` isn't empty, else unencrypted
 /// PKCS#8, or (traditional) PKCS#1 for RSA and SEC1 for EC keys. NULL when it can't be written.

@@ -1,3 +1,4 @@
+import AppKit
 import Darwin
 import Foundation
 import Security
@@ -100,6 +101,8 @@ final class TestServer {
         /// `uname -sr` says Linux (a script first in PATH): the Monitor reads this Mac as a Linux server, which has no
         /// /proc, so its figures and ports stay empty, but every refresh runs its command.
         var linux = false
+        /// The login shell's SHELL (the shell a terminal starts), with TMPDIR a folder of the server's own (`tmp`).
+        var shell: String?
     }
 
     static let passphrase = "airscp test passphrase"
@@ -161,6 +164,10 @@ final class TestServer {
                 .write(toFile: root + "/bin/uname", atomically: true, encoding: .utf8)
             chmod(root + "/bin/uname", 0o755)
             environment += " PATH=\(root)/bin:/usr/bin:/bin:/usr/sbin:/sbin"
+        }
+        if let shell = options.shell {
+            try FileManager.default.createDirectory(atPath: root + "/tmp", withIntermediateDirectories: true)
+            environment += " SHELL=\(shell) TMPDIR=\(root)/tmp"
         }
         if let maxSessions = options.maxSessions { extra += "MaxSessions \(maxSessions)\n" }
         if options.sftpOnly { extra += "ForceCommand internal-sftp -d \(home)\n" }
@@ -266,6 +273,12 @@ final class TestServer {
     private func stopServer() {
         if let text = try? String(contentsOfFile: root + "/sshd.pid"),
            let pid = Int32(text.trimmingCharacters(in: .whitespacesAndNewlines)) {
+            // Its connections first (sshd's children): they outlive sshd, and so would the master ssh of a session the
+            // test didn't disconnect itself, such as an app window's, long after the tests.
+            let connections = Process()
+            connections.executableURL = URL(fileURLWithPath: "/usr/bin/pkill")
+            connections.arguments = ["-TERM", "-P", String(pid)]
+            if (try? connections.run()) != nil { connections.waitUntilExit() }
             kill(pid, SIGTERM)
         }
         kill(watchdog, SIGTERM)
@@ -409,4 +422,24 @@ func rawNames(in folder: String) -> [[UInt8]] {
 func rawExists(_ path: String) -> Bool {
     var info = stat()
     return lstat(path, &info) == 0
+}
+
+/// The general pasteboard is the whole Mac's, and tests run side by side: those that use it take turns (`take`, then
+/// `give` in a defer), and what was on it is put back.
+@MainActor
+enum TestClipboard {
+    private static var held = false
+    private static var saved: String?
+
+    static func take() async {
+        _ = await eventually { !held }  // another test's turn first
+        held = true
+        saved = NSPasteboard.general.string(forType: .string)
+    }
+
+    static func give() {
+        NSPasteboard.general.clearContents()
+        if let saved { NSPasteboard.general.setString(saved, forType: .string) }
+        held = false
+    }
 }

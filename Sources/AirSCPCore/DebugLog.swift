@@ -1,9 +1,9 @@
 import Darwin
 import Foundation
 
-/// The debug log (PLAN.md AE): while it is on (Settings ▸ Debug logging, or AIRSCP_DEBUG=1), what happens on the way
+/// The debug log: while it is on (Settings ▸ Debug logging, or AIRSCP_DEBUG=1), what happens on the way
 /// to a server goes into one plain-text file a user can attach to a problem report: each host's commands with ssh's
-/// own debug output (-vv, added by `Runner`), the HTTP proxy helper's answers, the questions ssh asked (never the
+/// own debug output (-vv, added by `Runner`), the proxy helper's answers, the questions ssh asked (never the
 /// answers), connection states and reconnects, transfers, and Remote Desktop's FreeRDP log. Each line has the time and
 /// the host. A line that holds a known secret (a password, passphrase, the helpers' tokens) is left out, and nothing is
 /// sent anywhere. The file is ~/Library/Logs/AirSCP/AirSCP-debug.log (a throwaway AirSCP's is in its

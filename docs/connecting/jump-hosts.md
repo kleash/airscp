@@ -27,7 +27,7 @@ full.
 ## Tips
 
 - One hop is supported: Mac → bastion → server.
-- The bastion can use an HTTP proxy, so the full route can be Mac → proxy → bastion → server.
+- The bastion can use a proxy, so the full route can be Mac → proxy → bastion → server.
 - Take your time with the bastion's questions: the 15-second timeout is only for reaching a server directly.
 - A Windows computer can go through an SSH host too. See [Remote Desktop (Windows)](../remote-desktop/index.md).
 

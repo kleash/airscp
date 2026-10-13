@@ -148,7 +148,7 @@ private func reconnectingHost(_ server: TestServer, key: String? = nil) -> SSHHo
     _ = TestEnvironment.isolated
     let askpass = try AskpassServer(helperPath: TestEnvironment.airscpBinary)
     defer { askpass.close() }
-    let host = SSHHost(hostname: "127.0.0.1", username: "sa")
+    let host = SSHHost(hostname: "127.0.0.1", username: "me")
     let session = Session(host: host, jump: nil, askpass: askpass)
     session.savedPassword = { _ in "saved-pw-7Q" }
     session.savePassword = { _, _ in }
@@ -162,10 +162,10 @@ private func reconnectingHost(_ server: TestServer, key: String? = nil) -> SSHHo
     func ask(_ prompt: String) async -> CommandResult {
         await Runner.run([TestEnvironment.airscpBinary, prompt], environment: environment)
     }
-    #expect(await ask("sa@127.0.0.1's password: ").output == "saved-pw-7Q\n")
-    #expect(await ask("sa@127.0.0.1's password: ").status == 1)  // the same ssh asks again: it was wrong
+    #expect(await ask("me@127.0.0.1's password: ").output == "saved-pw-7Q\n")
+    #expect(await ask("me@127.0.0.1's password: ").status == 1)  // the same ssh asks again: it was wrong
     #expect(await ask("Enter passphrase for key '/k': ").status == 1)
-    #expect(await ask("(sa@127.0.0.1) Verification code: ").status == 1)
+    #expect(await ask("(me@127.0.0.1) Verification code: ").status == 1)
     #expect(shown.all.isEmpty)
 }
 
@@ -252,7 +252,7 @@ private func waiting(_ session: Session, _ seconds: TimeInterval = 1) async -> B
     }
 }
 
-/// A working network again starts the backoff again, as a wake does (PLAN.md S.2): after it, a failed attempt waits the
+/// A working network again starts the backoff again, as a wake does: after it, a failed attempt waits the
 /// first steps again instead of ever longer.
 @Test func aWorkingNetworkAgainStartsTheBackoffAgain() async throws {
     try await withServer { server in

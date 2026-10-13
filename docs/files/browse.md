@@ -36,6 +36,9 @@ Move around a server's folders like in Finder.
 
 - **Go ▸ Add to Favourites** keeps the server folder you see, for that host.
 - **Go ▸ Favourites** lists them: choose one to go there, or **Remove** one.
+- When the other pane shows a folder on this Mac as you add a favourite, AirSCP remembers it too: choosing the
+  favourite shows both folders again.
+- **Go ▸ Other Pane's Folder** (<kbd>⌥⌘O</kbd>) shows the folder the other pane shows (this Mac, or the same server).
 
 ## Tips
 

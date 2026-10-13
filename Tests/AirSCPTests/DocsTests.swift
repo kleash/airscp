@@ -3,7 +3,7 @@ import Foundation
 import Testing
 @testable import AirSCP
 
-// PLAN.md Y: AirSCP Help (docs/, the GitHub Pages site) and the app agree. Every page the app opens (the Help menu,
+// AirSCP Help (docs/, the GitHub Pages site) and the app agree. Every page the app opens (the Help menu,
 // the sheets' "?" buttons) is a page of docs/; every link and picture in docs/ leads somewhere; every picture is used;
 // and every menu command is named in the docs.
 

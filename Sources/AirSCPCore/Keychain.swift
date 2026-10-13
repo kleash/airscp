@@ -6,7 +6,7 @@ import Security
 /// once per host. Cached after the first read. When the item can't be read (access denied, a locked keychain), nothing
 /// is cached and nothing is written: a save then would replace every other saved password.
 /// Until AirSCP has an item of its own, the passwords come from the one of its first versions, called Porter (service
-/// com.sa.porter, PLAN.md X), and are saved into AirSCP's item at once. Porter's item stays as it is.
+/// com.sa.porter), and are saved into AirSCP's item at once. Porter's item stays as it is.
 /// A throwaway AirSCP (`memoryOnly`: AIRSCP_SUPPORT_DIR set, as tests, smoke runs and agents' instances do) never
 /// touches the login Keychain: its saved passwords stay in memory until it quits.
 public enum Keychain {

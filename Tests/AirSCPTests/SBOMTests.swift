@@ -2,7 +2,7 @@ import AirSCPCore
 import Foundation
 import Testing
 
-// PLAN.md AF: sbom.spdx.json names FreeRDP and OpenSSL exactly as scripts/build-freerdp.sh pins them (and AirSCP's
+// sbom.spdx.json names FreeRDP and OpenSSL exactly as scripts/build-freerdp.sh pins them (and AirSCP's
 // VERSION), so the vulnerability scan (security.yml) checks what the app is built from.
 
 @Test func sbomMatchesTheFreeRDPAndOpenSSLPins() async throws {

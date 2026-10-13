@@ -424,7 +424,7 @@ private func leftovers(in folder: String, _ prefix: String) -> [String] {
     #expect(TransferQueue.operands(["a b", "-x", "it's"]) == #"'./a b' './-x' './it'\''s'"#)
 }
 
-/// PLAN.md S: big files go at plain scp speed (scp writes to the file itself; AirSCP only reads its progress meter).
+/// Big files go at plain scp speed (scp writes to the file itself; AirSCP only reads its progress meter).
 /// Moves 3 GB through the disk, so it runs only with AIRSCP_BIG=1 (./test.sh with that set).
 @Test(.enabled(if: Env.value("BIG") == "1"))
 func oneGigabyteFileAtScpSpeed() async throws {

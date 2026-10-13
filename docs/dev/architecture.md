@@ -12,7 +12,7 @@ map with tests is [feature-map.md](feature-map.md).
   includes no FreeRDP or OpenSSL header) plus `airscp_crypto.c` (Argon2 for PuTTY keys, company certificate authority
   checks), both against the static `libairscp-rdp.a` that `scripts/build-freerdp.sh` makes.
 - **One binary, several modes** (`Sources/AirSCP/main.swift`): the app; `--proxy-connect` (ssh's ProxyCommand for a
-  host behind an HTTP proxy); askpass (ssh's `SSH_ASKPASS`, when `AIRSCP_ASKPASS_SOCK` is set); `--mcp` and
+  host behind a proxy); askpass (ssh's `SSH_ASKPASS`, when `AIRSCP_ASKPASS_SOCK` is set); `--mcp` and
   `--agent` (agent control). Helper modes run before any UI code.
 - **One window.** `MainWindowController` holds the sidebar and one workspace per shown host or desktop; a connected
   host keeps its workspace (and its connection) while another is shown. Settings, Keys, Snippets, editors and Help

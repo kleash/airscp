@@ -1,8 +1,9 @@
 # The checks GitHub's Macs can't run, on the maintainer's Mac through a self-hosted runner (label porter-mac-lab):
-# the Docker lab suite, the Windows VM's Remote Desktop suite and the real-screen checks. Only by hand or by
-# `gh workflow run lab.yml -r <branch> -f suite=<all|docker|windows|screen>`, only for the repository owner, never for
-# pull requests or forks. The runner and its one-time setup (AIRSCP_LAB_HOME, the lab key, the VM, Accessibility):
-# docs/dev/self-hosted-runner.md.
+# the Docker lab suite, the Windows VM's Remote Desktop suite, the real-screen checks, Apple Intelligence's on-device
+# model and App Intents. Only by hand or by
+# `gh workflow run lab.yml -r <branch> -f suite=<all|docker|windows|screen|ai|intents>`, only for the repository owner,
+# never for pull requests or forks. The runner and its one-time setup (AIRSCP_LAB_HOME, the lab key, the VM,
+# Accessibility): docs/dev/self-hosted-runner.md.
 name: Lab (maintainer's Mac)
 
 on:
@@ -11,7 +12,7 @@ on:
       suite:
         description: "Which suites to run"
         type: choice
-        options: [all, docker, windows, screen]
+        options: [all, docker, windows, screen, ai, intents]
         default: all
 
 concurrency:
@@ -25,6 +26,7 @@ defaults:
 
 permissions:
   contents: read
+  actions: read  # the intents job downloads ci.yml's xcode build of the same commit
 
 env:
   DEVELOPER_DIR: /Library/Developer/CommandLineTools
@@ -108,5 +110,70 @@ jobs:
         with:
           name: screen-smoke
           path: build/screen-smoke
+          if-no-files-found: ignore
+          retention-days: 14
+
+  # Apple Intelligence on the real on-device model: Do It's plans and Suggest's values come out in a shape AirSCP
+  # reads. Needs Apple Intelligence on in System Settings (the first test prints why when it isn't).
+  ai:
+    needs: [docker, windows, screen]
+    if: always() && github.repository == 'kleash/airscp' && github.actor == github.repository_owner && (inputs.suite == 'all' || inputs.suite == 'ai')
+    runs-on: [self-hosted, porter-mac-lab]
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Restore FreeRDP and OpenSSL
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: vendor/out
+          key: freerdp-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('scripts/build-freerdp.sh') }}
+      - name: The real model (AIRSCP_AI=1 ./test.sh --filter AIModelTests)
+        run: AIRSCP_AI=1 ./test.sh --filter AIModelTests 2>&1 | tee "$RUNNER_TEMP/ai.log"
+      - name: Summary
+        if: always()
+        run: |
+          { echo "### Apple Intelligence"; echo '```'; grep -E 'availability|→|^(✔|✘) Test' "$RUNNER_TEMP/ai.log" | tail -n 30; echo '```'; } >> "$GITHUB_STEP_SUMMARY" || true
+
+  # App Intents run by Shortcuts and found by Spotlight, on ci.yml's xcode build of this commit
+  # when there is one, else one built here. The three shortcuts it runs are made once: testenv/intents-smoke.sh --setup.
+  intents:
+    needs: [docker, windows, screen]
+    if: always() && github.repository == 'kleash/airscp' && github.actor == github.repository_owner && (inputs.suite == 'all' || inputs.suite == 'intents')
+    runs-on: [self-hosted, porter-mac-lab]
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: This Mac's lab key and VM credentials (from AIRSCP_LAB_HOME)
+        run: testenv/lab-files.sh
+      - name: The app built with Xcode for this commit
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          run=$(gh run list --repo "$GITHUB_REPOSITORY" --workflow ci.yml --commit "$GITHUB_SHA" --status success \
+                --json databaseId --jq '.[0].databaseId' 2>/dev/null || true)
+          if [ -n "$run" ] && gh run download "$run" --repo "$GITHUB_REPOSITORY" -n AirSCP-xcode -D "$RUNNER_TEMP/xcode"; then
+            ditto -x -k "$RUNNER_TEMP/xcode/AirSCP-xcode.zip" "$RUNNER_TEMP/xcode"
+            echo "AIRSCP_APP=$RUNNER_TEMP/xcode/AirSCP.app" >> "$GITHUB_ENV"
+          else
+            echo "No xcode build of this commit in ci.yml: building it here"
+            DEVELOPER_DIR=$(env -u DEVELOPER_DIR xcode-select -p) ./build.sh --native  # with Xcode: the intents metadata
+          fi
+      - name: Intents through Shortcuts and Spotlight (testenv/intents-smoke.sh)
+        run: |
+          testenv/up.sh
+          testenv/intents-smoke.sh build/intents-smoke 2>&1 | tee "$RUNNER_TEMP/intents.log"
+      - name: Summary
+        if: always()
+        run: |
+          { echo "### Intents"; echo '```'; grep -E '^(✔|✘)' "$RUNNER_TEMP/intents.log"; echo '```'; } >> "$GITHUB_STEP_SUMMARY" || true
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: always()
+        with:
+          name: intents-smoke
+          path: build/intents-smoke
           if-no-files-found: ignore
           retention-days: 14

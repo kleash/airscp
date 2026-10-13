@@ -15,12 +15,14 @@ final class Passwords {
 }
 
 /// A model with these hosts that saves nowhere (or into `saved`) and keeps passwords in `passwords`, never in the
-/// Keychain.
+/// Keychain. Agents' changes don't wait for anyone: nobody is at the Mac to allow them (the tests of that turn it on).
 @MainActor
 func testModel(_ hosts: [SSHHost] = [], groups: [HostGroup] = [], saved: Recorder<AirSCPData>? = nil,
                passwords: Passwords = Passwords()) -> AppModel {
     _ = TestEnvironment.isolated  // no Keychain, no ~/.ssh
-    let model = AppModel(data: AirSCPData(hosts: hosts, groups: groups), store: { saved?.append($0) })
+    var data = AirSCPData(hosts: hosts, groups: groups)
+    data.settings.askBeforeAgentChanges = false
+    let model = AppModel(data: data, store: { saved?.append($0) })
     model.savedPassword = { passwords.saved[$0] }
     model.setSavedPassword = { passwords.saved[$0] = $1 }
     return model
@@ -467,7 +469,7 @@ func testModel(_ hosts: [SSHHost] = [], groups: [HostGroup] = [], saved: Recorde
         #expect(connection.cancelledByUser && asked == 1)
         // Prompts after the cancel (ssh asking again) are cancelled without being shown.
         let environment = askpass.environment(for: host.id.uuidString)
-        let again = await Runner.run([TestEnvironment.airscpBinary, "sa@127.0.0.1's password: "], environment: environment)
+        let again = await Runner.run([TestEnvironment.airscpBinary, "me@127.0.0.1's password: "], environment: environment)
         #expect(again.status == 1 && asked == 1)
         #expect(await eventually { connection.state == .idle })
 
@@ -682,7 +684,7 @@ func testModel(_ hosts: [SSHHost] = [], groups: [HostGroup] = [], saved: Recorde
 }
 
 /// Other Key File… in the Keys window: a key outside the folder joins the list (after the folder's own), selected, so
-/// that Install on Host and Add to Agent work on it (PLAN.md K).
+/// that Install on Host and Add to Agent work on it.
 @MainActor @Test func keysFromElsewhereJoinTheList() async throws {
     let folder = try scratch(), elsewhere = try scratch()
     try await run(["/usr/bin/ssh-keygen", "-q", "-t", "ed25519", "-N", "", "-C", "in folder", "-f", folder + "/id_here"])

@@ -1,10 +1,12 @@
 #!/bin/bash
-# Makes AirSCP's release (PLAN.md AB.1): the universal app signed with the Developer ID and the hardened runtime,
+# Makes AirSCP's release: the universal app signed with the Developer ID and the hardened runtime,
 # notarized and stapled, as build/AirSCP-<version>.zip with build/AirSCP-<version>.zip.sha256; then checks it the way
 # Gatekeeper will.
 #   scripts/release-local.sh           the Keychain's "Developer ID Application" identity, notarytool profile airscp-notary
 #   scripts/release-local.sh --adhoc   an ad-hoc signature with the hardened runtime, not notarized: tries the hardened
 #                                      runtime without a Developer ID (never for a release)
+#   scripts/release-local.sh --no-notarize   the Developer ID signature without notarizing: for checks that need the
+#                                      real signature but no release
 # One-time setup: Xcode ▸ Settings ▸ Accounts ▸ Manage Certificates ▸ + ▸ Developer ID Application, then
 #   xcrun notarytool store-credentials airscp-notary --apple-id <Apple ID> --team-id <team ID>
 # release.yml runs this too, with the identity in a temporary keychain and an App Store Connect API key instead of the
@@ -12,11 +14,12 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-adhoc=false
+adhoc=false notarize=true
 case "${1:-}" in
     "") ;;
-    --adhoc) adhoc=true ;;
-    *) echo "usage: $0 [--adhoc]" >&2; exit 2 ;;
+    --adhoc) adhoc=true notarize=false ;;
+    --no-notarize) notarize=false ;;
+    *) echo "usage: $0 [--adhoc | --no-notarize]" >&2; exit 2 ;;
 esac
 version=$(tr -d '[:space:]' < VERSION)
 app=build/AirSCP.app
@@ -38,11 +41,17 @@ else
 fi
 
 ./build.sh
-# build.sh signs ad hoc; the release signature adds the hardened runtime and its one entitlement.
+# build.sh signs ad hoc; the release signature adds the hardened runtime and its entitlements. Extensions inside first
+# (when there are any), then the app: --deep is for checking only.
+for appex in "$app"/Contents/PlugIns/*.appex; do
+    [ -d "$appex" ] || continue
+    name=$(basename "$appex" .appex)
+    codesign --force --options runtime --entitlements "Resources/$name.entitlements" "$timestamp" --sign "$identity" "$appex"
+done
 codesign --force --options runtime --entitlements Resources/AirSCP.entitlements "$timestamp" --sign "$identity" "$app"
 codesign --verify --deep --strict --verbose=2 "$app"
 
-if ! $adhoc; then
+if $notarize; then
     rm -f "$zip"
     ditto -c -k --keepParent "$app" "$zip"
     echo "Notarizing (a few minutes)..."
@@ -67,6 +76,8 @@ codesign --display --entitlements - "$app" 2>/dev/null | grep -q automation.appl
     || { echo "The app's signature lacks its entitlement." >&2; exit 1; }
 if $adhoc; then
     echo "Built $zip: ad-hoc signed with the hardened runtime, NOT notarized (for trying it out only)."
+elif ! $notarize; then
+    echo "Built $app and $zip: Developer ID signed, NOT notarized (for lab checks only)."
 else
     echo "Built $zip: Developer ID signed, notarized and stapled. SHA-256: $(cut -d' ' -f1 "$zip.sha256")"
     echo "Release it: gh release create v$version $zip $zip.sha256 --title \"AirSCP $version\" --notes-file <notes>"

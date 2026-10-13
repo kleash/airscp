@@ -1,9 +1,11 @@
 # The self-hosted runner on the maintainer's Mac
 
 `.github/workflows/lab.yml` runs what GitHub's Macs can't: the Docker lab suite, the Windows VM's Remote Desktop
-suite and the real-screen checks (`testenv/uidriver/smoke.sh`). It runs on a self-hosted runner on the maintainer's
-Mac, label `porter-mac-lab`, and only when the repository owner starts it (Actions ▸ Lab ▸ Run workflow, or
-`gh workflow run lab.yml -r <branch> -f suite=all|docker|windows|screen`). It never runs for pull requests or forks.
+suite, the real-screen checks (`testenv/uidriver/smoke.sh`), Apple Intelligence on the real on-device model, and App
+Intents run by Shortcuts and Spotlight. It runs on a self-hosted runner on the maintainer's Mac, label
+`porter-mac-lab`, and only when the repository owner starts it (Actions ▸ Lab ▸ Run workflow, or
+`gh workflow run lab.yml -r <branch> -f suite=all|docker|windows|screen|ai|intents`). It never runs for pull requests
+or forks.
 
 ## Why it is safe on a public repository
 
@@ -17,7 +19,7 @@ Mac, label `porter-mac-lab`, and only when the repository owner starts it (Actio
   organisation).
 - The runner is idle (a long poll, no CPU) unless a job comes. Stop it with Ctrl-C when it isn't wanted.
 
-## Setup (once, after the repository is public)
+## Setup (once)
 
 1. Prerequisites on the Mac: the Command Line Tools; Docker Desktop with the lab built once (`testenv/up.sh` in the
    maintainer's checkout, which also makes the lab key); the Windows VM (`testenv/windows/README.md`); the `ui` tool
@@ -36,9 +38,14 @@ Mac, label `porter-mac-lab`, and only when the repository owner starts it (Actio
    ```sh
    echo "AIRSCP_LAB_HOME=/path/to/your/airscp/checkout" >> ~/actions-runner/.env
    ```
-4. Start it **in a Terminal window**: `cd ~/actions-runner && ./run.sh`. Not as a launchd service (`svc.sh`): jobs
-   started from Terminal inherit Terminal's Accessibility grant (the real-screen job needs it) and the user's access to
-   Docker and UTM.
+4. Start it **in a Terminal window**: `cd ~/actions-runner && caffeinate -dis ./run.sh` (caffeinate keeps the Mac awake
+   while it waits for jobs). Not as a launchd service (`svc.sh`): jobs started from Terminal inherit Terminal's
+   Accessibility grant (the real-screen job needs it) and the user's access to Docker and UTM.
+5. One-time grants for the ai and intents jobs:
+   - **ai:** System Settings ▸ Apple Intelligence & Siri on, and its model downloaded (until then the job fails with
+     macOS's reason, e.g. `appleIntelligenceNotEnabled`).
+   - **intents:** make the three shortcuts once: `testenv/intents-smoke.sh --setup` (it starts a throwaway AirSCP and
+     says what to make in the Shortcuts app); allow Terminal to control Shortcuts if macOS asks the first time.
 
 ## What each job needs at run time
 
@@ -47,6 +54,8 @@ Mac, label `porter-mac-lab`, and only when the repository owner starts it (Actio
 | docker | Docker Desktop running | `./build.sh --native`, then `AIRSCP_DOCKER=1 ./test.sh` (starts or updates the lab with `testenv/up.sh`; includes `AgentLabTests`, agent control end to end) |
 | windows | the VM up with RDP answering (`testenv/windows/windows-vm.sh status` says `rdp:open`) | `AIRSCP_WINDOWS=1 ./test.sh --filter RDPWindowsTests` |
 | screen | the lab up, an **unlocked** screen nobody is using | `testenv/uidriver/smoke.sh`: real menu bar, Quick Look, an Open panel, dark mode, each with a real screenshot (artifact `screen-smoke`) |
+| ai | Apple Intelligence on (step 5) | `AIRSCP_AI=1 ./test.sh --filter AIModelTests`: the real on-device model plans and suggests (it prints the model's availability first) |
+| intents | the lab up | the xcode job's app for the same commit (else `./build.sh --native`), registered from a temporary folder, driven by `testenv/intents-smoke.sh`: Shortcuts runs the intents, Spotlight finds a host, `sftp://` links open (artifact `intents-smoke`) |
 
 Each job writes a short summary (test totals and failures) to the run page. The jobs run one after another (one
 runner).

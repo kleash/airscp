@@ -3,8 +3,8 @@ import Foundation
 import Testing
 @testable import AirSCPCore
 
-// Regression tests for the first break-it round against the Docker lab (AIRSCP_DOCKER=1): Linux servers' tools (GNU
-// tar, BusyBox ls), their limits, case-sensitive disks, and jump hosts.
+// Regression tests against the Docker lab (AIRSCP_DOCKER=1): Linux servers' tools (GNU tar, BusyBox ls), their
+// limits, case-sensitive disks, and jump hosts.
 
 @Suite(.enabled(if: Lab.enabled, "Docker lab: AIRSCP_DOCKER=1 ./test.sh"))
 struct RegressionLabTests {

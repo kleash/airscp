@@ -290,7 +290,7 @@ struct KeysView: View {
                 Button("New Key Pair…") { startNewKey() }
                     .help("Make a new key pair (ssh-keygen): Ed25519, ECDSA or RSA, with an optional passphrase")
                 Button("Import Key…", action: chooseImport)
-                    .help("Turn a PuTTY key (.ppk, from PuTTYgen or WinSCP) into an OpenSSH key in \(folderName)")
+                    .help("Turn a PuTTY key (.ppk, from PuTTYgen) into an OpenSSH key in \(folderName)")
                 Button("Other Key File…", action: chooseOther)
                     .help("A key outside \(folderName), to install on a host or add to the agent")
                 Divider().frame(height: 16)
@@ -303,10 +303,11 @@ struct KeysView: View {
                     .disabled(!(keys.selected.map(KeysModel.canExportToPuTTY) ?? false))
                     .help(keys.selected == nil ? "Select a key first"
                           : !KeysModel.canExportToPuTTY(keys.selected!) ? "PuTTY keys can be RSA, ECDSA or Ed25519 only"
-                          : "Export as PuTTY Key (.ppk): a copy for PuTTY or WinSCP on Windows")
+                          : "Export as PuTTY Key (.ppk): a copy for PuTTY on Windows")
                 Button("Add to Agent", action: addToAgent).disabled(keys.selected == nil || keys.busy)
                     .help(keys.selected == nil ? "Select a key first"
                           : "Adds the key to the ssh agent and its passphrase to your login Keychain")
+                    .accessibilityIdentifier("keys.addToAgent")  // an agent's press asks first: it changes this Mac
                 // Cut short before the buttons are (whole on hover).
                 Text(message).font(.caption).foregroundColor(.secondary).lineLimit(1).layoutPriority(-1).help(message)
                 Spacer()
@@ -478,6 +479,7 @@ struct InstallKeyView: View {
                 Button("Cancel", action: cancel).keyboardShortcut(.cancelAction).help("Close without installing")
                 Button("Install") { if let hostID { install(hostID) } }
                     .keyboardShortcut(.defaultAction).primaryTint()
+                    .accessibilityIdentifier("keys.install")
                     .disabled(hostID == nil)
                     .help(hostID == nil ? "Choose a host first" : "Connect and add the key; a password may be asked once")
             }

@@ -5,10 +5,11 @@ import Security
 import SwiftUI
 import UniformTypeIdentifiers
 
-/// Tools ▸ Certificate Manager (PLAN.md AA): certificates, keys, requests, PKCS#12 files and Java keystores opened
-/// (Open… or a drop), their details, and the files made of them (PEM, DER, the chain, keys with or without a
-/// passphrase, public keys, PKCS#12), each with the openssl command that does the same. View Server Certificate…
-/// shows the chain a TLS server sends. Nothing is overwritten: Save panels ask, as everywhere on the Mac.
+/// Tools ▸ Certificate Manager: certificates, keys, requests, PKCS#12 files and Java keystores opened (Open… or a
+/// drop), their details, and the files made of them (PEM, DER, the chain, keys with or without a passphrase, public
+/// keys, PKCS#12 and JKS keystores, truststores), new requests and self-signed certificates, and chain checks, each
+/// with the openssl or keytool command that does the same. View Server Certificate… shows the chain a TLS server
+/// sends. Nothing is overwritten: Save panels ask, as everywhere on the Mac, and New… never replaces a file.
 @MainActor
 final class CertificateManagerWindowController: NSWindowController {
     let model = CertificateModel()
@@ -50,6 +51,8 @@ final class CertificateModel: ObservableObject {
     @Published var asking: (url: URL, wrong: Bool, keyAlias: String?, storePassword: String?)?
     /// View Server Certificate… asked for a server.
     @Published var askServer = false
+    /// What Verify… found, by certificate.
+    @Published var checks: [PKI.Item.ID: (valid: Bool, text: String)] = [:]
 
     var selected: PKI.Item? { sources.lazy.flatMap(\.items).first { $0.id == selection } }
     var allItems: [PKI.Item] { sources.flatMap(\.items) }
@@ -119,9 +122,9 @@ final class CertificateModel: ObservableObject {
 
     // MARK: Saving
 
-    /// A Save panel for `name`; `write` makes the file. The status says what was saved; the command shows.
+    /// A Save panel for `name`; `data` makes the file's bytes. The status says what was saved; the command shows.
     func save(_ name: String, types: [UTType], command: @escaping (String) -> String, from window: NSWindow?,
-              write: @escaping (URL) throws -> Void) {
+              data: @escaping () throws -> Data) {
         let panel = NSSavePanel()
         panel.nameFieldStringValue = name
         panel.allowedContentTypes = types
@@ -129,16 +132,105 @@ final class CertificateModel: ObservableObject {
         Panels.run(panel, on: window) { [self] urls in
             guard let url = urls.first else { return }
             do {
-                try write(url)
-                // Keys only for the user: not readable by others.
-                if url.pathExtension == "key" || url.pathExtension == "p12" || url.pathExtension == "pfx" {
-                    chmod(url.path, 0o600)
+                let bytes = try data()
+                if ["key", "p12", "pfx", "jks"].contains(url.pathExtension) {
+                    // Keys only for the user, from the start: a new file, unreadable to others before anything is in
+                    // it, in place of the one the panel said to replace (which others may have open).
+                    unlink(url.path)
+                    try PKI.saveNew([(url.path, bytes, 0o600)])
+                } else {
+                    try bytes.write(to: url, options: .atomic)
                 }
                 status = "Saved \(url.lastPathComponent)"
                 self.command = command(url.path)
             } catch {
                 status = "Can't save \(url.lastPathComponent): \(error.localizedDescription)"
             }
+        }
+    }
+
+    // MARK: New requests and certificates
+
+    /// New…: a Save panel for the request or certificate, the key beside it as <name>.key; both are new files.
+    func create(_ new: PKI.NewCertificate, passphrase: String, from window: NSWindow?) {
+        let what = new.selfSigned ? "certificate" : "request", type = new.selfSigned ? "crt" : "csr"
+        let panel = NSSavePanel()
+        panel.nameFieldStringValue = new.commonName.trimmingCharacters(in: .whitespaces).replacingOccurrences(of: "/", with: "-")
+            .replacingOccurrences(of: "*", with: "wildcard") + "." + type
+        panel.allowedContentTypes = [UTType(filenameExtension: type) ?? .data]
+        panel.isExtensionHidden = false
+        panel.message = "Where to save the \(what). Its private key goes beside it, as a .key file."
+        Panels.run(panel, on: window) { [self] urls in
+            guard let url = urls.first else { return }
+            var keyURL = url.deletingPathExtension().appendingPathExtension("key")
+            if keyURL == url { keyURL = url.appendingPathExtension("key") }
+            status = "Making a \(new.keyType.title) key…"
+            Task {
+                guard let made = await Task.detached(priority: .userInitiated, operation: { new.make() }).value,
+                      let key = PKI.keyPEM(made.key, passphrase: passphrase) else {
+                    status = "OpenSSL couldn't make the \(what)."
+                    return
+                }
+                do {
+                    try PKI.saveNew([(keyURL.path, Data(key.utf8), 0o600), (url.path, Data(PKI.pem(made.item).utf8), 0o644)])
+                } catch {
+                    status = "Nothing saved: " + ((error as? AirSCPError)?.message ?? error.localizedDescription)
+                    return
+                }
+                sources.removeAll { $0.path == url.path }
+                sources.append(Source(title: url.lastPathComponent, path: url.path, items: [made.item, made.key]))
+                selection = made.item.id
+                command = PKI.Command.newCertificate(new, key: keyURL.path, output: url.path, passphrase: !passphrase.isEmpty)
+                status = "Saved \(url.lastPathComponent) and its key, \(keyURL.lastPathComponent)"
+                    + (new.selfSigned ? "." : ". Send the request to your certificate authority; keep the key.")
+            }
+        }
+    }
+
+    // MARK: Checking a chain
+
+    /// Verify…: `certificate` with the certificates open here as its chain, against a CA bundle's certificates or
+    /// those this Mac trusts, for `host` when one is typed.
+    func verify(_ certificate: PKI.Item, bundle: URL?, host: String) {
+        var authorities: [PKI.Item]?
+        if let bundle {
+            do {
+                authorities = try PKI.read(try Data(contentsOf: bundle)).filter { $0.kind == .certificate }
+            } catch PKI.ReadError.password {
+                status = "\(bundle.lastPathComponent) has a password: choose a PEM, DER or P7B file of the authorities."
+                return
+            } catch {
+                authorities = []
+            }
+            guard authorities?.isEmpty == false else {
+                status = "\(bundle.lastPathComponent) holds no certificates that AirSCP reads (PEM, DER, P7B)."
+                return
+            }
+        }
+        let others = allItems.filter { $0.kind == .certificate && $0.der != certificate.der }
+        let host = host.trimmingCharacters(in: .whitespaces)
+        let trusted = bundle.map { "in \($0.lastPathComponent)" } ?? "that this Mac trusts"
+        Task {
+            let check = await Task.detached(priority: .userInitiated) {
+                PKI.verify(certificate, others: others, authorities: authorities, host: host)
+            }.value
+            let result: (valid: Bool, text: String)
+            switch check {
+            case .valid(let authority):
+                result = (true, "Valid\(host.isEmpty ? "" : " for \(host)"): it leads to “\(authority)”, an authority \(trusted).")
+            case .expired: result = (false, "Not valid: it, or a certificate above it, has expired or isn't valid yet.")
+            case .unknownIssuer:
+                result = (false, "Not valid: unknown issuer. It doesn't lead to an authority \(trusted). If certificates "
+                          + "between them are missing, open them too.")
+            case .nameMismatch:
+                let names = PKI.details(certificate).sans.map { $0.replacingOccurrences(of: "DNS:", with: "") }
+                result = (false, "Not valid for \(host): the certificate is for " + (names.isEmpty ? "another name." : names.joined(separator: ", ") + "."))
+            case .invalid(let reason): result = (false, "Not valid: \(reason)")
+            }
+            checks[certificate.id] = result
+            status = result.text
+            command = PKI.Command.verify((PKI.Details.commonName(PKI.details(certificate).subject) ?? "certificate") + ".pem",
+                                         chain: !others.isEmpty, authorities: bundle?.path, host: host.isEmpty ? nil : host)
         }
     }
 
@@ -215,9 +307,12 @@ struct CertificateManagerView: View {
     @State private var password = ""
     @State private var server = ""
     @State private var exporting: Exporting?
+    @State private var creating = false
+    @State private var trusting: PKI.Item?
+    @State private var verifying: PKI.Item?
     @Environment(\.colorScheme) private var scheme
 
-    /// The sheet for a key or a PKCS#12 file: a passphrase (and for PKCS#12 a name and the legacy switch).
+    /// The sheet for a key or a keystore: a passphrase (and for PKCS#12 or JKS a name; for PKCS#12 the legacy switch).
     struct Exporting: Identifiable {
         let id = UUID()
         let pkcs12: Bool
@@ -226,6 +321,8 @@ struct CertificateManagerView: View {
         var name = ""
         var legacy = false
         var traditional = false
+        /// A Java keystore (JKS) instead of PKCS#12.
+        var jks = false
     }
 
     var body: some View {
@@ -251,6 +348,40 @@ struct CertificateManagerView: View {
         .sheet(item: $exporting) { export in
             ExportSheet(export: export, cancel: { exporting = nil }, save: { saveExport($0, export.item) })
         }
+        .sheet(isPresented: $creating) {
+            NewCertificateSheet(cancel: { creating = false }) { new, passphrase in
+                creating = false
+                model.create(new, passphrase: passphrase, from: NSApp.windows.first { $0.title == "Certificate Manager" })
+            }
+        }
+        .sheet(item: $trusting) { selected in
+            TruststoreSheet(certificates: truststoreCandidates, chosen: Set(truststoreCandidates.filter {
+                $0.der == selected.der || PKI.details($0).isCA || PKI.details($0).selfIssued
+            }.map(\.id)), cancel: { trusting = nil }) { chosen, jks, password in
+                trusting = nil
+                let ext = jks ? "jks" : "p12"
+                model.save("truststore." + ext, types: [.init(filenameExtension: ext) ?? .data],
+                           command: { PKI.Command.truststore(aliases: PKI.aliases(chosen), output: $0, jks: jks) },
+                           from: NSApp.windows.first { $0.title == "Certificate Manager" }) {
+                    guard let data = PKI.truststore(chosen, password: password, jks: jks) else {
+                        throw AirSCPError(.other, "OpenSSL couldn't make the file.")
+                    }
+                    return data
+                }
+            }
+        }
+        .sheet(item: $verifying) { certificate in
+            VerifySheet(title: PKI.title(certificate), cancel: { verifying = nil }) { bundle, host in
+                verifying = nil
+                model.verify(certificate, bundle: bundle, host: host)
+            }
+        }
+    }
+
+    /// The certificates open here, each once: what a truststore can hold.
+    private var truststoreCandidates: [PKI.Item] {
+        var seen = Set<Data>()
+        return model.allItems.filter { $0.kind == .certificate && seen.insert($0.der).inserted }
     }
 
     // MARK: The list
@@ -263,7 +394,8 @@ struct CertificateManagerView: View {
                         .accessibilityHidden(true)
                     Text("No certificates open").font(.headline)
                     Text("Drop a file here, or click Open…: certificates (PEM, CRT, CER, DER), chains (P7B), PKCS#12 (PFX, "
-                         + "P12), Java keystores (JKS), private keys and certificate requests.")
+                         + "P12), Java keystores (JKS), private keys and certificate requests. New… makes a certificate "
+                         + "request or a self-signed certificate.")
                         .multilineTextAlignment(.center).foregroundColor(.secondary).fixedSize(horizontal: false, vertical: true)
                 }
                 .padding(24)
@@ -286,6 +418,9 @@ struct CertificateManagerView: View {
                 Button("Open…", action: chooseFile)
                     .help("Open a certificate, key, request, PKCS#12 file or Java keystore")
                     .accessibilityIdentifier("certificates.open")
+                Button("New…") { creating = true }
+                    .help("Make a new key with a certificate request (CSR) or a self-signed certificate")
+                    .accessibilityIdentifier("certificates.new")
                 Button("Server…") { model.askServer = true }
                     .help("See the certificate chain a TLS server sends (HTTPS, LDAPS, SMTPS…)")
                 Spacer()
@@ -343,6 +478,11 @@ struct CertificateManagerView: View {
                         if let trust = model.sources.first(where: { $0.items.contains(item) })?.trust {
                             Label(trust, systemImage: trust.hasPrefix("This Mac trusts") ? "checkmark.shield" : "exclamationmark.shield")
                                 .foregroundColor(trust.hasPrefix("This Mac trusts") ? .green : .orange)
+                        }
+                        if let check = model.checks[item.id] {
+                            Label(check.text, systemImage: check.valid ? "checkmark.shield" : "exclamationmark.shield")
+                                .foregroundColor(check.valid ? .green : .orange)
+                                .fixedSize(horizontal: false, vertical: true)
                         }
                         Grid(alignment: .leadingFirstTextBaseline, horizontalSpacing: 12, verticalSpacing: 6) {
                             ForEach(fields(item, details), id: \.0) { label, value, color in
@@ -409,53 +549,68 @@ struct CertificateManagerView: View {
         let window = NSApp.windows.first { $0.title == "Certificate Manager" }
         let base = (item.name ?? PKI.Details.commonName(PKI.details(item).subject) ?? "certificate")
             .replacingOccurrences(of: "/", with: "-").replacingOccurrences(of: "*", with: "wildcard")
-        HStack {
-            switch item.kind {
-            case .certificate:
-                Button("Save PEM…") {
-                    model.save(base + ".pem", types: [.init(filenameExtension: "pem") ?? .data], command: { PKI.Command.toPEM("in.der", $0) },
-                               from: window) { try PKI.pem(item).write(to: $0, atomically: true, encoding: .utf8) }
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                switch item.kind {
+                case .certificate:
+                    Button("Save PEM…") {
+                        model.save(base + ".pem", types: [.init(filenameExtension: "pem") ?? .data], command: { PKI.Command.toPEM("in.der", $0) },
+                                   from: window) { Data(PKI.pem(item).utf8) }
+                    }
+                    .help("Save the certificate as PEM text (.pem, .crt): what most servers and tools want")
+                    Button("Save DER…") {
+                        model.save(base + ".cer", types: [.init(filenameExtension: "cer") ?? .data], command: { PKI.Command.toDER("in.pem", $0) },
+                                   from: window) { item.der }
+                    }
+                    .help("Save the certificate as binary DER (.cer, .der): for Windows and Java")
+                    Button("Save Chain…") {
+                        let chain = [item] + model.chain(above: item)
+                        model.save(base + "-chain.pem", types: [.init(filenameExtension: "pem") ?? .data], command: { PKI.Command.chain("certificates.pem", $0) },
+                                   from: window) { Data(chain.map(PKI.pem).joined().utf8) }
+                    }
+                    .help("Save the certificate followed by its issuers (the ones open here) as one PEM file, as web servers want")
+                case .privateKey:
+                    Button("Save Key…") { exporting = Exporting(pkcs12: false, item: item) }
+                        .help("Save the private key as PEM, with a passphrase or without one")
+                case .request:
+                    Button("Save PEM…") {
+                        model.save(base + ".csr", types: [.init(filenameExtension: "csr") ?? .data], command: { "openssl req -in in.csr -out " + PKI.Command.q($0) },
+                                   from: window) { Data(PKI.pem(item).utf8) }
+                    }
+                    .help("Save the certificate request as PEM, to send to a certificate authority")
+                case .publicKey:
+                    EmptyView()
                 }
-                .help("Save the certificate as PEM text (.pem, .crt): what most servers and tools want")
-                Button("Save DER…") {
-                    model.save(base + ".cer", types: [.init(filenameExtension: "cer") ?? .data], command: { PKI.Command.toDER("in.pem", $0) },
-                               from: window) { try item.der.write(to: $0) }
+                if item.kind != .publicKey {
+                    Button("Public Key…") {
+                        guard let key = PKI.publicKey(item) else { return }
+                        model.save(base + ".pub.pem", types: [.init(filenameExtension: "pem") ?? .data], command: { PKI.Command.publicKey("in.pem", $0) },
+                                   from: window) { Data(PKI.pem(key, label: "PUBLIC KEY").utf8) }
+                    }
+                    .help("Save only the public key, as PEM")
                 }
-                .help("Save the certificate as binary DER (.cer, .der): for Windows and Java")
-                Button("Save Chain…") {
-                    let chain = [item] + model.chain(above: item)
-                    model.save(base + "-chain.pem", types: [.init(filenameExtension: "pem") ?? .data], command: { PKI.Command.chain("certificates.pem", $0) },
-                               from: window) { try chain.map(PKI.pem).joined().write(to: $0, atomically: true, encoding: .utf8) }
-                }
-                .help("Save the certificate followed by its issuers (the ones open here) as one PEM file, as web servers want")
-                Button("PKCS#12…") { exporting = Exporting(pkcs12: true, item: item, name: base) }
-                    .disabled(model.key(for: item) == nil)
-                    .help(model.key(for: item) == nil ? "Open the certificate's private key first (its .key or .pem file)"
-                          : "Bundle the certificate, its private key and its chain in a password-protected .p12 (.pfx)")
-            case .privateKey:
-                Button("Save Key…") { exporting = Exporting(pkcs12: false, item: item) }
-                    .help("Save the private key as PEM, with a passphrase or without one")
-                Button("PKCS#12…") { exporting = Exporting(pkcs12: true, item: item, name: base) }
-                    .disabled(model.certificate(for: item) == nil)
-                    .help(model.certificate(for: item) == nil ? "Open the key's certificate first" : "Bundle the key, its certificate and its chain in a .p12 (.pfx)")
-            case .request:
-                Button("Save PEM…") {
-                    model.save(base + ".csr", types: [.init(filenameExtension: "csr") ?? .data], command: { "openssl req -in in.csr -out " + PKI.Command.q($0) },
-                               from: window) { try PKI.pem(item).write(to: $0, atomically: true, encoding: .utf8) }
-                }
-                .help("Save the certificate request as PEM, to send to a certificate authority")
-            case .publicKey:
-                EmptyView()
+                Spacer()
             }
-            if item.kind != .publicKey {
-                Button("Public Key…") {
-                    guard let key = PKI.publicKey(item) else { return }
-                    model.save(base + ".pub.pem", types: [.init(filenameExtension: "pem") ?? .data], command: { PKI.Command.publicKey("in.pem", $0) },
-                               from: window) { try PKI.pem(key, label: "PUBLIC KEY").write(to: $0, atomically: true, encoding: .utf8) }
+            if item.kind == .certificate || item.kind == .privateKey {
+                HStack {
+                    let partner = item.kind == .certificate ? model.key(for: item) : model.certificate(for: item)
+                    let missing = item.kind == .certificate ? "Open the certificate's private key first (its .key or .pem file)"
+                        : "Open the key's certificate first"
+                    Button("PKCS#12…") { exporting = Exporting(pkcs12: true, item: item, name: base) }
+                        .disabled(partner == nil)
+                        .help(partner == nil ? missing : "Bundle the certificate, its private key and its chain in a password-protected .p12 (.pfx)")
+                    Button("JKS…") { exporting = Exporting(pkcs12: true, item: item, name: base, jks: true) }
+                        .disabled(partner == nil)
+                        .help(partner == nil ? missing : "Bundle the certificate, its private key and its chain in a Java keystore (.jks) for older Java")
+                    if item.kind == .certificate {
+                        Button("Truststore…") { trusting = item }
+                            .help("Put this and other certificate authorities open here in a truststore (PKCS#12 or JKS) for Java and other apps")
+                        Button("Verify…") { verifying = item }
+                            .help("Check that the certificate leads to an authority you trust, hasn't expired and fits a host name")
+                    }
+                    Spacer()
                 }
-                .help("Save only the public key, as PEM")
             }
-            Spacer()
         }
     }
 
@@ -542,28 +697,39 @@ struct CertificateManagerView: View {
     func saveExport(_ export: Exporting, _ item: PKI.Item) {
         exporting = nil
         let window = NSApp.windows.first { $0.title == "Certificate Manager" }
-        if export.pkcs12 {
+        if export.jks {
+            let certificate = item.kind == .certificate ? item : model.certificate(for: item)
+            let key = item.kind == .privateKey ? item : model.key(for: item)
+            guard let certificate, let key else { return }
+            let chain = model.chain(above: certificate)
+            let alias = export.name.trimmingCharacters(in: .whitespaces).isEmpty ? PKI.aliases([certificate])[0] : export.name.lowercased()
+            model.save((export.name.isEmpty ? "keystore" : export.name) + ".jks", types: [.init(filenameExtension: "jks") ?? .data],
+                       command: { PKI.Command.jks(key: "key.pem", certificate: "certificate.pem", alias: alias, output: $0) },
+                       from: window) {
+                PKI.jks(key: key, certificate: certificate, chain: chain, name: export.name, password: export.passphrase)
+            }
+        } else if export.pkcs12 {
             let certificate = item.kind == .certificate ? item : model.certificate(for: item)
             let key = item.kind == .privateKey ? item : model.key(for: item)
             guard let certificate, let key else { return }
             let chain = model.chain(above: certificate)
             model.save((export.name.isEmpty ? "certificate" : export.name) + ".p12", types: [.init(filenameExtension: "p12") ?? .data],
                        command: { PKI.Command.pkcs12(key: "key.pem", certificate: "certificate.pem", output: $0, legacy: export.legacy) },
-                       from: window) { url in
+                       from: window) {
                 guard let data = PKI.pkcs12(key: key, certificate: certificate, chain: chain, name: export.name.isEmpty ? nil : export.name,
                                             password: export.passphrase, legacy: export.legacy) else {
                     throw AirSCPError(.other, "OpenSSL couldn't make the file.")
                 }
-                try data.write(to: url)
+                return data
             }
         } else {
             model.save("private.key", types: [.init(filenameExtension: "key") ?? .data],
                        command: { PKI.Command.key("in.key", $0, passphrase: !export.passphrase.isEmpty, traditional: export.traditional) },
-                       from: window) { url in
+                       from: window) {
                 guard let pem = PKI.keyPEM(item, passphrase: export.passphrase, traditional: export.traditional) else {
                     throw AirSCPError(.other, "OpenSSL couldn't write the key.")
                 }
-                try pem.write(to: url, atomically: true, encoding: .utf8)
+                return Data(pem.utf8)
             }
         }
     }
@@ -603,7 +769,8 @@ struct CertificateManagerView: View {
     }
 }
 
-/// Make PKCS#12… (a friendly name, a password, the legacy switch) and Save Key… (a passphrase, the traditional format).
+/// PKCS#12… (a friendly name, a password, the legacy switch), JKS… (an alias, a password) and Save Key… (a passphrase,
+/// the traditional format).
 struct ExportSheet: View {
     @State var export: CertificateManagerView.Exporting
     let cancel: () -> Void
@@ -611,13 +778,23 @@ struct ExportSheet: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text(export.pkcs12 ? "Make a PKCS#12 file" : "Save the private key").font(.headline)
-            if export.pkcs12 {
+            Text(export.jks ? "Make a Java keystore (JKS)" : export.pkcs12 ? "Make a PKCS#12 file" : "Save the private key").font(.headline)
+            if export.jks {
+                Text("The private key, its certificate and the chain open here, in a Java keystore protected by a password. "
+                     + "Java 9 and later read PKCS#12 too, the better choice for them.")
+                    .font(.callout).foregroundColor(.secondary).fixedSize(horizontal: false, vertical: true)
+                TextField("Alias (optional)", text: $export.name).accessibilityIdentifier("certificates.p12Name")
+                    .help("The entry's name in the keystore (lower case, as Java keeps it); the certificate's common name when empty")
+                SecureField("Password", text: $export.passphrase).accessibilityIdentifier("certificates.p12Password")
+                    .help("Protects the keystore and its key: apps ask for it to open the file")
+            } else if export.pkcs12 {
                 Text("The private key, its certificate and the chain open here, in one file protected by a password "
                      + "(.p12 or .pfx: Windows, Java, browsers, mail apps).")
                     .font(.callout).foregroundColor(.secondary).fixedSize(horizontal: false, vertical: true)
                 TextField("Friendly name (optional)", text: $export.name).accessibilityIdentifier("certificates.p12Name")
+                    .help("The name Windows and keystores show for the entry")
                 SecureField("Password", text: $export.passphrase).accessibilityIdentifier("certificates.p12Password")
+                    .help("Protects the file: apps ask for it to open it")
                 Toggle("Compatible with older systems", isOn: $export.legacy)
                     .help("3DES and SHA-1 instead of AES-256 and SHA-256: only for Java 8 or Windows before 2019 that refuse the file")
                 Text("Only for Java 8 or older Windows that can't open the file otherwise.").font(.caption).foregroundColor(.secondary)
@@ -625,6 +802,7 @@ struct ExportSheet: View {
                 Text("A passphrase encrypts the key (AES-256). Without one, anyone who gets the file can use the key.")
                     .font(.callout).foregroundColor(.secondary).fixedSize(horizontal: false, vertical: true)
                 SecureField("Passphrase (optional)", text: $export.passphrase).accessibilityIdentifier("certificates.keyPassphrase")
+                    .help("Leave it empty for a key without one. It stays in this window, never in a command line")
                 Toggle("Traditional format (PKCS#1 / SEC1)", isOn: $export.traditional)
                     .disabled(!export.passphrase.isEmpty)
                     .help(export.passphrase.isEmpty ? "“BEGIN RSA PRIVATE KEY”: for older software that doesn't read PKCS#8"
@@ -636,11 +814,214 @@ struct ExportSheet: View {
                 Button("Save…") { save(export) }
                     .keyboardShortcut(.defaultAction)
                     .disabled(export.pkcs12 && export.passphrase.isEmpty)
-                    .help(export.pkcs12 && export.passphrase.isEmpty ? "Type a password first: a PKCS#12 file needs one"
+                    .help(export.pkcs12 && export.passphrase.isEmpty ? "Type a password first: a \(export.jks ? "keystore" : "PKCS#12 file") needs one"
                           : "Choose where to save it")
             }
         }
         .padding(20)
         .frame(width: 440)
+    }
+}
+
+/// New…: a new key with a certificate request for a certificate authority, or with a self-signed certificate for a TLS
+/// server.
+struct NewCertificateSheet: View {
+    let cancel: () -> Void
+    let create: (PKI.NewCertificate, String) -> Void
+    @State private var new = PKI.NewCertificate()
+    @State private var days = "365"
+    @State private var passphrase = ""
+
+    /// The form as typed, with the days read.
+    private var made: PKI.NewCertificate {
+        var made = new
+        made.days = Int(days.trimmingCharacters(in: .whitespaces)) ?? 0
+        return made
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("New certificate request or self-signed certificate").font(.headline)
+            Picker("Make:", selection: $new.selfSigned) {
+                Text("Certificate request (CSR)").tag(false)
+                Text("Self-signed certificate").tag(true)
+            }
+            .pickerStyle(.segmented)
+            .accessibilityIdentifier("certificates.newKind")
+            .help("A request goes to a certificate authority, which sends the certificate back; a self-signed one works at once")
+            FormCaption(new.selfSigned ? "Works at once, but only where you trust it yourself: tests and internal servers."
+                        : "Send the request to a certificate authority; it sends back the certificate. Keep the key: it goes with it.")
+            Form {
+                TextField("Common name:", text: $new.commonName, prompt: Text("web.example.com"))
+                    .accessibilityIdentifier("certificates.commonName")
+                    .help("Who the certificate is for: usually the server's host name")
+                TextField("Other names:", text: $new.otherNames, prompt: Text("Optional: www.example.com, 10.0.0.5"))
+                    .accessibilityIdentifier("certificates.names")
+                    .help("More host names and IP addresses it is for (subject alternative names), between commas")
+                FormCaption("Browsers check these names. The common name goes in too when it is a host name or an address.")
+                TextField("Organization:", text: $new.organization, prompt: Text("Optional"))
+                    .accessibilityIdentifier("certificates.organization")
+                    .help("Your company or organization")
+                TextField("Unit:", text: $new.unit, prompt: Text("Optional"))
+                    .accessibilityIdentifier("certificates.unit")
+                    .help("A department, such as IT")
+                TextField("City:", text: $new.locality, prompt: Text("Optional"))
+                    .accessibilityIdentifier("certificates.locality")
+                    .help("The city or town (locality)")
+                TextField("State:", text: $new.state, prompt: Text("Optional"))
+                    .accessibilityIdentifier("certificates.state")
+                    .help("The state or province, written out")
+                TextField("Country:", text: $new.country, prompt: Text("Optional: two letters, such as US"))
+                    .accessibilityIdentifier("certificates.country")
+                    .help("The country as two letters: US, GB, DE")
+                Picker("Key:", selection: $new.keyType) {
+                    ForEach(PKI.KeyType.allCases) { Text($0.title).tag($0) }
+                }
+                .accessibilityIdentifier("certificates.keyType")
+                .help("The new key's type and size; RSA 2048 unless you need another")
+                FormCaption("RSA 2048 works with every certificate authority and server. EC keys are smaller and faster; Ed25519 "
+                            + "isn't accepted by browsers or public authorities yet.")
+                if new.selfSigned {
+                    TextField("Valid for (days):", text: $days)
+                        .accessibilityIdentifier("certificates.days")
+                        .help("How many days the certificate is valid from now; 365 by default")
+                    FormCaption("Apple devices refuse server certificates valid for more than 825 days.")
+                }
+                SecureField("Key passphrase:", text: $passphrase, prompt: Text("Optional"))
+                    .accessibilityIdentifier("certificates.newPassphrase")
+                    .help("Encrypts the key file (AES-256). It stays in this window, never in a command line")
+                FormCaption("Leave it empty for a server that must start without asking for it.")
+            }
+            HStack {
+                HelpButton(.newCertificate)
+                Text(made.problem ?? "").font(.caption).foregroundColor(.secondary).fixedSize(horizontal: false, vertical: true)
+                Spacer()
+                Button("Cancel", action: cancel).keyboardShortcut(.cancelAction).help("Close without making anything")
+                Button("Create…") { create(made, passphrase) }
+                    .keyboardShortcut(.defaultAction).primaryTint()
+                    .disabled(made.problem != nil)
+                    .help(made.problem ?? "Choose where to save the \(new.selfSigned ? "certificate" : "request"); its key goes beside it")
+            }
+        }
+        .padding(20)
+        .frame(width: 520)
+    }
+}
+
+/// Truststore…: the certificate authorities an app should trust, ticked among the certificates open here, in one
+/// PKCS#12 or JKS file.
+struct TruststoreSheet: View {
+    let certificates: [PKI.Item]
+    @State var chosen: Set<PKI.Item.ID>
+    let cancel: () -> Void
+    let save: ([PKI.Item], Bool, String) -> Void
+    @State private var jks = false
+    @State private var password = ""
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Make a truststore").font(.headline)
+            Text("The certificate authorities an app should trust, in one file protected by a password. Tick what goes in; "
+                 + "open more certificates in the window to add them.")
+                .font(.callout).foregroundColor(.secondary).fixedSize(horizontal: false, vertical: true)
+            ScrollView {
+                VStack(alignment: .leading, spacing: 6) {
+                    ForEach(certificates) { item in
+                        Toggle(PKI.title(item), isOn: Binding(get: { chosen.contains(item.id) }, set: {
+                            if $0 { chosen.insert(item.id) } else { chosen.remove(item.id) }
+                        }))
+                        .help("Put this certificate in the truststore, or leave it out")
+                    }
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(8)
+            }
+            .frame(height: 150)
+            .background(RoundedRectangle(cornerRadius: 6).stroke(Color.secondary.opacity(0.3)))
+            Form {
+                Picker("Format:", selection: $jks) {
+                    Text("PKCS#12 (.p12)").tag(false)
+                    Text("Java keystore (.jks)").tag(true)
+                }
+                .pickerStyle(.segmented)
+                .accessibilityIdentifier("certificates.trustFormat")
+                .help("PKCS#12 by default; JKS only for Java 8 and older")
+                FormCaption("PKCS#12 suits Java 9 and later and most other apps; JKS is for older Java.")
+                SecureField("Password:", text: $password).accessibilityIdentifier("certificates.trustPassword")
+                    .help("Apps ask for it to open the truststore")
+            }
+            HStack {
+                Spacer()
+                Button("Cancel", action: cancel).keyboardShortcut(.cancelAction).help("Close without saving")
+                Button("Save…") { save(certificates.filter { chosen.contains($0.id) }, jks, password) }
+                    .keyboardShortcut(.defaultAction).primaryTint()
+                    .disabled(chosen.isEmpty || password.isEmpty)
+                    .help(chosen.isEmpty ? "Tick at least one certificate" : password.isEmpty ? "Type a password first: a truststore needs one"
+                          : "Choose where to save the truststore")
+            }
+        }
+        .padding(20)
+        .frame(width: 480)
+    }
+}
+
+/// Verify…: against a CA bundle the person picks or the authorities this Mac trusts, for a host name when one is typed.
+struct VerifySheet: View {
+    let title: String
+    let cancel: () -> Void
+    let verify: (URL?, String) -> Void
+    @State private var useBundle = false
+    @State private var bundle: URL?
+    @State private var host = ""
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Verify “\(title.components(separatedBy: ": ").last ?? title)”").font(.headline)
+            Text("Checks that the certificate, with the issuers open here, leads to an authority you trust and that none has "
+                 + "expired. Nothing is fetched from the network.")
+                .font(.callout).foregroundColor(.secondary).fixedSize(horizontal: false, vertical: true)
+            Form {
+                Picker("Trust:", selection: $useBundle) {
+                    Text("Authorities this Mac trusts").tag(false)
+                    Text("A CA bundle file").tag(true)
+                }
+                .accessibilityIdentifier("certificates.verifyAgainst")
+                .help("This Mac's trusted authorities (the Keychain's) by default, or only those in a file you choose")
+                if useBundle {
+                    LabeledContent("CA bundle:") {
+                        HStack {
+                            Text(bundle?.lastPathComponent ?? "None chosen").lineLimit(1).truncationMode(.middle)
+                                .foregroundColor(bundle == nil ? .secondary : .primary)
+                            Button("Choose…", action: chooseBundle)
+                                .accessibilityIdentifier("certificates.chooseBundle")
+                                .help("Choose a PEM, DER or P7B file with the certificate authorities to trust")
+                        }
+                    }
+                }
+                TextField("Host name:", text: $host, prompt: Text("Optional"))
+                    .accessibilityIdentifier("certificates.verifyHost")
+                    .help("Also check that the certificate is for this name and for TLS servers, as a browser does")
+            }
+            HStack {
+                Spacer()
+                Button("Cancel", action: cancel).keyboardShortcut(.cancelAction).help("Close without checking")
+                Button("Verify") { verify(useBundle ? bundle : nil, host) }
+                    .keyboardShortcut(.defaultAction).primaryTint()
+                    .disabled(useBundle && bundle == nil)
+                    .help(useBundle && bundle == nil ? "Choose the CA bundle first" : "Check the chain")
+            }
+        }
+        .padding(20)
+        .frame(width: 460)
+    }
+
+    private func chooseBundle() {
+        let panel = NSOpenPanel()
+        panel.canChooseDirectories = false
+        panel.showsHiddenFiles = true
+        panel.message = "Choose the certificate authorities to trust: a PEM, DER or P7B file."
+        Panels.run(panel, on: NSApp.windows.first { $0.title == "Certificate Manager" }.map(frontSheet)) { urls in
+            if let url = urls.first { bundle = url }
+        }
     }
 }

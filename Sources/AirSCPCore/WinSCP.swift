@@ -2,7 +2,7 @@ import Foundation
 
 /// WinSCP's sites, from the WinSCP.ini that its Tools ▸ Export/Backup Configuration writes (or that a portable WinSCP
 /// keeps beside itself). Each SSH site (SFTP or SCP) becomes a host: its address, port, user, folder, its key (a
-/// PuTTY .ppk, by file name), a tunnel as a jump host and an HTTP proxy as a proxy. Stored passwords are never read:
+/// PuTTY .ppk, by file name), a tunnel as a jump host and an HTTP or SOCKS5 proxy as a proxy. Stored passwords are never read:
 /// AirSCP asks for them when it connects. FTP, WebDAV and S3 sites are left out, with the reason.
 public enum WinSCP {
     public struct Site: Equatable {
@@ -28,6 +28,8 @@ public enum WinSCP {
         public var port = 22
         public var username = ""
         public var keyName = ""
+        /// A SOCKS5 proxy (an HTTP one otherwise).
+        public var socks = false
     }
 
     /// The sites in WinSCP.ini's text, in its order (the default settings and saved workspaces aren't sites).
@@ -61,8 +63,9 @@ public enum WinSCP {
             }
             // ProxyMethod: 0 none, 1 SOCKS4, 2 SOCKS5, 3 HTTP, 4 Telnet, 5 a local command.
             let method = Int(values["ProxyMethod"] ?? "") ?? 0
-            if method == 3, let host = values["ProxyHost"], !host.isEmpty {
-                site.proxy = Hop(host: host, port: Int(values["ProxyPort"] ?? "") ?? 80, username: values["ProxyUsername"] ?? "")
+            if method == 3 || method == 2, let host = values["ProxyHost"], !host.isEmpty {
+                site.proxy = Hop(host: host, port: Int(values["ProxyPort"] ?? "") ?? (method == 2 ? 1080 : 80),
+                                 username: values["ProxyUsername"] ?? "", socks: method == 2)
             }
             // FSProtocol: 0 SCP, 1 SFTP (SCP when it can't), 2 SFTP (the default), 5 FTP, 6 WebDAV, 7 S3.
             let kind = ["5": "an FTP site", "6": "a WebDAV site", "7": "an S3 site"][values["FSProtocol"] ?? ""]
@@ -72,8 +75,8 @@ public enum WinSCP {
                 site.leftOut = "it has no host name"
             } else if site.hostname.hasPrefix("-") {
                 site.leftOut = "a host name starting with “-” can't be used: ssh would read it as an option"
-            } else if (1...2).contains(method) || method >= 4 {
-                site.leftOut = "it connects through a \(method <= 2 ? "SOCKS proxy" : "proxy WinSCP runs itself"), "
+            } else if method == 1 || method >= 4 {
+                site.leftOut = "it connects through a \(method == 1 ? "SOCKS4 proxy" : "proxy WinSCP runs itself"), "
                     + "which AirSCP can't use: add the host by hand"
             }
             return site
@@ -88,9 +91,13 @@ public enum WinSCP {
         -> AirSCPData {
         var data = AirSCPData()
         var groupIDs = Dictionary(existing.groups.map { ($0.name, $0.id) }, uniquingKeysWith: { first, _ in first })
-        var jumps = Dictionary(existing.hosts.map { (Hop(host: $0.hostname, port: $0.port ?? 22, username: $0.username), $0.id) },
-                               uniquingKeysWith: { first, _ in first })
-        var proxies = Dictionary(existing.proxies.map { (Hop(host: $0.host, port: $0.port, username: $0.username), $0.id) },
+        // A jump host is reused only with the same proxy (none counts): one with another proxy, or none, would take the
+        // site past its proxy.
+        struct JumpKey: Hashable { let address: Hop, proxy: UUID? }
+        var jumps = Dictionary(existing.hosts.map {
+            (JumpKey(address: Hop(host: $0.hostname, port: $0.port ?? 22, username: $0.username), proxy: $0.proxyID), $0.id)
+        }, uniquingKeysWith: { first, _ in first })
+        var proxies = Dictionary(existing.proxies.map { (Hop(host: $0.host, port: $0.port, username: $0.username, socks: $0.isSOCKS), $0.id) },
                                  uniquingKeysWith: { first, _ in first })
         func host(_ label: String, _ hop: Hop) -> SSHHost {
             var host = SSHHost(label: label, hostname: hop.host, port: hop.port == 22 ? nil : hop.port, username: hop.username)
@@ -116,23 +123,24 @@ public enum WinSCP {
             var proxyID: UUID?
             if let hop = site.proxy {
                 if proxies[hop] == nil {
-                    let proxy = Proxy(host: hop.host, port: hop.port, username: hop.username)
+                    var proxy = Proxy(host: hop.host, port: hop.port, username: hop.username)
+                    if hop.socks { proxy.kind = .socks5 }
                     data.proxies.append(proxy)
                     proxies[hop] = proxy.id
                 }
                 proxyID = proxies[hop]
             }
             if let tunnel = site.tunnel {
-                // One jump host per address, whichever key the site names for it.
-                let address = Hop(host: tunnel.host, port: tunnel.port, username: tunnel.username)
-                if jumps[address] == nil {
-                    var jump = host(tunnel.host, tunnel)
+                // One jump host per address and proxy, whichever key the site names for it; one through a proxy says so.
+                let key = JumpKey(address: Hop(host: tunnel.host, port: tunnel.port, username: tunnel.username), proxy: proxyID)
+                if jumps[key] == nil {
+                    var jump = host(site.proxy.map { "\(tunnel.host) via \($0.host)" } ?? tunnel.host, tunnel)
                     jump.groupID = made.groupID
                     jump.proxyID = proxyID
                     data.hosts.append(jump)
-                    jumps[address] = jump.id
+                    jumps[key] = jump.id
                 }
-                made.jumpHostID = jumps[address]
+                made.jumpHostID = jumps[key]
             } else {
                 made.proxyID = proxyID
             }

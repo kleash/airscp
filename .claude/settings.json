@@ -26,6 +26,7 @@
       "Bash(gh pr create *)",
       "Bash(gh workflow list *)",
       "Bash(gh workflow run lab.yml *)",
+      "Bash(gh workflow run ci.yml *)",
       "Bash(gh release view *)",
       "Bash(swift build *)",
       "Bash(./test.sh *)",

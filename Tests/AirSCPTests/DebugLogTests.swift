@@ -3,7 +3,7 @@ import Foundation
 import Testing
 @testable import AirSCPCore
 
-// PLAN.md AE: the debug log. Off by default and then nothing is written; on, a host's commands run with ssh's -vv and
+// The debug log. Off by default and then nothing is written; on, a host's commands run with ssh's -vv and
 // everything they and the proxy helper say goes into the file (the rest of AirSCP sees the same error output as without),
 // with the questions asked, the states, the transfers and FreeRDP's log; no secret is ever written; the file is rotated
 // at 10 MB. Against the Docker lab (AIRSCP_DOCKER=1): each broken proxy and jump-host chain names the hop that failed.
@@ -231,8 +231,8 @@ import Testing
         let target = SSHHost(label: "db", hostname: "db.internal", username: "dev")
         func hop(_ errors: String, jump: SSHHost?) -> String { Session.failedHop(errors, host: target, jump: jump) }
         #expect(hop("AirSCP proxy: HTTP/1.1 407 Proxy Authentication Required", jump: bastion)
-            == "at the HTTP proxy, on the way to the jump host “bastion” (jump@10.0.0.5:2200)")
-        #expect(hop("AirSCP proxy: HTTP/1.1 502 Bad Gateway", jump: nil) == "at the HTTP proxy, on the way to “db” (dev@db.internal:22)")
+            == "at the proxy, on the way to the jump host “bastion” (jump@10.0.0.5:2200)")
+        #expect(hop("AirSCP proxy: HTTP/1.1 502 Bad Gateway", jump: nil) == "at the proxy, on the way to “db” (dev@db.internal:22)")
         #expect(hop("ssh: connect to host 10.0.0.5 port 2200: Connection refused\r\nConnection closed by UNKNOWN port 65535",
                     jump: bastion)
             == "at the jump host “bastion” (jump@10.0.0.5:2200)")
@@ -271,7 +271,7 @@ import Testing
         let logged = try await brokenChain("ae-proxy407", proxy: (Lab.proxy, "not the password"))
         #expect(logged.contains("debug1: proxy-connect: the proxy 127.0.0.1:42280 (user porter) answered CONNECT bastion:22 "
             + "with “HTTP/1.0 407 Proxy Authentication Required”: no connection"), "\(logged)")
-        #expect(logged.contains("Couldn't connect: it stopped at the HTTP proxy, on the way to the jump host “ae-proxy407 bastion” "
+        #expect(logged.contains("Couldn't connect: it stopped at the proxy, on the way to the jump host “ae-proxy407 bastion” "
             + "(jump@bastion:22): The proxy rejected the user name or password."), "\(logged)")
     }
 
@@ -322,7 +322,7 @@ import Testing
                 try await session.connect()
                 #expect(try await session.run("hostname").output.hasSuffix("private\n"))
                 let logged = debugLines(target.label).joined(separator: "\n")
-                #expect(logged.contains("Connecting: This Mac → HTTP proxy → jump host “ae-chain bastion” (jump@bastion:22) → "
+                #expect(logged.contains("Connecting: This Mac → proxy → jump host “ae-chain bastion” (jump@bastion:22) → "
                     + "“ae-chain private” (dev@private:22)"), "\(logged)")
                 #expect(logged.contains("debug1: proxy-connect: the proxy 127.0.0.1:42280 (user porter) answered CONNECT bastion:22 "
                     + "with “HTTP/1.1 200 Connection established”: connected"), "\(logged)")

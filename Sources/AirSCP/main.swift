@@ -2,7 +2,7 @@ import AirSCPCore
 import AppKit
 
 // Helper modes come first (no UI, no app start). ssh runs this binary
-// - as the ProxyCommand `AirSCP --proxy-connect <proxy id> <host> <port>` for a host behind an HTTP proxy. Checked
+// - as the ProxyCommand `AirSCP --proxy-connect <proxy id> <host> <port>` for a host behind a proxy. Checked
 //   before askpass mode: it inherits AIRSCP_ASKPASS_SOCK from ssh's environment.
 // - as SSH_ASKPASS, with the prompt as its argument: it relays the prompt to the running app over AIRSCP_ASKPASS_SOCK.
 // - by an AI agent's tools: `AirSCP --mcp` (an MCP server on stdio) and `AirSCP --agent <tool> …` (one tool from a

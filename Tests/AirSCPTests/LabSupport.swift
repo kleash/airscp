@@ -22,6 +22,17 @@ enum Lab {
 
     /// The lab's HTTP proxy, saved as AirSCP would save it.
     static let proxy = Proxy(name: "Lab proxy", host: "127.0.0.1", port: proxyPort, username: "porter")
+    /// The lab's SOCKS5 proxy (Dante; the same user and password); AIRSCP_SOCKS_PROXY_PORT for another one.
+    static var socksProxy: Proxy {
+        var proxy = Proxy(id: UUID(uuidString: "50C45000-0000-4000-8000-000000000005")!, name: "Lab SOCKS proxy", host: "127.0.0.1",
+                          port: Int(ProcessInfo.processInfo.environment["AIRSCP_SOCKS_PROXY_PORT"] ?? "") ?? 42283, username: "porter")
+        proxy.kind = .socks5
+        return proxy
+    }
+    /// The lab's squid that wants Digest (same user and password as `proxy`); AIRSCP_DIGEST_PROXY_PORT for another one.
+    static let digestProxy = Proxy(name: "Lab digest proxy", host: "127.0.0.1",
+                                   port: Int(ProcessInfo.processInfo.environment["AIRSCP_DIGEST_PROXY_PORT"] ?? "") ?? 42282,
+                                   username: "porter")
 
     /// An account on the Debian target: "dev" (bash, sudo, noisy .bashrc) or "sftponly" (chroot, sftp only).
     static func target(_ user: String = "dev", password: Bool = false) -> SSHHost {

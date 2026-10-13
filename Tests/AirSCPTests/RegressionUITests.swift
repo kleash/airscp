@@ -6,7 +6,7 @@ import Testing
 @testable import AirSCP
 @testable import AirSCPCore
 
-// Regression tests for the findings of the first break-it round in the app (Files tab, sheets, panels, RDP view).
+// Regression tests for bugs found in the app (Files tab, sheets, panels, RDP view).
 
 @MainActor
 private func offscreen(_ controller: NSViewController, width: CGFloat = 900, height: CGFloat = 500) -> NSWindow {
@@ -325,6 +325,8 @@ private func allViews<T: NSView>(_ type: T.Type, in view: NSView?) -> [T] {
         try write("x", to: server.path("x.txt"))
         await browser.right.reload()
         let row = try #require(browser.right.rows.first { $0.name == "x.txt" })
+        await TestClipboard.take()  // a copy goes on the general pasteboard too
+        defer { TestClipboard.give() }
         browser.copyToClipboard([row], from: browser.right, cut: false)
         #expect(browser.pasteProblem(into: browser.right) == nil)
         session.capabilities.shell = false

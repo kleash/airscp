@@ -10,8 +10,10 @@ struct ProxyDraft: Equatable {
     var username = ""
     /// What was typed in the password field: saved in the Keychain on Save (empty: keep what is saved).
     var password = ""
+    var kind = Proxy.Kind.http
 
     init(_ proxy: Proxy) {
+        kind = proxy.kind ?? .http
         name = proxy.name
         host = proxy.host
         port = String(proxy.port)
@@ -33,6 +35,7 @@ struct ProxyDraft: Equatable {
         proxy.host = host.trimmingCharacters(in: .whitespaces)
         proxy.port = Int(port.trimmingCharacters(in: .whitespaces)) ?? proxy.port
         proxy.username = username.trimmingCharacters(in: .whitespaces)
+        proxy.kind = kind == .http ? nil : kind
     }
 }
 
@@ -54,7 +57,7 @@ struct ProxiesView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             Text("Proxies").font(.headline)
-            Text("Only for networks that reach servers through an HTTP proxy (CONNECT). Choose a proxy in a host's settings "
+            Text("Only for networks that reach servers through a proxy (HTTP CONNECT or SOCKS5). Choose a proxy in a host's settings "
                  + "under Advanced; a host that connects through another host uses that host's proxy.")
                 .font(.callout)
                 .foregroundColor(.secondary)
@@ -70,8 +73,8 @@ struct ProxiesView: View {
                     .tag(proxy.id)
                 }
                 if model.data.proxies.isEmpty {
-                    Text("No proxies yet. Most networks need none. Add one if your network only reaches servers through an "
-                         + "HTTP proxy.")
+                    Text("No proxies yet. Most networks need none. Add one if your network only reaches servers through a "
+                         + "proxy.")
                         .foregroundColor(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
                 }
@@ -82,7 +85,7 @@ struct ProxiesView: View {
             }
             HStack {
                 Button("Add Proxy…") { editing = Editing(proxy: Proxy(), isNew: true) }
-                    .help("Save an HTTP proxy to choose in a host's settings")
+                    .help("Save a proxy to choose in a host's settings")
                 Button("Edit…") { if let proxy = selected { editing = Editing(proxy: proxy, isNew: false) } }
                     .disabled(selected == nil)
                     .help(selected == nil ? "Select a proxy first" : "Change the selected proxy")
@@ -119,7 +122,7 @@ struct ProxiesView: View {
 
     private func details(_ proxy: Proxy) -> String {
         let users = model.hostsUsing(proxy: proxy.id).count
-        return "\(proxy.host):\(proxy.port)" + (proxy.username.isEmpty ? "" : " as \(proxy.username)")
+        return (proxy.isSOCKS ? "SOCKS5 " : "") + "\(proxy.host):\(proxy.port)" + (proxy.username.isEmpty ? "" : " as \(proxy.username)")
             + (users == 0 ? "" : users == 1 ? " · used by 1 host" : " · used by \(users) hosts")
     }
 
@@ -150,16 +153,25 @@ struct ProxyEditorView: View {
         VStack(alignment: .leading, spacing: 14) {
             VStack(alignment: .leading, spacing: 3) {
                 Text(isNew ? "New Proxy" : "Edit “\(proxy.displayName)”").font(.headline)
-                Text("An HTTP proxy that accepts CONNECT. Ask your network administrator for its address, port and login.")
+                Text("An HTTP proxy that accepts CONNECT, or a SOCKS5 proxy. Ask your network administrator for its kind, "
+                     + "address, port and login.")
                     .font(.caption).foregroundColor(.secondary).fixedSize(horizontal: false, vertical: true)
             }
             Form {
+                Picker("Type:", selection: $draft.kind) {
+                    Text("HTTP").tag(Proxy.Kind.http)
+                    Text("SOCKS5").tag(Proxy.Kind.socks5)
+                }
+                .pickerStyle(.segmented)
+                .accessibilityIdentifier("proxyEditor.kind")
+                .help("HTTP (CONNECT), the usual company proxy, or SOCKS5 (often port 1080, or an ssh -D tunnel)")
                 TextField("Name:", text: $draft.name, prompt: Text("Optional")).accessibilityIdentifier("proxyEditor.name")
                     .help("A name for the list; host:port when empty")
                 TextField("Address:", text: $draft.host, prompt: Text("proxy.example.com")).accessibilityIdentifier("proxyEditor.host")
                     .help("The proxy's host name or IP address")
-                TextField("Port:", text: $draft.port, prompt: Text("8080")).accessibilityIdentifier("proxyEditor.port")
-                    .help("The proxy's port, often 8080 or 3128")
+                TextField("Port:", text: $draft.port, prompt: Text(draft.kind == .socks5 ? "1080" : "8080"))
+                    .accessibilityIdentifier("proxyEditor.port")
+                    .help(draft.kind == .socks5 ? "The proxy's port, often 1080" : "The proxy's port, often 8080 or 3128")
                 TextField("User name:", text: $draft.username, prompt: Text("None")).accessibilityIdentifier("proxyEditor.username")
                     .help("Only if the proxy asks for a login; leave it empty otherwise")
                 Text("Optional. The password field appears when a user name is given.")

@@ -14,20 +14,22 @@
 - [Find your way around the window](https://kleash.github.io/airscp/getting-started/the-window.html): AirSCP has one main window. Here is what each part does.
 
 ## Connecting
-- [Connecting](https://kleash.github.io/airscp/connecting/): How to save your servers and log in to them: with a key, a password, through a jump host or an HTTP proxy.
+- [Connecting](https://kleash.github.io/airscp/connecting/): How to save your servers and log in to them: with a key, a password, through a jump host or a proxy.
 - [Add a server](https://kleash.github.io/airscp/connecting/add-a-host.html): A host is a server you log in to over SSH. Save it once, and AirSCP connects with one click. Only the address is required: the rest has sensible defaults.
 - [Import hosts from ~/.ssh/config](https://kleash.github.io/airscp/connecting/import-from-ssh-config.html): Already use ssh in Terminal? AirSCP can make a host for each alias in your `~/.ssh/config`. ssh keeps reading their settings from your config, so later changes there apply in AirSCP too.
 - [Log in with a password](https://kleash.github.io/airscp/connecting/log-in-with-a-password.html): Some servers ask for a password, and some for a code from an app as well (two-factor). AirSCP asks these questions in its own window and names the host they are for.
 - [Log in with a key](https://kleash.github.io/airscp/connecting/log-in-with-a-key.html): A key pair lets you log in without typing a password. The private key stays on your Mac; the public key goes on the server.
 - [Trust a server the first time](https://kleash.github.io/airscp/connecting/trust-a-server.html): The first time you connect to a server, AirSCP shows the server's key fingerprint and asks **Trust “…”?**. This protects you: if someone pretends to be your server later, its key won't match, and ssh stops.
 - [Connect through a jump host](https://kleash.github.io/airscp/connecting/jump-hosts.html): Some servers can't be reached from your Mac directly: you first log in to another server, often called a **bastion** or **jump host**. AirSCP does both steps for you (this is ssh's `ProxyJump`).
-- [Connect through an HTTP proxy](https://kleash.github.io/airscp/connecting/proxies.html): Some company networks reach the internet only through an HTTP proxy. AirSCP can send a host's connection through such a proxy (HTTP CONNECT), with or without a user name and password. Most people need none.
+- [Connect through a proxy](https://kleash.github.io/airscp/connecting/proxies.html): Some company networks reach the internet only through a proxy. AirSCP can send a host's connection through an HTTP proxy (HTTP CONNECT) or a SOCKS5 proxy, with or without a user name and password. Most people need none.
 - [Extra ssh settings](https://kleash.github.io/airscp/connecting/extra-ssh-settings.html): Sometimes a server needs an ssh setting that AirSCP has no field for. Add it under **Other ssh options**, one per line, as `Name=value`. Leave it empty unless you need one.
 - [Self-signed certificates and corporate networks](https://kleash.github.io/airscp/connecting/self-signed-certificates.html): Company servers often use their own (self-signed) certificates, so AirSCP asks about them every time it meets a new one. You can tell AirSCP how to check each server. The safe choice, **Ask**, is the default, and a relaxed choice is always visible.
 - [Stay connected](https://kleash.github.io/airscp/connecting/stay-connected.html): Wi-Fi drops, a Mac goes to sleep, a VPN restarts. AirSCP notices, connects again by itself, and continues your transfers.
 - [Groups, colours and search](https://kleash.github.io/airscp/connecting/organise-hosts.html): Many servers? Sort them into groups, give them colours, and find them by typing.
 - [Move your hosts to another Mac](https://kleash.github.io/airscp/connecting/move-to-another-mac.html): Export your hosts, groups, proxies and Remote Desktop entries to a file, and import that file on another Mac.
-- [Import your sites from WinSCP](https://kleash.github.io/airscp/connecting/import-from-winscp.html): Coming from WinSCP on Windows? AirSCP can make a host for each of your WinSCP sites, with its folder, its key, its tunnel (as a jump host) and its HTTP proxy.
+- [Import your sites from WinSCP](https://kleash.github.io/airscp/connecting/import-from-winscp.html): Coming from WinSCP on Windows? AirSCP can make a host for each of your WinSCP sites, with its folder, its key, its tunnel (as a jump host) and its proxy.
+- [Server information, password and links](https://kleash.github.io/airscp/connecting/server-info.html)
+- [Browse and copy files as root](https://kleash.github.io/airscp/connecting/browse-as-root.html): Some files only root (or another user) may change: web server configs, other users' folders. AirSCP can browse, change and copy files as that user, with `sudo`.
 
 ## Files
 - [Files](https://kleash.github.io/airscp/files/): The **Files** tab has two panes. The left pane shows this Mac (or another connected server). The right pane shows the selected server. Drag between them to copy.
@@ -40,6 +42,7 @@
 - [New folder, rename, duplicate, delete, Get Info](https://kleash.github.io/airscp/files/manage-files.html): Everyday file commands work on servers like in Finder. Right-click a file, or use the **File** menu.
 - [Change permissions](https://kleash.github.io/airscp/files/permissions.html): Permissions say who may read, change and run a file on a server (`chmod`).
 - [Compress and extract on the server](https://kleash.github.io/airscp/files/compress-and-extract.html): Make a `.zip` or `.tar.gz` archive on the server, or unpack one there. Nothing goes through your Mac.
+- [Select by pattern, compare folders, move, link](https://kleash.github.io/airscp/files/select-and-compare.html): Commands for many files at once, and for arranging files on a server.
 
 ## Transfers & queue
 - [Transfers & queue](https://kleash.github.io/airscp/transfers/): Every upload and download goes into the **Transfers** list at the bottom of the window. Transfers run in the background, so you keep browsing. Each host runs one transfer at a time; different hosts run at the same time.
@@ -63,19 +66,20 @@
 - [Save commands as snippets](https://kleash.github.io/airscp/commands/snippets.html): A snippet is a command you run often, saved with a name. You choose the host each time you run it.
 - [Open a terminal](https://kleash.github.io/airscp/commands/open-a-terminal.html): Open an ssh session to a host in Terminal or iTerm. It rides on AirSCP's open connection, so you don't log in again.
 - [See the commands AirSCP ran](https://kleash.github.io/airscp/commands/command-log.html): AirSCP is a window on top of the ssh tools of macOS. The command log shows every command it ran for a host, as a line you can copy and run yourself.
-- [The Terminal tab](https://kleash.github.io/airscp/commands/terminal-tab.html): A shell on the server, inside AirSCP. It uses the host's connection, so there is no second login, and it knows files: right-click a file name in the output to show, download or edit it, and drop Finder files on it to upload them to the folder you are in.
+- [The Terminal tab](https://kleash.github.io/airscp/commands/terminal-tab.html): A shell on the server, inside AirSCP. It uses the host's connection, so there is no second login. It knows files: right-click a file name in the output to show, download or edit it, and drop Finder files on it to upload them to the folder you are in. With bash and zsh it also knows your commands: how each one ended, how long it took and what it printed.
 
 ## Certificates and keystores
-- [Certificates and keystores](https://kleash.github.io/airscp/certificates/): **Tools ▸ Certificate Manager…** does the everyday certificate work without `openssl` or `keytool` commands. Open a certificate, key or keystore, see what is in it and when it expires, and save it in the format another system wants. Everything happens on this Mac.
+- [Certificates and keystores](https://kleash.github.io/airscp/certificates/): **Tools ▸ Certificate Manager…** does the everyday certificate work without `openssl` or `keytool` commands. Open a certificate, key or keystore, see what is in it and when it expires, check its chain, save it in the format another system wants, or make a new certificate request. Everything happens on this Mac.
 - [Open and check certificates](https://kleash.github.io/airscp/certificates/open-and-check.html)
 - [Convert and export](https://kleash.github.io/airscp/certificates/convert-and-export.html): Select an item in the Certificate Manager, then use the buttons below its details. Each asks where to save.
+- [Create a certificate or request](https://kleash.github.io/airscp/certificates/create.html): Make a new key with a certificate request (CSR) to send to a certificate authority, or with a self-signed certificate for a test or internal server.
 - [See a server's certificate](https://kleash.github.io/airscp/certificates/server-certificate.html): Check what certificate a website, LDAP or mail server sends, and whether this Mac trusts it.
 
 ## Keys
 - [Keys](https://kleash.github.io/airscp/keys/): An SSH key pair lets you log in without typing a password. The **Keys** window lists your keys and makes new ones.
 - [Make a new key pair](https://kleash.github.io/airscp/keys/new-key-pair.html): Make a key in a few clicks, without the command line. Then put it on your servers to log in without a password.
 - [Put your key on a server](https://kleash.github.io/airscp/keys/install-a-key.html): The server must know your public key before you can log in with it. AirSCP adds it for you (like `ssh-copy-id`).
-- [Use your PuTTY (.ppk) keys](https://kleash.github.io/airscp/keys/putty-keys.html): Coming from Windows, PuTTY or WinSCP? Your keys are `.ppk` files. AirSCP turns them into keys that ssh on the Mac can use, and back. Nothing else needs to be installed.
+- [Use your PuTTY (.ppk) keys](https://kleash.github.io/airscp/keys/putty-keys.html): Coming from Windows or PuTTY? Your keys are `.ppk` files. AirSCP turns them into keys that ssh on the Mac can use, and back. Nothing else needs to be installed.
 
 ## More topics
 - [Home](https://kleash.github.io/airscp/): AirSCP is a Mac app for your servers. You save your servers once. Then you click to connect, and you drag files between your Mac and the server. AirSCP also opens Windows desktops (Remote Desktop), shows what a Linux server is doing, and opens tunnels. You don't need to type commands.

@@ -67,10 +67,21 @@ struct AXNode {
         ["button", "checkbox", "radiobutton", "menubutton", "popupbutton", "link", "disclosuretriangle"].contains(role)
     }
 
+    /// A click on `button` as AppKit's would do it (next state, then its action), for agents.
+    @discardableResult
+    static func click(_ button: NSButton) -> Bool {
+        guard button.isEnabled else { return false }
+        if let cell = button.cell as? NSButtonCell, !cell.showsStateBy.isEmpty { button.setNextState() }
+        if let action = button.action { button.sendAction(action, to: button.target) }
+        return true
+    }
+
     func press() -> Bool {
         if let button = view as? NSButton, object === button || object === button.cell {
-            button.performClick(nil)
-            return true
+            // What a click does, without performClick's tracking loop: that pulls events, which starts AppKit's event
+            // thread, whose wake-ups (CFRunLoopStop on the main run loop) end any run loop but NSApp's own: in the test
+            // process (no NSApp.run) the next one ended the process. Radio groups still switch.
+            return Self.click(button)
         }
         // A segment (tabs, Back/Forward): chosen as a click chooses it, without the click's tracking loop.
         let parent = get("accessibilityParent") as? NSObject
@@ -150,9 +161,11 @@ extension AgentServer {
         // The request before this one (this one's time is now).
         var result: [String: Any] = ["windows": windowsJSON(), "selection": selectionJSON(),
                                      "agent": ["on": true, "lastRequest": previousRequest.map { ISO8601DateFormatter().string(from: $0) as Any } ?? NSNull(),
-                                               "client": model.agentClient.map { $0.name as Any } ?? NSNull(), "actions": model.agentActionCount],
+                                               "client": model.agentClient.map { $0.name as Any } ?? NSNull(), "actions": model.agentActionCount,
+                                               // Changes wait for the person at the Mac (Settings ▸ Ask before agents change things).
+                                               "asksFirst": model.data.settings.askBeforeAgentChanges && !(allowedUntil.map { now() < $0 } ?? false)],
                                      "appearance": model.data.settings.appearance.rawValue,
-                                     // The debug log (PLAN.md AE): an agent reads the file itself.
+                                     // The debug log: an agent reads the file itself.
                                      "debugLog": ["on": DebugLog.enabled, "path": DebugLog.fileURL.path]]
         if include.contains("sidebar") { result["sidebar"] = sidebarJSON() }
         if include.contains("workspace"), let workspace = main?.selectedWorkspace { result["workspace"] = workspaceJSON(workspace) }
@@ -206,12 +219,13 @@ extension AgentServer {
     }
 
     /// The windows an agent works with: the main window (also while closed) and AirSCP's other windows on screen
-    /// (Settings, Keys, Snippets, editors). Other main windows are someone else's: only tests make them.
+    /// (Settings, Keys, Snippets, editors). Other main windows are someone else's: only tests make them. The question
+    /// to the person at the Mac is theirs alone.
     var appWindows: [NSWindow] {
         let main = self.main?.window
         return (main.map { [$0] } ?? []) + otherWindows().filter { window in
             window !== main && window.isVisible && window.sheetParent == nil && !(window.windowController is MainWindowController)
-                && !(window is NSPanel && window.title.isEmpty)
+                && !(window is NSPanel && window.title.isEmpty) && !(window is AgentQuestionPanel)
         }
     }
 
@@ -345,7 +359,7 @@ extension AgentServer {
                     json["route"] = route.short  // as the sidebar shows it: "via corp-proxy → bastion"
                     if route.missing { json["warning"] = route.full }
                 }
-                json["hostKeyCheck"] = host.hostKeyCheck.rawValue  // ask, acceptNew or off (PLAN.md U.4)
+                json["hostKeyCheck"] = host.hostKeyCheck.rawValue  // ask, acceptNew or off
                 if host.hostKeyCheck == .off { json["shield"] = ChecksOffShield.help(ssh: true) }
                 return json
             }]
@@ -427,6 +441,7 @@ extension AgentServer {
                 if let id = item.groupID { row["groupID"] = id }
                 if let modified = item.modified { row["modified"] = (item.dateOnly ? days : dates).string(from: modified) }
                 if item.name.hasPrefix(".") { row["hidden"] = true }
+                if let mark = pane.marks[item.name] { row["mark"] = mark }  // Compare Folders
                 return row
             },
         ]
@@ -528,10 +543,11 @@ extension AgentServer {
         return json
     }
 
-    // MARK: Terminal (PLAN.md W)
+    // MARK: Terminal
 
     /// The Terminal tab's shell: running, its folder and title as the shell said them, the cursor, and the text of the
-    /// last `lines` lines (scrollback included), wrapped lines joined.
+    /// last `lines` lines (scrollback included), wrapped lines joined. With bash and zsh, which mark their commands, the
+    /// last 20 commands too: each one's line, exit status, time and output (its last 50 lines), the one running last.
     func terminalJSON(_ terminal: TerminalController, lines: Int = 200) -> [String: Any] {
         guard let session = terminal.session else { return ["running": false] }
         let screen = session.screen
@@ -540,10 +556,21 @@ extension AgentServer {
                                    "lines": Array(screen.text.components(separatedBy: "\n").suffix(max(lines, 1)))]
         if let directory = screen.directory { json["directory"] = directory }
         if !screen.title.isEmpty { json["title"] = screen.title }
+        if screen.marksCommands {
+            json["atPrompt"] = screen.waitsAtPrompt
+            json["commands"] = screen.blocks.suffix(20).map { block -> [String: Any] in
+                var command: [String: Any] = ["command": block.text, "running": block.running,
+                                              "output": screen.output(of: block).components(separatedBy: "\n").suffix(50)
+                                                .joined(separator: "\n")]
+                if let status = block.status { command["status"] = Int(status) }
+                if let duration = block.duration { command["seconds"] = (duration * 100).rounded() / 100 }
+                return command
+            }
+        }
         return json
     }
 
-    // MARK: Find Files and Synchronize (PLAN.md S.1)
+    // MARK: Find Files and Synchronize
 
     /// The open Find Files sheet's search.
     var findModel: FindModel? {
@@ -576,7 +603,10 @@ extension AgentServer {
     /// The search and its results, as the sheet lists them: paths below the folder searched.
     func findJSON(_ find: FindModel, rows limit: Int = 200) -> [String: Any] {
         ["dir": find.dir, "pattern": find.pattern, "searching": find.searching, "status": find.status,
-         "count": find.results.count, "selected": find.selection.map(find.relative) ?? NSNull(),
+         "count": find.results.count,
+         // One result: its path; several: their paths (Download, Delete and Copy Paths take many).
+         "selected": find.selection.count == 1 ? find.relative(find.selection.first!) as Any
+            : find.selection.isEmpty ? NSNull() : find.selectedPaths.map(find.relative) as Any,
          "results": find.results.prefix(limit).map { item -> [String: Any] in
              item.isFolder ? ["path": find.relative(item.path), "folder": true] : ["path": find.relative(item.path)]
          }]

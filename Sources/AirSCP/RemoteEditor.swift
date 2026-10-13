@@ -64,6 +64,9 @@ final class RemoteEditor: NSWindowController, NSWindowDelegate, NSTextViewDelega
         textView.textContainerInset = NSSize(width: 4, height: 6)
         textView.delegate = self
         textView.setAccessibilityIdentifier("editor.text")
+        // The system find bar (Find, Replace, next and previous), as in TextEdit.
+        textView.usesFindBar = true
+        textView.isIncrementalSearchingEnabled = true
 
         status.font = .systemFont(ofSize: NSFont.smallSystemFontSize)
         status.textColor = .secondaryLabelColor
@@ -77,7 +80,17 @@ final class RemoteEditor: NSWindowController, NSWindowDelegate, NSTextViewDelega
         save.keyEquivalent = "s"
         save.keyEquivalentModifierMask = .command
         save.toolTip = "Save to the server (⌘S)"
-        let bar = NSStackView(views: [status, NSView(), revert, save])
+        let find = NSButton(title: "Find", target: self, action: #selector(showFind(_:)))
+        find.keyEquivalent = "f"
+        find.keyEquivalentModifierMask = .command
+        find.toolTip = "Find and replace text in the file (⌘F)"
+        let goTo = NSButton(title: "Go to Line…", target: self, action: #selector(goToLine(_:)))
+        goTo.keyEquivalent = "l"
+        goTo.keyEquivalentModifierMask = .command
+        goTo.toolTip = "Go to a line by its number (⌘L)"
+        let reload = NSButton(title: "Revert to Server Version", target: self, action: #selector(revertToServer(_:)))
+        reload.toolTip = "Read the file from the server again, in place of the text here"
+        let bar = NSStackView(views: [status, NSView(), find, goTo, reload, revert, save])
         bar.edgeInsets = NSEdgeInsets(top: 6, left: 12, bottom: 8, right: 12)
         let stack = NSStackView(views: [scroll, bar])
         stack.orientation = .vertical
@@ -209,12 +222,78 @@ final class RemoteEditor: NSWindowController, NSWindowDelegate, NSTextViewDelega
         }
     }
 
+    @objc func showFind(_ sender: Any?) {
+        let item = NSMenuItem()
+        item.tag = NSTextFinder.Action.showFindInterface.rawValue
+        textView.performTextFinderAction(item)
+    }
+
+    /// Go to Line…: the line by its number (from 1), selected and shown.
+    @objc func goToLine(_ sender: Any?) {
+        guard let window else { return }
+        let lines = textView.string.reduce(1) { $1 == "\n" ? $0 + 1 : $0 }
+        askText("Go to Line", info: "A number from 1 to \(lines.formatted()).", initial: "", placeholder: "1", button: "Go",
+                id: "editor.line", on: window) { [self] text in
+            guard let line = Int(text), let range = Self.range(ofLine: line, in: textView.string) else {
+                return showError(AirSCPError(.other, "“\(text)” isn't a line of this file (1 to \(lines.formatted()))."),
+                                 title: "No such line", on: window)
+            }
+            textView.setSelectedRange(range)
+            textView.scrollRangeToVisible(range)
+            window.makeFirstResponder(textView)
+        }
+    }
+
+    /// The range of line `number` (from 1, without its line end) in `text`, as NSTextView counts (UTF-16); nil past the end.
+    nonisolated static func range(ofLine number: Int, in text: String) -> NSRange? {
+        guard number >= 1 else { return nil }
+        let string = text as NSString
+        var start = 0, line = 1
+        while line < number {
+            let next = string.range(of: "\n", range: NSRange(location: start, length: string.length - start))
+            guard next.location != NSNotFound else { return nil }
+            start = next.location + 1
+            line += 1
+        }
+        let end = string.range(of: "\n", range: NSRange(location: start, length: string.length - start))
+        var length = (end.location == NSNotFound ? string.length : end.location) - start
+        if length > 0, string.character(at: start + length - 1) == 13 { length -= 1 }  // a Windows line end's \r
+        return NSRange(location: start, length: length)
+    }
+
+    /// Revert to Server Version: the file as the server has it now, in place of the text here (asking first when there
+    /// are unsaved changes).
+    @objc func revertToServer(_ sender: Any?) {
+        let load: () -> Void = { [self] in
+            status.stringValue = "Reading…"
+            Task {
+                do {
+                    let text = try await session.readText(path, limit: Self.limit)
+                    textView.string = text
+                    savedText = text
+                    serverText = text
+                    window?.isDocumentEdited = false
+                    status.stringValue = "The server's version, read at "
+                        + DateFormatter.localizedString(from: Date(), dateStyle: .none, timeStyle: .medium)
+                } catch {
+                    status.stringValue = "Not read"
+                    showError(error, title: "Can't read “\(RemotePath.name(path))” from the server", on: window)
+                }
+            }
+        }
+        guard window?.isDocumentEdited == true else { return load() }
+        confirm("Revert to the server's version?", info: "Your changes since the last save are lost.", button: "Revert",
+                destructive: true, on: window, action: load)
+    }
+
     func windowShouldClose(_ sender: NSWindow) -> Bool {
         guard sender.isDocumentEdited, !saving else { return !saving }
         let alert = NSAlert()
         alert.messageText = "Save the changes to “\(RemotePath.name(path))” before closing?"
         alert.informativeText = "If you don't, your changes are lost."
-        alert.addButton(withTitle: "Save").toolTip = "Save the changes to the server, then close"
+        let saveAndClose = alert.addButton(withTitle: "Save")
+        saveAndClose.toolTip = "Save the changes to the server, then close"
+        saveAndClose.setAccessibilityIdentifier("editor.saveAndClose")
         let discard = alert.addButton(withTitle: "Don't Save")
         discard.hasDestructiveAction = true
         discard.toolTip = "Close and lose the changes"

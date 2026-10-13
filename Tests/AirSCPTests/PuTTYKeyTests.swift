@@ -2,7 +2,7 @@ import Foundation
 import Testing
 @testable import AirSCPCore
 
-// PuTTY's .ppk files (PLAN.md K.2). The vectors are PuTTY's own (test/cryptsuite.py, testPPKLoadSave; PuTTY is MIT
+// PuTTY's .ppk files. The vectors are PuTTY's own (test/cryptsuite.py, testPPKLoadSave; PuTTY is MIT
 // licensed): an Ed25519 key in formats 3 and 2, plain and encrypted with "test-passphrase". AirSCP reads them all, and
 // writes format 3 again byte for byte (format 2 is only read: its key derivation is SHA-1).
 

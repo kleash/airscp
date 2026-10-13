@@ -56,7 +56,7 @@ cat > "$T/support/airscp.json" <<EOF
 {"hosts": [{"id": "5C2EE000-0000-4000-8000-000000000000", "label": "lab target", "hostname": "127.0.0.1", "port": 42201,
   "username": "dev", "auth": "keyFile", "keyFile": "$T/ssh/id_lab", "hostKeyCheck": "acceptNew", "autoReconnect": false,
   "lastLocalDir": "$T/mac"}],
- "settings": {"appearance": "light", "welcomeShown": true, "agentControl": true}}
+ "settings": {"appearance": "light", "welcomeShown": true, "agentControl": true, "askBeforeAgentChanges": false}}
 EOF
 AIRSCP_SSH_DIR=$T/ssh AIRSCP_AGENT=1 "$bin" > "$out/app.log" 2>&1 &
 pid=$!

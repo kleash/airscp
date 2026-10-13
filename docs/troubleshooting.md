@@ -60,7 +60,7 @@ each step: which server answered, what the proxy said, and where it stopped.
 
 {% include shot.html name="debug-log" alt="With debug logging on, the sidebar says so and an error offers Show Debug Log" %}
 
-- Look for the line **Couldn't connect: it stopped at …**. It names the step that failed: the HTTP proxy, the jump
+- Look for the line **Couldn't connect: it stopped at …**. It names the step that failed: the proxy, the jump
   host, or the server.
 - The log never holds passwords, passphrases or file contents. It stays on your Mac: AirSCP sends it nowhere.
 - It keeps at most 10 MB, plus one older file (`AirSCP-debug.1.log`).

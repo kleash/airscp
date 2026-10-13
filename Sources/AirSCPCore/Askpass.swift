@@ -333,8 +333,8 @@ public final class AskpassServer {
             DispatchQueue.main.async {
                 proxyHandler(proxyID, mayAsk, fromAirSCP) { [weak self] answer in
                     DebugLog.Secrets.add(answer?.password)
-                    self?.reply(token, answer.map { ["host": $0.proxy.host, "port": $0.proxy.port,
-                                                     "username": $0.proxy.username, "password": $0.password] } ?? [:])
+                    self?.reply(token, answer.map { ["host": $0.proxy.host, "port": $0.proxy.port, "username": $0.proxy.username,
+                                                     "password": $0.password, "kind": ($0.proxy.kind ?? .http).rawValue] } ?? [:])
                 }
             }
             return

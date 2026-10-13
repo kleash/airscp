@@ -1,5 +1,5 @@
 #!/bin/bash
-# Test-only (PLAN.md K.2): builds PuTTY's own puttygen from the official PuTTY source, for the interop tests of
+# Test-only: builds PuTTY's own puttygen from the official PuTTY source, for the interop tests of
 # AirSCP's .ppk import and export (AIRSCP_PUTTY=1 ./test.sh --filter PuTTY). It is never shipped or linked.
 #   vendor/puttygen/puttygen   (this Mac's architecture)
 # The source (pinned version, SHA-256 checked) and the portable CMake that scripts/build-freerdp.sh downloaded are

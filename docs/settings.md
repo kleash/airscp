@@ -29,6 +29,7 @@ still apply. With Increase contrast on, the dark look drops its blue tint.
 | Setting | What it does |
 |---|---|
 | **Open terminals in** | Terminal (default) or iTerm, for Open Terminal, Run in Terminal and Kill with sudo. |
+| **Open Terminal Here in the Terminal tab** | Off by default. On: a server folder's **Open Terminal Here** goes to the host's [Terminal tab](commands/terminal-tab.md) in AirSCP instead. |
 | **Downloads folder** | Where **Download To…** starts, and where **Download as .tar.gz** puts the archive when the other pane isn't this Mac. Drags and the Download button go to the folder shown. |
 | **Show hidden files in new panes** | Off by default. Each pane can still switch with <kbd>⇧⌘.</kbd>. |
 | **Copied files keep their original date** | Off by default: copies are dated now. On: they keep the file's own date (`scp -p`). |
@@ -54,6 +55,10 @@ model on this Mac. See [Shortcuts, Siri & Apple Intelligence](shortcuts-and-ai.m
 ## Agents
 
 **Allow AI agents to control AirSCP (MCP)**: off by default. See [AI agents (MCP)](ai-agents.md).
+
+**Ask before agents change things**: on by default. Before an agent deletes, copies or runs something, a small window
+asks you: **Deny**, **Allow Once** or **Allow for 15 Minutes**. Agents can't turn it off. See
+[Allow or deny what an agent changes](ai-agents.md#allow-or-deny-what-an-agent-changes).
 
 ## Advanced
 

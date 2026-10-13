@@ -222,7 +222,10 @@ import Testing
             var above = field.superview
             while let clip = above {
                 if let clip = clip as? NSClipView {
-                    #expect(clip.bounds.contains(field.convert(ring, to: clip)), "\(name): \(field.placeholderString ?? "")")
+                    // Inside what the scroll view holds (on a short screen, such as CI's, the form scrolls: a field below
+                    // the visible part is fine; a ring cut off at the form's edges isn't).
+                    let area = clip.documentView.map { clip.convert($0.bounds, from: $0) }?.union(clip.bounds) ?? clip.bounds
+                    #expect(area.contains(field.convert(ring, to: clip)), "\(name): \(field.placeholderString ?? "")")
                 }
                 above = clip.superview
             }
@@ -231,7 +234,7 @@ import Testing
     }
 }
 
-// MARK: Full screen and the shared folder (1.0.1: the owner's findings against real Windows)
+// MARK: Full screen and the shared folder (1.0.1: found against real Windows)
 
 /// ⌃⌘F leaves (and enters) full screen also while the desktop takes the keyboard: it never goes to Windows. Other ⌘
 /// and Ctrl combinations still go to Windows, not to AirSCP's menus.
@@ -325,11 +328,8 @@ import Testing
     window.contentView = desktop.view
     window.orderFrontRegardless()  // (off screen) SwiftUI makes accessibility elements for a window that is shown
     defer { window.orderOut(nil) }
-    let clipboard = NSPasteboard.general.string(forType: .string)
-    defer {
-        NSPasteboard.general.clearContents()
-        if let clipboard { NSPasteboard.general.setString(clipboard, forType: .string) }
-    }
+    await TestClipboard.take()
+    defer { TestClipboard.give() }
     let bar = desktop.bar
     bar.state = .connected
     bar.size = "1280 × 800"

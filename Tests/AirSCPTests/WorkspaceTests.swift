@@ -200,7 +200,8 @@ private func filesTab(_ session: Session) -> BrowserContentController {
     #expect(view.item(withTitle: "Show Hidden Files")?.keyEquivalentModifierMask == [.command, .shift])
     let go = main.item(withTitle: "Go")!.submenu!
     #expect(go.items.filter { !$0.isSeparatorItem }.map(\.title)
-            == ["Back", "Forward", "Enclosing Folder", "Open Selection", "Home", "Go to Folder…", "Add to Favourites", "Favourites"])
+            == ["Back", "Forward", "Enclosing Folder", "Open Selection", "Home", "Go to Folder…", "Other Pane's Folder",
+                "Add to Favourites", "Favourites"])
     // View ▸ Columns: the header's menu (not the name column, which always shows).
     let columns = try #require(view.item(withTitle: "Columns")?.submenu)
     #expect(columns.items.map(\.title) == ["Size", "Date Modified", "Permissions", "Owner", "Group", "Kind"])
@@ -664,13 +665,19 @@ private final class OffMainThread: @unchecked Sendable {
     }
 }
 
-/// Answers the sheet that comes up on `window`: sets its checkbox (if any) and clicks button `index` (0: the first).
-/// Returns the sheet's message, or nil when none came up.
+/// Answers the sheet that comes up on `window`: sets its checkbox (if any) and clicks button `index` (0: the first), or
+/// the button titled `title`. Returns the sheet's message, or nil when none came up.
 @MainActor
-private func answerSheet(on window: NSWindow, button index: Int, checkbox: NSControl.StateValue? = nil) async -> String? {
+private func answerSheet(on window: NSWindow, button index: Int = 0, title: String? = nil,
+                         checkbox: NSControl.StateValue? = nil) async -> String? {
     guard await eventually({ window.attachedSheet != nil }), let sheet = window.attachedSheet else { return nil }
     func views(_ view: NSView?) -> [NSView] { view.map { [$0] + $0.subviews.flatMap(views) } ?? [] }
     let all = views(sheet.contentView)
+    var index = index
+    if let title, let alert = all.compactMap({ ($0 as? NSButton)?.target as? NSAlert }).first,
+       let found = alert.buttons.firstIndex(where: { $0.title == title }) {
+        index = found
+    }
     if let checkbox, let box = all.compactMap({ $0 as? NSButton }).first(where: { $0.bezelStyle == .regularSquare || $0.title.hasPrefix("Do the same") || $0.title.hasPrefix("Compress") }) {
         box.state = checkbox
     }
@@ -705,7 +712,7 @@ private func answerSheet(on window: NSWindow, button index: Int, checkbox: NSCon
 
         // Both names exist on the server: Keep Both, and the same for the other one.
         browser.copyToOtherPane(browser.left.rows.filter { $0.name == "a.txt" || $0.name == "b.txt" }, from: browser.left)
-        #expect(await answerSheet(on: window, button: 1, checkbox: .on) == "“a.txt” already exists in “home”.")
+        #expect(await answerSheet(on: window, title: "Keep Both", checkbox: .on) == "“a.txt” already exists in “home”.")
         #expect(await eventually { read(server.path("a 2.txt")) == "new a" && read(server.path("b 2.txt")) == "new b" })
         #expect(read(server.path("a.txt")) == "old a" && window.attachedSheet == nil)
 
@@ -717,7 +724,7 @@ private func answerSheet(on window: NSWindow, button index: Int, checkbox: NSCon
 
         // This Mac's disk ignores case: NOTES.TXT meets notes.txt. Keep Both makes "NOTES 2.TXT".
         browser.copyToOtherPane(browser.right.rows.filter { $0.name == "NOTES.TXT" }, from: browser.right)
-        #expect(await answerSheet(on: window, button: 1) == "“NOTES.TXT” already exists in “\(RemotePath.name(local))”.")
+        #expect(await answerSheet(on: window, title: "Keep Both") == "“NOTES.TXT” already exists in “\(RemotePath.name(local))”.")
         #expect(await eventually { read(local + "/NOTES 2.TXT") == "theirs" } && read(local + "/notes.txt") == "mine")
 
         // Delete asks first (the Settings default).
@@ -778,7 +785,7 @@ private func answerSheet(on window: NSWindow, button index: Int, checkbox: NSCon
     }
 }
 
-/// Many files chosen at once (⌘A, a Finder drop) can go as one tar stream instead of an scp each (PLAN.md S): from
+/// Many files chosen at once (⌘A, a Finder drop) can go as one tar stream instead of an scp each: from
 /// `TransferQueue.streamThreshold` items on, the transfer sheet offers "Compress during transfer", as for folders.
 @MainActor @Test func manyChosenFilesGoAsOneStream() async throws {
     _ = NSApplication.shared

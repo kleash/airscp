@@ -252,13 +252,22 @@ enum Panels {
     static var agentProblem: String?
     /// The folder the panel that took the agent's choice would have opened in (agent control's reply says it).
     static var agentPanelFolder: String?
+    /// A file the agent chose in a Save panel that is there already, and the save: agent control asks first, as the
+    /// panel would have.
+    static var agentReplacing: (file: URL, save: () -> Void)?
 
     /// Shows `panel` on `window` (on its own without one) and calls `chosen` with what was picked, unless cancelled.
     static func run(_ panel: NSSavePanel, on window: NSWindow?, chosen: @escaping ([URL]) -> Void) {
         if let urls = agentChoice {
             agentChoice = nil
             agentPanelFolder = panel.directoryURL?.path
-            if let problem = problem(urls, panel) { agentProblem = problem } else { chosen(urls) }
+            if let problem = problem(urls, panel) {
+                agentProblem = problem
+            } else if !(panel is NSOpenPanel), FileManager.default.fileExists(atPath: urls[0].path) {
+                agentReplacing = (urls[0], { chosen(urls) })
+            } else {
+                chosen(urls)
+            }
             return
         }
         let done: (NSApplication.ModalResponse) -> Void = { response in

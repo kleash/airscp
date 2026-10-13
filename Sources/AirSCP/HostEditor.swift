@@ -21,6 +21,7 @@ struct HostDraft: Equatable {
     var extraOptions = ""
     var groupID: UUID?
     var hostKeyCheck = HostKeyCheck.ask
+    var sudoUser = ""
     /// What was typed in the password field: saved in the Keychain on Save (empty: keep what is saved).
     var password = ""
 
@@ -40,6 +41,7 @@ struct HostDraft: Equatable {
         extraOptions = host.extraOptions.joined(separator: "\n")
         groupID = host.groupID
         hostKeyCheck = host.hostKeyCheck
+        sudoUser = host.sudoUser
     }
 
     var validationError: String? {
@@ -53,6 +55,10 @@ struct HostDraft: Equatable {
         }
         if auth == .keyFile && keyFile.trimmingCharacters(in: .whitespaces).isEmpty { return "Choose the key file." }
         if keepAliveSeconds == nil { return "The keep-alive interval must be a number of seconds from 1 to 3600." }
+        let sudo = sudoUser.trimmingCharacters(in: .whitespaces)
+        if !sudo.isEmpty && sudo.range(of: "^[A-Za-z0-9_][A-Za-z0-9_.-]*$", options: .regularExpression) == nil {
+            return "“\(sudo)” isn't a user name (letters, digits, _ . -)."
+        }
         if let line = optionLines.first(where: { !Self.isOption($0) }) {
             return "“\(line)” isn't an ssh option. Write one option per line, like Compression=yes."
         }
@@ -83,6 +89,7 @@ struct HostDraft: Equatable {
         host.proxyID = jumpHostID == nil ? proxyID : nil  // through a jump host, the first hop is its own proxy's
         host.defaultRemoteDir = defaultRemoteDir.trimmingCharacters(in: .whitespaces)
         host.forwardAgent = forwardAgent
+        host.sudoUser = sudoUser.trimmingCharacters(in: .whitespaces)
         host.serverAliveInterval = keepAliveSeconds ?? host.serverAliveInterval
         host.autoReconnect = autoReconnect
         host.extraOptions = optionLines
@@ -142,7 +149,7 @@ func missingKeyFile(_ host: SSHHost) -> String? {
 struct KeyOption: Hashable {
     /// The full path (~ expanded).
     let path: String
-    /// "id_ed25519 · ED25519 · sa@mac", or the path for a key outside ~/.ssh, with "(missing)" when it is gone.
+    /// "id_ed25519 · ED25519 · me@mac", or the path for a key outside ~/.ssh, with "(missing)" when it is gone.
     let title: String
     let missing: Bool
 
@@ -187,16 +194,16 @@ struct HostEditorView: View {
     @State private var addingProxy = false
     /// What ssh (or AirSCP) says is wrong with lines of Other ssh options, by line (checked as they are typed).
     @State private var optionProblems: [String: String] = [:]
-    /// Generate New Key… and a PuTTY key chosen as the key file (PLAN.md K.1, K.2): the key sheet, and what runs
+    /// Generate New Key… and a PuTTY key chosen as the key file: the key sheet, and what runs
     /// ssh-keygen for it (its questions are sheets on the editor).
     @State private var keyFlow: KeyFlow?
     @State private var keys: KeysModel?
     @State private var keysAskpassID = "keys-" + UUID().uuidString
 
-    /// The HTTP proxy menu's "Add Proxy…" (it opens the proxy editor and chooses the new proxy).
+    /// The proxy menu's "Add Proxy…" (it opens the proxy editor and chooses the new proxy).
     private static let addProxy = UUID(uuidString: "00000000-0000-0000-0000-00000000ADD1")!
 
-    /// The Add Common Option… menu: the lines each entry adds, and when you'd use it (PLAN.md U.3). Options the editor
+    /// The Add Common Option… menu: the lines each entry adds, and when you'd use it. Options the editor
     /// has fields for are left out.
     static let commonOptions: [(lines: [String], why: String)] = [
         (["Compression=yes"], "faster on slow links for text and logs; slower on fast networks"),
@@ -222,6 +229,7 @@ struct HostEditorView: View {
         let defaults = SSHHost()
         _advanced = State(initialValue: host.proxyID != nil || host.serverAliveInterval != defaults.serverAliveInterval
                           || host.autoReconnect != defaults.autoReconnect || host.forwardAgent || !host.extraOptions.isEmpty
+                          || !host.sudoUser.isEmpty
                           || host.hostKeyCheck != defaults.hostKeyCheck)
     }
 
@@ -291,13 +299,14 @@ struct HostEditorView: View {
                 .accessibilityIdentifier("hostEditor.group")
                 .help("The sidebar group this host is listed under")
                 AdvancedToggle(shown: $advanced, id: "hostEditor.advanced",
-                               help: "Rarely needed: an HTTP proxy, keep-alive, reconnecting, agent forwarding and other ssh options")
+                               help: "Rarely needed: a proxy, keep-alive, reconnecting, agent forwarding and other ssh options")
                 if advanced { advancedFields }
             }
             .scrollingOnShortScreens()
             if askpass != nil {
                 HStack(spacing: 8) {
                     Button("Test Connection", action: test).disabled(testing || problem != nil)
+                        .accessibilityIdentifier("hostEditor.test")
                         .help("Log in with these settings and out again, without saving; ssh's questions appear here")
                     if testing { ProgressView().controlSize(.small) }
                     if let testResult {
@@ -312,6 +321,7 @@ struct HostEditorView: View {
                 Button("Cancel") { close(nil) }.keyboardShortcut(.cancelAction).help("Close without saving")
                 Button(isNew ? "Add" : "Save", action: save)
                     .keyboardShortcut(.defaultAction).primaryTint()
+                    .accessibilityIdentifier("hostEditor.save")
                     .disabled(problem != nil)
                     .help(isNew ? "Save this host in the sidebar" : "Save the changes; a connected host uses them at its next connect")
             }
@@ -337,9 +347,9 @@ struct HostEditorView: View {
         .onDisappear { askpass?.setHandler(nil, for: keysAskpassID) }
     }
 
-    /// Under Advanced: the HTTP proxy, keep-alive, reconnecting, agent forwarding and other ssh options.
+    /// Under Advanced: the proxy, keep-alive, reconnecting, agent forwarding and other ssh options.
     @ViewBuilder private var advancedFields: some View {
-        Picker("HTTP proxy:", selection: Binding(get: { draft.proxyID }, set: { choice in
+        Picker("Proxy:", selection: Binding(get: { draft.proxyID }, set: { choice in
             if choice == Self.addProxy { addingProxy = true } else { draft.proxyID = choice }
         })) {
             Text("None").tag(UUID?.none)
@@ -349,9 +359,9 @@ struct HostEditorView: View {
         }
         .disabled(draft.jumpHostID != nil)
         .accessibilityIdentifier("hostEditor.proxy")
-        .help("Reach the server through an HTTP proxy (CONNECT); only when your network needs one")
+        .help("Reach the server through an HTTP or SOCKS5 proxy; only when your network needs one")
         caption(draft.jumpHostID != nil ? "The host it connects through uses its own proxy (it is the first hop)."
-                : "Only when the network reaches servers through an HTTP proxy. Most people need none.")
+                : "Only when the network reaches servers through a proxy. Most people need none.")
         LabeledContent("Keep-alive every:") {
             HStack(spacing: 6) {
                 TextField("Keep-alive", text: $draft.keepAlive).labelsHidden().frame(width: 56).accessibilityIdentifier("hostEditor.keepAlive")
@@ -364,6 +374,13 @@ struct HostEditorView: View {
         Toggle("Reconnect automatically", isOn: $draft.autoReconnect).accessibilityIdentifier("hostEditor.autoReconnect")
             .help("On by default. When the connection drops, AirSCP reconnects by itself if no question is needed (a key, "
                   + "the agent or a saved password); off, it shows Disconnected and waits")
+        LabeledContent("Browse and transfer as:") {
+            TextField("Browse and transfer as", text: $draft.sudoUser, prompt: Text("Optional: e.g. root")).labelsHidden()
+                .accessibilityIdentifier("hostEditor.sudoUser")
+                .help("Optional. Browse, change and copy files as this user, with sudo (for files only root may change); "
+                      + "empty: as the user you log in as")
+        }
+        caption("Needs sudo without a password (NOPASSWD) for that user. Commands you type and the Terminal tab stay yours.")
         Toggle("Let the server use my ssh agent", isOn: $draft.forwardAgent).accessibilityIdentifier("hostEditor.forwardAgent")
             .help("Off by default. On, programs on the server can log in elsewhere with your keys (ForwardAgent=yes); only "
                   + "for servers you trust")
@@ -395,15 +412,24 @@ struct HostEditorView: View {
                                 .accessibilityHidden(true)
                         }
                     }
-                Menu("Add Common Option…") {
-                    ForEach(Self.commonOptions, id: \.lines) { option in
-                        Button(option.lines.joined(separator: ", ") + " — " + option.why) { addOption(option.lines) }
-                            .help(option.why)
+                HStack {
+                    Menu("Add Common Option…") {
+                        ForEach(Self.commonOptions, id: \.lines) { option in
+                            Button(option.lines.joined(separator: ", ") + " — " + option.why) { addOption(option.lines) }
+                                .help(option.why)
+                        }
+                    }
+                    .fixedSize()
+                    .accessibilityIdentifier("hostEditor.addOption")
+                    .help("Insert a common ssh setting; each one says when you'd use it")
+                    if AppleIntelligence.ready {
+                        // Checked like a typed line (below) once it is in.
+                        SuggestButton(field: .otherOptions) { value in
+                            addOption(value.components(separatedBy: .newlines).map { $0.trimmingCharacters(in: .whitespaces) }
+                                .filter { !$0.isEmpty })
+                        }
                     }
                 }
-                .fixedSize()
-                .accessibilityIdentifier("hostEditor.addOption")
-                .help("Insert a common ssh setting; each one says when you'd use it")
                 caption("Extra ssh settings, one per line as Name=value. Leave empty unless you need one.")
                 ForEach(optionProblems.sorted { $0.key < $1.key }, id: \.key) { line, reason in
                     Text("“\(line)”: \(reason)").font(.caption).foregroundColor(.red).fixedSize(horizontal: false, vertical: true)

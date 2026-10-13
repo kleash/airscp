@@ -20,6 +20,8 @@ nav_order: 1
 
 ## What the details show
 
+{% include shot.html name="certificates" alt="The Certificate Manager: a self-signed certificate for web-01.example.com and its key, with the certificate's details" %}
+
 - **Subject** and **Issuer**: who the certificate is for, and who signed it.
 - **Names (SAN)**: the host names and addresses it is valid for.
 - **Valid until**: orange when it expires within 30 days, red once it has expired. The list's icons use the same
@@ -29,6 +31,19 @@ nav_order: 1
 - **Issued by (open)**: the certificate that signed it, when that one is open too. The list shows each file's
   certificates in chain order, the server's own first.
 - **SHA-256** and **SHA-1**: fingerprints, to compare with what someone sent you.
+
+## Check a certificate's chain
+
+1. Open the certificate, and the certificates that issued it if you have them.
+2. Select the certificate and click **Verify…**.
+3. Choose what to trust: **Authorities this Mac trusts**, or **A CA bundle file** (click **Choose…**).
+4. Type a **Host name** to check that the certificate is for that name. Optional.
+5. Click **Verify**.
+
+{% include shot.html name="certificate-verify" alt="Verify web-01.example.com: against the authorities this Mac trusts, for the host name web-01.example.com" %}
+
+The details say **Valid**, or why not: it has expired, the issuer is unknown, or the name doesn't match. Nothing is
+fetched from the network.
 
 ## Tips
 
@@ -44,3 +59,5 @@ nav_order: 1
 - **“AirSCP doesn't read RC2-40 encryption”**: the file was made with `openssl pkcs12 -legacy` or by an old Windows.
   Export it again with AES or 3DES.
 - **“AirSCP doesn't read JCEKS”**: convert the keystore to PKCS#12 with `keytool -importkeystore`.
+- **“Not valid: unknown issuer”**: the certificates between it and the authority aren't open, or you don't trust that
+  authority. Open the issuing certificates too, or choose the CA bundle that has the authority.

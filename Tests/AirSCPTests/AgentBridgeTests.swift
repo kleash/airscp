@@ -5,7 +5,7 @@ import Testing
 @testable import AirSCP
 @testable import AirSCPCore
 
-// The agent bridge (PLAN.md T): `AirSCP --mcp` speaks MCP (newline-delimited JSON-RPC 2.0) on stdio and
+// The agent bridge: `AirSCP --mcp` speaks MCP (newline-delimited JSON-RPC 2.0) on stdio and
 // `AirSCP --agent` runs one tool from a shell; both forward tool calls to the app's agent socket in
 // <AIRSCP_SUPPORT_DIR>/agent and pass its MCP results on untouched. These run the real AirSCP binary against a stand-in
 // for the app's socket.
@@ -241,15 +241,37 @@ private func agent(_ arguments: [String], support: String) async -> CommandResul
     ], support: support)
     let instructions = try #require((replies.byID[1]?["result"] as? [String: Any])?["instructions"] as? String)
     #expect(instructions.contains("snapshot") && instructions.contains("Never sleep") && instructions.contains("guide topic="))
-    // Folders and rows by path and name, not by coordinates (owner's report, 1.0.0: an agent clicked through folders).
+    // Folders and rows by path and name, not by coordinates (in 1.0.0 an agent clicked its way through folders).
     #expect(instructions.contains("Never click in the file panes or the sidebar") && instructions.contains("`go path="))
-    #expect(instructions.split(separator: "\n").count <= 40)
+    // Short: every MCP client gets them at initialize (with what changes wait for the person at the Mac).
+    #expect(instructions.split(separator: "\n").count <= 44)
     func text(_ id: Int) -> String? { ((replies.byID[id]?["result"] as? [String: Any])?["content"] as? [[String: Any]])?.first?["text"] as? String }
     #expect(text(2)?.hasPrefix(instructions) == true && text(2)?.contains("troubleshooting") == true)
     #expect(text(3)?.hasPrefix("## rdp\n") == true && text(3)?.contains("rdpLogin.password") == true)
     #expect((replies.byID[4]?["result"] as? [String: Any])?["isError"] as? Bool == true)
     let cli = await agent(["guide", "topic=keys"], support: support)
     #expect(cli.status == 0 && cli.output.hasPrefix("## keys"))
+}
+
+/// Agents learn that a change may wait for the person at the Mac, and what the answers they may get mean: in the
+/// instructions, in the troubleshooting topic and in the descriptions of the tools that can change something.
+@MainActor @Test func agentsAreToldThatChangesWaitForThePersonAtTheMac() {
+    let overview = AgentBridge.instructions, troubleshooting = AgentBridge.guideSections["troubleshooting"] ?? ""
+    #expect(overview.contains("Ask before agents change things") && overview.contains("agent.asksFirst"))
+    #expect(overview.contains("The person at the Mac declined") && overview.contains("didn't answer"))
+    for message in [AgentBridge.declined, AgentBridge.noAnswer, "Allow for 15 Minutes", "up to 45 s",
+                    AgentServer.controlOff] {
+        #expect(troubleshooting.contains(message), "troubleshooting lacks \(message)")
+    }
+    let descriptions = Dictionary(uniqueKeysWithValues: AgentBridge.tools.map { ($0["name"] as! String, $0["description"] as! String) })
+    for tool in ["menu", "press", "set", "key", "type", "click", "open", "drop"] {
+        let text = descriptions[tool] ?? ""
+        #expect(text.contains("wait up to \(Int(AgentBridge.approvalWait)) s for the person at the Mac") && text.contains(AgentBridge.declined)
+                && text.contains(AgentBridge.noAnswer), "\(tool)")
+    }
+    for tool in ["snapshot", "screenshot", "focus", "go", "select", "sort", "wait", "guide"] {
+        #expect(descriptions[tool]?.contains("person at the Mac") == false, "\(tool)")
+    }
 }
 
 /// A password for `set` from a shell comes on standard input (`value=-`): a command line is open to every process.
@@ -300,7 +322,7 @@ private func agent(_ arguments: [String], support: String) async -> CommandResul
     // Control ids (hostEditor.hostname and the like) are written somewhere in the app's sources.
     let sources = try FileManager.default.contentsOfDirectory(atPath: sourceFolder).filter { $0.hasSuffix(".swift") }
         .map { try String(contentsOfFile: sourceFolder + "/" + $0, encoding: .utf8) }.joined()
-    let id = #"((?:hostEditor|rdpEditor|proxyEditor|tunnelEditor|runCommand|monitor|newKey|importKey|exportKey|keyResult|keys|permissions|prompt|rdpLogin|settings|editor|run|compress|transfers|transfer|find|sync|snippet|snippets)\.[a-zA-Z]+)"#
+    let id = #"((?:hostEditor|rdpEditor|proxyEditor|tunnelEditor|runCommand|monitor|newKey|importKey|exportKey|keyResult|keys|permissions|prompt|rdpLogin|settings|editor|run|compress|transfers|transfer|find|sync|snippet|snippets|terminal|certificates)\.[a-zA-Z]+)"#
     func found(_ pattern: String, in text: String) throws -> Set<String> {
         let regex = try NSRegularExpression(pattern: pattern)
         return Set(regex.matches(in: text, range: NSRange(text.startIndex..., in: text))
@@ -334,7 +356,10 @@ final class LaunchedAirSCP {
         for name in ["id_lab", "id_lab.pub"] { try FileManager.default.copyItem(atPath: Lab.key + (name.hasSuffix(".pub") ? ".pub" : ""), toPath: ssh + "/" + name) }
         chmod(ssh + "/id_lab", 0o600)
         try "UserKnownHostsFile \(ssh)/known_hosts\nIdentityAgent none\nIdentityFile none\n".write(toFile: ssh + "/config", atomically: true, encoding: .utf8)
-        try JSONEncoder().encode(data(ssh)).write(to: URL(fileURLWithPath: support + "/airscp.json"))
+        // Nobody is at the Mac to allow the tests' changes.
+        var contents = data(ssh)
+        contents.settings.askBeforeAgentChanges = false
+        try JSONEncoder().encode(contents).write(to: URL(fileURLWithPath: support + "/airscp.json"))
         process.executableURL = URL(fileURLWithPath: Self.app)
         process.environment = ProcessInfo.processInfo.environment.merging(
             ["AIRSCP_SUPPORT_DIR": support, "AIRSCP_SSH_DIR": ssh]) { $1 }
@@ -401,7 +426,7 @@ final class LaunchedAirSCP {
 struct AgentLabTests {
     /// The main window and Settings open in the middle of the screen at their own sizes (smaller on a small screen),
     /// whatever the user's AirSCP saved in the defaults the two share: a throwaway AirSCP neither reads nor saves window
-    /// frames. (User report, 2026-10-05: AirSCP and its Settings opened full height.)
+    /// frames. (AirSCP and its Settings once opened full height.)
     @Test func windowsOpenAtTheirOwnSizes() async throws {
         let app = try LaunchedAirSCP { _ in
             var data = AirSCPData(hosts: [SSHHost(label: "web", hostname: "web.example.com")])
@@ -421,7 +446,7 @@ struct AgentLabTests {
             return NSRect(x: values[0], y: values[1], width: values[2], height: values[3])
         }
         let main = try #require(try await frame(nil))
-        let size = WindowFrame.fitted(NSSize(width: 1100, height: 700), minimum: NSSize(width: 760, height: 460), on: visible)
+        let size = WindowFrame.fitted(NSSize(width: 1180, height: 700), minimum: NSSize(width: 760, height: 460), on: visible)
         #expect(main.size == size && abs(main.midX - visible.midX) <= 1, "\(main) on \(visible)")
         // Settings: 600 points of its form (which scrolls) under the title bar, never more than 80 % of the screen.
         try await app.call("menu", ["path": "AirSCP > Settings…"])
@@ -472,7 +497,10 @@ struct AgentLabTests {
         let paths = menus.compactMap { $0["path"] as? String }
         #expect(paths.contains("Host > Delete Group > Lab Servers…") && paths.contains("View > Columns > Owner"))
         // AppKit's window tabs (Show Tab Bar, Move Tab to New Window…), not AirSCP's own Host > Terminal Tab.
-        let tabbing = paths.filter { ($0.contains("Tab") && $0 != "Host > Terminal Tab") || $0.contains("Merge All Windows") }
+        // (macOS's own Writing Tools submenu has "Make Table".)
+        let tabbing = paths.filter {
+            ($0.contains("Tab") && $0 != "Host > Terminal Tab" && !$0.hasPrefix("Edit > Writing Tools")) || $0.contains("Merge All Windows")
+        }
         #expect(tabbing.isEmpty, "\(tabbing)")
         // The main window once: AirSCP's own Window ▸ AirSCP (⌘0), not also AppKit's entry for it under its title.
         #expect(paths.filter { $0 == "Window > AirSCP" }.count == 1, "\(paths.filter { $0.hasPrefix("Window") })")
@@ -483,8 +511,8 @@ struct AgentLabTests {
         #expect(((after["sidebar"] as? [String: Any])?["sections"] as? [[String: Any]])?.allSatisfy { $0["group"] is NSNull } == true)
     }
 
-    /// go and open through the bridge against the lab's Debian server (owner's report, 1.0.0: an agent clicked its way
-    /// through a server's folders): a folder by its path (absolute, ~, missing, unreadable, not connected), rows by
+    /// go and open through the bridge against the lab's Debian server (in 1.0.0 an agent clicked its way through a
+    /// server's folders): a folder by its path (absolute, ~, missing, unreadable, not connected), rows by
     /// name (a folder, ..), the listing's cap, and a download from the folder opened, without a click.
     @Test func anAgentGoesThroughFoldersByPathAndName() async throws {
         try await withLab { lab in
@@ -562,7 +590,7 @@ struct AgentLabTests {
         }
     }
 
-    /// PLAN.md T's session: a host made in the editor, connected through openproxy → bastion → target (its key
+    /// A whole agent session: a host made in the editor, connected through openproxy → bastion → target (its key
     /// questions answered), a folder uploaded with its sheet, the monitor's busy process killed, a screenshot, MCP
     /// against the running app, the inner-network host through the same chain, and agent control switched off.
     @Test func anAgentDrivesTheLabChain() async throws {

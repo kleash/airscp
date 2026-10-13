@@ -837,7 +837,7 @@ final class RDPBar: ObservableObject {
     @Published var progress: Double?
     /// The last thing done (upload, paste).
     @Published var message = ""
-    /// The entry's certificate checks are off: an orange shield (PLAN.md U.4).
+    /// The entry's certificate checks are off: an orange shield.
     @Published var checksOff = false
 
     func reset() {
@@ -932,11 +932,13 @@ struct RDPBarView: View {
                 .help("Copy " + Self.sharedPath + ", to paste into Explorer's address bar or Run (Win+R) in Windows")
         }
         Button("Disconnect", action: actions.disconnect).controlSize(.small)
+            .accessibilityIdentifier("rdp.disconnect")
             .help("End the Remote Desktop session (Windows keeps your apps open)")
     }
 
     @ViewBuilder private var buttons: some View {
         Button(action: actions.ctrlAltDel) { Label("Ctrl+Alt+Del", systemImage: "lock") }
+            .accessibilityIdentifier("rdp.ctrlAltDel")
             .help("Send Ctrl+Alt+Del (lock, change password, Task Manager)")
         Button(action: actions.fullScreen) {
             Label(bar.fullScreen ? "Exit Full Screen" : "Full Screen",
@@ -945,6 +947,7 @@ struct RDPBarView: View {
         .help(bar.fullScreen ? "Show the desktop in AirSCP's window again (⌃⌘F)" : "Show the desktop full screen; ⌃⌘F leaves it again")
         if bar.sharing && !bar.sharedFolderRefused {
             Button(action: actions.upload) { Label("Send Files…", systemImage: "square.and.arrow.up") }
+                .accessibilityIdentifier("rdp.sendFiles")
                 .help("Copy Mac files into the shared folder; Windows sees them as " + Self.sharedPath)
             Button(action: actions.showSharedFolder) { Label("Shared Folder", systemImage: "folder") }
                 .help("Show the shared folder in Finder")

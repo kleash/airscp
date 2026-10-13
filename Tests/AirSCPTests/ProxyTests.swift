@@ -3,13 +3,16 @@ import Foundation
 import Testing
 @testable import AirSCPCore
 
-/// A tiny HTTP CONNECT proxy on 127.0.0.1 for the tests: Basic auth when made with credentials, CONNECT to 127.0.0.1
+/// A tiny HTTP CONNECT proxy on 127.0.0.1 for the tests: Basic auth when made with credentials (Digest when made with
+/// `digest`, an algorithm: it then calls the first nonce stale when `staleOnce`), CONNECT to 127.0.0.1
 /// only (the tests' own sshds), relaying both ways. `stop()` closes it and every connection through it, as a lost
 /// network would.
 final class TestProxy {
     let port: Int
     /// The request heads it received.
     let requests = Recorder<String>()
+    /// The ones that carried a login (each came after one the proxy answered by asking for it).
+    var logins: [String] { requests.all.filter { $0.contains("\r\nProxy-Authorization: ") } }
     private let expected: String?
     private let listener: Int32
     private let lock = NSLock()
@@ -17,9 +20,15 @@ final class TestProxy {
     private var _away = false
     private var connections: Set<Int32> = []
     private let finished = DispatchSemaphore(value: 0)
+    private let digest: String?
+    private let credentials: (user: String, password: String)?
+    private var staleLeft: Bool
 
-    init(user: String? = nil, password: String = "", port wanted: Int = 0) throws {
+    init(user: String? = nil, password: String = "", port wanted: Int = 0, digest: String? = nil, staleOnce: Bool = false) throws {
         expected = user.map { "Basic " + Data("\($0):\(password)".utf8).base64EncodedString() }
+        self.digest = digest
+        credentials = user.map { ($0, password) }
+        staleLeft = staleOnce
         let fd = socket(AF_INET, SOCK_STREAM, 0)
         var on: Int32 = 1
         setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &on, socklen_t(MemoryLayout<Int32>.size))
@@ -93,7 +102,24 @@ final class TestProxy {
         let authorization = lines.first { $0.lowercased().hasPrefix("proxy-authorization:") }
             .map { $0.dropFirst("proxy-authorization:".count).trimmingCharacters(in: .whitespaces) }
         let words = lines[0].split(separator: " ")
-        if let expected, authorization != expected {
+        if let digest, let credentials {
+            // Digest only: a Basic answer (or none) gets the challenge; a Digest answer is checked as the proxy would.
+            let nonce = "nonce-\(requests.all.count)"
+            let challenge = "407 Proxy Authentication Required\r\nProxy-Authenticate: Digest realm=\"airscp test\", "
+                + "nonce=\"\(nonce)\", qop=\"auth\", algorithm=\(digest), opaque=\"op\""
+            guard let authorization, authorization.hasPrefix("Digest "),
+                  let sent = ProxyConnect.challenges(in: "Proxy-Authenticate: " + authorization + "\r\n").first?.parameters else {
+                return answer(client, challenge)
+            }
+            let good = ProxyConnect.digest(["realm": "airscp test", "nonce": sent["nonce"] ?? "", "qop": "auth",
+                                            "algorithm": digest, "opaque": "op"],
+                                           username: credentials.user, password: credentials.password,
+                                           uri: String(words.count > 1 ? words[1] : ""), cnonce: sent["cnonce"] ?? "")
+            guard authorization == good else { return answer(client, challenge) }
+            if lock.locked({ defer { staleLeft = false }; return staleLeft }) {
+                return answer(client, challenge + ", stale=true")
+            }
+        } else if let expected, authorization != expected {
             return answer(client, "407 Proxy Authentication Required\r\nProxy-Authenticate: Basic realm=\"airscp test\"")
         }
         guard words.count == 3, words[0] == "CONNECT", let colon = words[1].lastIndex(of: ":"),
@@ -140,7 +166,7 @@ final class TestProxy {
     }
 
     /// Copies until the end of `source`, then passes the end on.
-    private static func relay(from source: Int32, to destination: Int32) {
+    static func relay(from source: Int32, to destination: Int32) {
         var buffer = [UInt8](repeating: 0, count: 65536)
         while true {
             let count = read(source, &buffer, buffer.count)
@@ -266,7 +292,10 @@ func answer(_ proxy: Proxy, password: String = "", on askpass: AskpassServer, as
         // As ssh runs it: the server's banner comes back through the proxy.
         let relayed = await helper(target, environment)
         #expect(relayed.status == 0 && relayed.output.hasPrefix("SSH-2.0-"), "\(relayed.stderr)")
-        let head = try #require(proxy.requests.all.first)
+        // No login until the proxy asks for one: its 407 says Basic, given on a new connection.
+        let heads = proxy.requests.all
+        #expect(heads.count == 2 && !heads[0].contains("Proxy-Authorization"), "\(heads)")
+        let head = try #require(heads.last)
         #expect(head.hasPrefix("CONNECT 127.0.0.1:\(server.port) HTTP/1.1\r\nHost: 127.0.0.1:\(server.port)\r\n"))
         #expect(head.contains("\r\nProxy-Authorization: Basic \(Data("porter:proxy secret".utf8).base64EncodedString())\r\n"))
         #expect(asked.all == [true])
@@ -337,8 +366,9 @@ func answer(_ proxy: Proxy, password: String = "", on askpass: AskpassServer, as
         #expect(session.state == .connected && session.capabilities.shell)
         #expect(try await session.run("echo through the proxy").output == "through the proxy\n")
         #expect(try await session.list(server.home).isEmpty)
-        // One CONNECT (the master; everything else rides on it), asked interactively, nothing prompted.
-        #expect(proxy.requests.all.count == 1 && proxy.requests.all.first?.hasPrefix("CONNECT 127.0.0.1:\(server.port) ") == true)
+        // One CONNECT with the login (the master; everything else rides on it), after the one the proxy answered with
+        // the login it wants; asked interactively, nothing prompted.
+        #expect(proxy.logins.count == 1 && proxy.logins.first?.hasPrefix("CONNECT 127.0.0.1:\(server.port) ") == true)
         #expect(asked.all == [true])
         #expect(server.prompts.all.isEmpty)
         let master = try #require((await server.logEntries()).first { $0.command.hasPrefix("/usr/bin/ssh -M") }?.command)
@@ -348,7 +378,7 @@ func answer(_ proxy: Proxy, password: String = "", on askpass: AskpassServer, as
         let terminal = OpenSSH.interactive(host, jump: nil) + ["echo from terminal"]
         let fresh = await Runner.run(terminal, environment: session.askpass.terminalEnvironment)
         #expect(fresh.status == 0 && fresh.output == "from terminal\n", "\(fresh.stderr)")
-        #expect(proxy.requests.all.count == 2)
+        #expect(proxy.logins.count == 2)
     }
 }
 
@@ -401,9 +431,196 @@ func answer(_ proxy: Proxy, password: String = "", on askpass: AskpassServer, as
         #expect(session.state == .connected)
         #expect(try await session.run("echo at the target").output == "at the target\n")
         // The proxy carried the hop to the bastion; the bastion carried the one to the target.
-        #expect(proxy.requests.all.count == 1 && proxy.requests.all.first?.hasPrefix("CONNECT 127.0.0.1:\(server.port) ") == true)
+        #expect(proxy.logins.count == 1 && proxy.logins.first?.hasPrefix("CONNECT 127.0.0.1:\(server.port) ") == true)
         #expect(read(server.knownHosts)?.contains("[localhost]:\(server.port)") == true)
         let master = try #require((await server.logEntries()).first { $0.command.hasPrefix("/usr/bin/ssh -M") }?.command)
         #expect(master.contains("--proxy-connect \(saved.id.uuidString) %%h %%p"))
+    }
+}
+
+
+/// Digest login: RFC 7616's own example, byte for byte, then a proxy that asks for Digest only.
+@Test func proxyDigestAnswersAsRFC7616Says() throws {
+    let challenge = ["realm": "http-auth@example.org", "qop": "auth, auth-int",
+                     "nonce": "7ypf/xlj9XXwfDPEoM4URrv/xwf94BcCAzFZH4GiTo0v", "opaque": "FQhe/qaU925kfnzjCev0ciny7QMkPqMAFRtzCUYo5tdS"]
+    let cnonce = "f2/wE4q74E6zIJEtWaHKaf5wv/H5QzzpXusqGemxURZJ"
+    var md5 = challenge
+    md5["algorithm"] = "MD5"
+    let md5Answer = try #require(ProxyConnect.digest(md5, username: "Mufasa", password: "Circle of Life", uri: "/dir/index.html",
+                                                     cnonce: cnonce, method: "GET"))
+    #expect(md5Answer.contains("response=\"8ca523f5e9506fed4657c9700eebdbec\""))
+    #expect(md5Answer.contains("qop=auth, nc=00000001, cnonce=\"\(cnonce)\"") && md5Answer.contains("opaque=\"FQhe"))
+    var sha = challenge
+    sha["algorithm"] = "SHA-256"
+    let shaAnswer = try #require(ProxyConnect.digest(sha, username: "Mufasa", password: "Circle of Life", uri: "/dir/index.html",
+                                                     cnonce: cnonce, method: "GET"))
+    #expect(shaAnswer.contains("response=\"753927fa0e85d155564e2e272a28d1802ca10daf4496794697cf8db5856cb6c1\""))
+    // Algorithms and qops it can't answer, and the challenge's parsing (quoted commas, escapes, several schemes).
+    #expect(ProxyConnect.digest(["realm": "r", "nonce": "n", "algorithm": "SHA-512-256"], username: "u", password: "p", uri: "h:22",
+                                cnonce: "c") == nil)
+    #expect(ProxyConnect.digest(["realm": "r", "nonce": "n", "qop": "auth-int"], username: "u", password: "p", uri: "h:22", cnonce: "c") == nil)
+    let parsed = ProxyConnect.challenges(in: "HTTP/1.1 407 x\r\nProxy-Authenticate: Digest realm=\"a, \\\"b\\\"\", nonce=xyz, stale=TRUE\r\n"
+                                         + "Proxy-Authenticate: NTLM\r\n\r\n")
+    #expect(parsed.map(\.scheme) == ["digest", "ntlm"])
+    #expect(parsed[0].parameters == ["realm": "a, \"b\"", "nonce": "xyz", "stale": "TRUE"])
+}
+
+@Test func proxyConnectHelperAnswersAProxyThatAsksForDigest() async throws {
+    try await withServer { server in
+        let askpass = try AskpassServer(helperPath: TestEnvironment.airscpBinary)
+        defer { askpass.close() }
+        let environment = askpass.environment(for: "test")
+        for (algorithm, stale) in [("MD5", false), ("SHA-256", false), ("SHA-256", true)] {
+            let proxy = try TestProxy(user: "porter", password: "proxy secret", digest: algorithm, staleOnce: stale)
+            defer { proxy.stop() }
+            let saved = proxy.saved(user: "porter")
+            answer(saved, password: "proxy secret", on: askpass)
+            let relayed = await Runner.run([TestEnvironment.airscpBinary, "--proxy-connect", saved.id.uuidString, "127.0.0.1",
+                                            String(server.port)], environment: environment)
+            #expect(relayed.status == 0 && relayed.output.hasPrefix("SSH-2.0-"), "\(algorithm) \(stale): \(relayed.stderr)")
+            let heads = proxy.requests.all
+            // No login at first; the proxy's 407 asks for Digest, given on a new connection (again for a stale nonce).
+            // The password never goes over the network, not even as Basic.
+            #expect(heads.count == (stale ? 3 : 2) && !heads[0].contains("Proxy-Authorization"), "\(heads)")
+            #expect(heads.dropFirst().allSatisfy { $0.contains("Proxy-Authorization: Digest username=\"porter\"") })
+            #expect(heads.allSatisfy { !$0.contains("Basic ") && !$0.contains("proxy secret") })
+            // A wrong password: the 407, once more Digest and no loop.
+            answer(saved, password: "wrong", on: askpass)
+            let rejected = await Runner.run([TestEnvironment.airscpBinary, "--proxy-connect", saved.id.uuidString, "127.0.0.1",
+                                             String(server.port)], environment: environment)
+            #expect(rejected.status == 1 && rejected.stderr == "AirSCP proxy: HTTP/1.1 407 Proxy Authentication Required\n")
+        }
+    }
+}
+
+/// A tiny SOCKS5 proxy on 127.0.0.1 for the tests (RFC 1928, with RFC 1929's login when made with a user): CONNECT to
+/// 127.0.0.1 only, relaying both ways. It records the addresses asked for.
+final class TestSOCKS {
+    let port: Int
+    let asked = Recorder<String>()
+    private let listener: Int32
+    private let credentials: (String, String)?
+
+    init(user: String? = nil, password: String = "") throws {
+        credentials = user.map { ($0, password) }
+        let found = try AirSCPTests.listener()
+        close(found.fd6)
+        listener = found.fd
+        port = found.port
+        Thread.detachNewThread { [self] in
+            while true {
+                let client = accept(listener, nil, nil)
+                guard client >= 0 else { return }
+                Thread.detachNewThread { [self] in serve(client) }
+            }
+        }
+    }
+
+    func stop() { shutdown(listener, SHUT_RDWR); close(listener) }
+
+    private func serve(_ client: Int32) {
+        defer { close(client) }
+        func read(_ count: Int) -> [UInt8]? {
+            var bytes = [UInt8](repeating: 0, count: count), got = 0
+            while got < count {
+                let n = bytes.withUnsafeMutableBytes { Darwin.read(client, $0.baseAddress! + got, count - got) }
+                guard n > 0 else { return nil }
+                got += n
+            }
+            return bytes
+        }
+        func send(_ bytes: [UInt8]) { _ = bytes.withUnsafeBytes { write(client, $0.baseAddress, $0.count) } }
+        guard let head = read(2), head[0] == 5, let methods = read(Int(head[1])) else { return }
+        if let (user, password) = credentials {
+            guard methods.contains(2) else { return send([5, 0xFF]) }
+            send([5, 2])
+            guard let version = read(2), version[0] == 1, let name = read(Int(version[1])), let length = read(1),
+                  let secret = read(Int(length[0])) else { return }
+            let ok = String(decoding: name, as: UTF8.self) == user && String(decoding: secret, as: UTF8.self) == password
+            send([1, ok ? 0 : 1])
+            guard ok else { return }
+        } else {
+            send([5, 0])
+        }
+        guard let request = read(4), request[1] == 1 else { return }
+        var host = ""
+        switch request[3] {
+        case 1: host = (read(4) ?? []).map(String.init).joined(separator: ".")
+        case 3: host = read(1).flatMap { read(Int($0[0])) }.map { String(decoding: $0, as: UTF8.self) } ?? ""
+        default: return send([5, 8, 0, 1, 0, 0, 0, 0, 0, 0])
+        }
+        guard let portBytes = read(2) else { return }
+        let port = Int(portBytes[0]) << 8 | Int(portBytes[1])
+        asked.append("\(host):\(port)")
+        guard ["127.0.0.1", "localhost"].contains(host) else { return send([5, 2, 0, 1, 0, 0, 0, 0, 0, 0]) }
+        let upstream = socket(AF_INET, SOCK_STREAM, 0)
+        var address = sockaddr_in()
+        address.sin_family = sa_family_t(AF_INET)
+        address.sin_addr.s_addr = inet_addr("127.0.0.1")
+        address.sin_port = UInt16(port).bigEndian
+        let connected = withUnsafePointer(to: &address) {
+            $0.withMemoryRebound(to: sockaddr.self, capacity: 1) { connect(upstream, $0, socklen_t(MemoryLayout<sockaddr_in>.size)) }
+        } == 0
+        guard connected else {
+            close(upstream)
+            return send([5, 5, 0, 1, 0, 0, 0, 0, 0, 0])
+        }
+        send([5, 0, 0, 1, 127, 0, 0, 1, portBytes[0], portBytes[1]])
+        let done = DispatchSemaphore(value: 0)
+        Thread.detachNewThread {
+            TestProxy.relay(from: client, to: upstream)
+            done.signal()
+        }
+        TestProxy.relay(from: upstream, to: client)
+        done.wait()
+        close(upstream)
+    }
+}
+
+/// SOCKS5 proxies: without and with a login, a refusal in words, and a whole connection through one.
+@Test func proxyConnectHelperSpeaksSOCKS5() async throws {
+    try await withServer { server in
+        let askpass = try AskpassServer(helperPath: TestEnvironment.airscpBinary)
+        defer { askpass.close() }
+        let environment = askpass.environment(for: "test")
+        for user in [nil, "porter"] as [String?] {
+            let socks = try TestSOCKS(user: user, password: "socks secret")
+            defer { socks.stop() }
+            var saved = Proxy(name: "Test SOCKS", host: "127.0.0.1", port: socks.port, username: user ?? "")
+            saved.kind = .socks5
+            answer(saved, password: "socks secret", on: askpass)
+            let relayed = await Runner.run([TestEnvironment.airscpBinary, "--proxy-connect", saved.id.uuidString, "127.0.0.1",
+                                            String(server.port)], environment: environment)
+            #expect(relayed.status == 0 && relayed.output.hasPrefix("SSH-2.0-"), "\(user ?? "-"): \(relayed.stderr)")
+            #expect(socks.asked.all == ["127.0.0.1:\(server.port)"])
+            // A port outside 1–65535 (ssh never passes one) is refused in words before anything is asked.
+            for port in ["0", "65536", "-1", "99999999"] {
+                let refused = await Runner.run([TestEnvironment.airscpBinary, "--proxy-connect", saved.id.uuidString, "127.0.0.1",
+                                                port], environment: environment)
+                #expect(refused.status == 1 && refused.stderr.hasPrefix("AirSCP proxy: usage:"), "\(port): \(refused.stderr)")
+            }
+            #expect(socks.asked.all == ["127.0.0.1:\(server.port)"])
+            if user != nil {
+                answer(saved, password: "wrong", on: askpass)
+                let refused = await Runner.run([TestEnvironment.airscpBinary, "--proxy-connect", saved.id.uuidString, "127.0.0.1",
+                                                String(server.port)], environment: environment)
+                #expect(refused.status == 1 && refused.stderr.contains("rejected the user name or password"), "\(refused.stderr)")
+            }
+        }
+        // A host whose first hop is a SOCKS proxy connects through it.
+        let socks = try TestSOCKS()
+        defer { socks.stop() }
+        var proxy = Proxy(name: "SOCKS", host: "127.0.0.1", port: socks.port)
+        proxy.kind = .socks5
+        var host = server.host()
+        host.proxyID = proxy.id
+        let session = try server.session(host)
+        session.askpass.proxyHandler = { id, _, _, reply in reply(id == proxy.id ? (proxy, "") : nil) }
+        try await session.connect()
+        _ = try await session.list(server.home)
+        #expect(socks.asked.all.contains("127.0.0.1:\(server.port)"))
+        await session.disconnect()
+        // Copy ssh Command takes macOS's nc for a SOCKS proxy without a login.
+        #expect(OpenSSH.proxyCommand(proxy.id, plain: proxy).hasPrefix("/usr/bin/nc -X 5 -x "))
     }
 }

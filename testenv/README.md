@@ -22,6 +22,10 @@ account below takes that key as well as its password. The Docker project is `por
 | bastion | 127.0.0.1:42203 | `bastion:22` | `jump` (`porter-jump`) | Alpine, TCP forwarding allowed: the jump host to `target` |
 | twofactor | 127.0.0.1:42204 | | `dev` (the key, then a code) | Debian: the lab key, then a verification code (Google Authenticator's PAM module) |
 | proxy | 127.0.0.1:42280 | `proxy:8888` | `porter` (`porter-proxy`) | tinyproxy: HTTP CONNECT to port 22 only, Basic authentication |
+| digestproxy | 127.0.0.1:42282 | `digestproxy:8888` | `porter` (`porter-proxy`) | squid: HTTP CONNECT to port 22 only, Digest authentication only |
+| socksproxy | 127.0.0.1:42283 | `socksproxy:1080` | `porter` (`porter-proxy`) | Dante: SOCKS5 CONNECT to port 22 only, user name and password |
+| sudo | 127.0.0.1:42205 | | `dev` (`porter-sudo`) | Alpine where dev may sudo to root without a password, with OpenSSH's sftp-server |
+| passwd | 127.0.0.1:42206 | | `changer` (`Lab-Pass-Alpha-7`) | Alpine with shadow's setuid passwd; the Change Password test changes it and sets it back |
 
 - **target**: passwords come as PAM keyboard-interactive prompts (`(dev@127.0.0.1) Password: `); `dev`'s
   `.bashrc` prints a line to standard output and one to standard error before anything else, and terminals get a

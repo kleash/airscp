@@ -67,6 +67,7 @@ struct TransfersPanel: View {
             .accessibilityIdentifier("transfers.speedLimit")
             .help("The most each transfer that starts from now on may use, for every host (Unlimited by default). A limit "
                   + "leaves room for others on a shared or slow connection; transfers already running keep their speed.")
+            WhenDoneMenu()
             let cancellable = selected.contains { !$0.status.isFinished }, retryable = selected.contains { TransferText.canRetry($0) }
             let waiting = selected.contains(where: TransferText.waitsForReconnect)
             let removable = selected.contains { $0.status.isFinished }, finished = list.jobs.contains { $0.status.isFinished }
@@ -192,6 +193,8 @@ struct TransfersPanel: View {
         "Cancel": "Stop the selected transfers; partly copied files are removed",
         "Retry": "Run the selected failed, cancelled or mismatched transfers again; a cut-off file continues",
         "Remove": "Take the selected finished transfers off the list",
+        "Move Up": "Run this queued transfer before the one queued ahead of it (same host)",
+        "Move Down": "Run this queued transfer after the one queued behind it (same host)",
         "Verify with Checksum": "Compare the SHA-256 checksum of each selected file's copy with the original's",
         "Show Details…": "Show the tools' output for this transfer",
         "Show in Finder": "Show the downloaded item in Finder",
@@ -211,6 +214,9 @@ struct TransfersPanel: View {
             ("Cancel", jobs.contains { !$0.status.isFinished }, { jobs.forEach { center.cancel($0.id) } }),
             ("Retry", !retryable.isEmpty, { retryable.forEach { center.retry($0.id) } }),
             ("Remove", jobs.contains { $0.status.isFinished }, { jobs.forEach { center.remove($0.id) } }),
+            // One job at a time: its place among its host's queued jobs.
+            ("Move Up", jobs.count == 1 && jobs[0].status == .queued, { center.move(jobs[0].id, up: true) }),
+            ("Move Down", jobs.count == 1 && jobs[0].status == .queued, { center.move(jobs[0].id, up: false) }),
             ("Verify with Checksum", jobs.contains(where: \.canVerify), { center.verify(ids) }),
         ]
         if jobs.count == 1, let job = jobs.first {

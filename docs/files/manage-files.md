@@ -18,6 +18,9 @@ Everyday file commands work on servers like in Finder. Right-click a file, or us
   go to the Trash.
 - **Get Info**: **File ▸ Get Info** (<kbd>⌘I</kbd>) shows the kind, path, size, dates, owner and group, and lets you
   change the permissions.
+- **Checksum**: in Get Info, choose **SHA-256** (or SHA-1, MD5) and click **Calculate**. Paste a published checksum
+  into the field below to see **✓ Matches** or **✗ Doesn't match**. On a file-transfer-only account AirSCP downloads
+  a temporary copy to work it out.
 - **Copy the path**: **File ▸ Copy Path** (<kbd>⌥⌘C</kbd>).
 
 {% include shot.html name="new-folder" alt="The New folder sheet with the name drafts" %}

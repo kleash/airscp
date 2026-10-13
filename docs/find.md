@@ -14,6 +14,8 @@ Search for files by name in a server folder and in every folder below it.
 3. Type a name, or part of one. Or a pattern, for example `*.log`. `*`, `?` and `[ ]` work; case doesn't matter.
 4. Click **Find**.
 5. Select a result and click **Show** (or double-click it): the pane goes to its folder and selects it.
+6. Or select several results (<kbd>⌘</kbd>-click, <kbd>⇧</kbd>-click) and click **Download…** (to a folder on
+   this Mac), **Delete…** (on the server, after asking) or **Copy Paths**. Right-click a result for the same.
 
 {% include shot.html name="find" alt="Find Files in dev with *.log: three results" %}
 

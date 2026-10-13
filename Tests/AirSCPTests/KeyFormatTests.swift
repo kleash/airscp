@@ -2,7 +2,7 @@ import Foundation
 import Testing
 @testable import AirSCPCore
 
-// PLAN.md K.1: New Key Pair's types, sizes and formats, made by ssh-keygen in a scratch folder (never ~/.ssh), and
+// New Key Pair's types, sizes and formats, made by ssh-keygen in a scratch folder (never ~/.ssh), and
 // the public key in each format Copy Public Key offers.
 
 /// An askpass server whose "kinds" commands get `answer` for every question; what they asked is recorded.

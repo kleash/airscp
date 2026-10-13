@@ -2,11 +2,17 @@ import AirSCPCore
 import AppKit
 import SwiftUI
 
-/// Synchronize (PLAN.md S.1): a folder on this Mac against a folder on a server, compared recursively, then made the
+/// Synchronize: a folder on this Mac against a folder on a server, compared recursively, then made the
 /// same one way or both ways with ordinary transfer jobs (times kept, so the next compare finds the copies the same)
 /// and, on request, deletions on the destination.
 enum Sync {
     enum Direction: Hashable { case upload, download, both }
+
+    /// When two files count as the same: size and modification time (the default), either one, or
+    /// their contents (SHA-256 on both sides, for files of the same size; shell hosts only).
+    enum Criterion: String, CaseIterable, Hashable {
+        case sizeAndTime = "Size and date", size = "Size only", time = "Date only", contents = "Contents (SHA-256)"
+    }
 
     /// An item that isn't the same on both sides: what this Mac's folder and the server's folder (both there) hold
     /// under its name. `path` is below the two folders compared ("sub/name").
@@ -49,8 +55,12 @@ enum Sync {
     /// AirSCP's own `.airscp-*` items and what matches `patterns` (the host's Leave out, at any depth: a folder that
     /// matches isn't even listed) are left out. A folder that can't be listed throws: going on without it could delete
     /// what is in it on the other side. `progress` gets the folders compared so far.
+    /// `deep` false: the two folders only (Compare Folders), folders on both sides counting as the same. `criterion`:
+    /// when two files are the same; for `.contents`, `checked` gets the files hashed so far.
     static func compare(local localDir: String, remote remoteDir: String, on session: Session, leavingOut patterns: [String] = [],
+                        deep: Bool = true, criterion: Criterion = .sizeAndTime, checked: @escaping (Int) -> Void = { _ in },
                         progress: @escaping (Int) -> Void) async throws -> Comparison {
+        var toHash: [Difference] = []
         let ignoreCase = TransferQueue.ignoresCase(localDir) || session.capabilities.caseInsensitive
         let windows = session.capabilities.windows
         func wanted(_ item: FileItem) -> Bool {
@@ -99,17 +109,44 @@ enum Sync {
                     let sub = path.isEmpty ? name : path + "/" + name
                     if let local, let remote {
                         if local.isFolder && remote.isFolder {
-                            next.append((local.path, remote.path, sub))
+                            if deep { next.append((local.path, remote.path, sub)) }
                             continue
                         }
-                        if !local.isFolder && !remote.isFolder && local.size == remote.size
-                            && order(local.modified, remote.modified, dateOnly: remote.dateOnly) == .orderedSame { continue }
+                        if !local.isFolder && !remote.isFolder {
+                            let sameSize = local.size == remote.size
+                            func sameTime() -> Bool { order(local.modified, remote.modified, dateOnly: remote.dateOnly) == .orderedSame }
+                            switch criterion {
+                            case .sizeAndTime: if sameSize && sameTime() { continue }
+                            case .size: if sameSize { continue }
+                            case .time: if sameTime() { continue }
+                            case .contents:
+                                if sameSize {  // the same size: the contents decide, once every folder is listed
+                                    toHash.append(Difference(localFolder: localFolder, remoteFolder: remoteFolder, local: local,
+                                                             remote: remote, path: sub))
+                                    continue
+                                }
+                            }
+                        }
                     }
                     result.differences.append(Difference(localFolder: localFolder, remoteFolder: remoteFolder, local: local,
                                                          remote: remote, path: sub))
                 }
             }
             level = next
+        }
+        // Contents: each same-size pair hashed on both sides; Cancel stops the hash under way.
+        let cancellation = Cancellation()
+        try await withTaskCancellationHandler {
+            for (index, pair) in toHash.enumerated() {
+                try Task.checkCancellation()
+                guard let local = pair.local, let remote = pair.remote else { continue }
+                let mine = try await Task.detached { try TransferQueue.sha256(local.path, cancellation: cancellation) }.value
+                let theirs = try await TransferQueue.sha256(remote.path, on: session, cancellation: cancellation)
+                if mine != theirs { result.differences.append(pair) }
+                checked(index + 1)
+            }
+        } onCancel: {
+            cancellation.cancel()
         }
         result.differences.sort { $0.path.localizedStandardCompare($1.path) == .orderedAscending }
         return result
@@ -118,10 +155,14 @@ enum Sync {
     /// What to do about `differences`. One way copies what is missing or newer on the source, or of another size at the
     /// same time, and with `delete` deletes what is only on the destination; both ways copies the newer file, and what
     /// is missing on each side.
-    static func plan(_ differences: [Difference], direction: Direction, delete: Bool, now: Date = Date()) -> Plan {
+    /// `onlyBoth`: files that are on one side only are left alone. `mirror` (one way):
+    /// the destination's newer files are replaced too.
+    static func plan(_ differences: [Difference], direction: Direction, delete: Bool, onlyBoth: Bool = false, mirror: Bool = false,
+                     now: Date = Date()) -> Plan {
         var plan = Plan()
         for difference in differences {
             let path = difference.path
+            if onlyBoth && (difference.local == nil || difference.remote == nil) { continue }
             switch (difference.local, difference.remote) {
             case (let local?, nil):
                 if direction != .download {
@@ -148,9 +189,9 @@ enum Sync {
                 if order == .orderedSame, remote.dateOnly, let theirs = remote.modified, theirs > now.addingTimeInterval(-181 * 86400) {
                     order = .orderedAscending
                 }
-                if direction != .download && (order == .orderedDescending || order == .orderedSame && direction == .upload) {
+                if direction != .download && (order == .orderedDescending || direction == .upload && (order == .orderedSame || mirror)) {
                     plan.steps.append(Step(action: .upload, item: local, destination: remote.path, replaces: true, path: path))
-                } else if direction != .upload && (order == .orderedAscending || order == .orderedSame && direction == .download) {
+                } else if direction != .upload && (order == .orderedAscending || direction == .download && (order == .orderedSame || mirror)) {
                     plan.steps.append(Step(action: .download, item: remote, destination: local.path, replaces: true, path: path))
                 } else {
                     plan.leftAsIs += 1
@@ -192,6 +233,21 @@ final class SyncModel: ObservableObject {
     @Published var delete = false {
         didSet { replan() }
     }
+    /// When two files are the same: compared again when it changes.
+    @Published var criterion = Sync.Criterion.sizeAndTime {
+        didSet { if criterion != oldValue { compareAgain() } }
+    }
+    /// Only files that are on both sides; and (one way) replace the destination's newer files too.
+    @Published var onlyBoth = false {
+        didSet { replan() }
+    }
+    @Published var mirror = false {
+        didSet { replan() }
+    }
+    /// Steps reversed in the list, by path: copied the other way.
+    @Published var reversed: Set<String> = []
+    /// Files hashed so far (Contents).
+    @Published private(set) var checked = 0
     /// The host's Leave out patterns as typed (the folder-transfer sheet's): left out of the comparison and the copies.
     @Published var leaveOut: String {
         didSet { if TransferQueue.patterns(leaveOut) != patterns { leaveOutChanged() } }
@@ -231,8 +287,10 @@ final class SyncModel: ObservableObject {
     /// The comparison with `patterns`, in the task `comparing` (a cancelled one shows nothing).
     private func run() async {
         do {
-            let comparison = try await Sync.compare(local: localDir, remote: remoteDir, on: session,
-                                                    leavingOut: patterns) { [weak self] count in
+            let comparison = try await Sync.compare(local: localDir, remote: remoteDir, on: session, leavingOut: patterns,
+                                                    criterion: criterion, checked: { [weak self] count in
+                Task { @MainActor in self?.checked = count }
+            }) { [weak self] count in
                 Task { @MainActor in self?.folders = count }
             }
             guard !Task.isCancelled else { return }
@@ -245,6 +303,25 @@ final class SyncModel: ObservableObject {
                     + "compare again."
             }
         }
+    }
+
+    /// Why Contents can't be compared on this server, or nil.
+    var contentsUnavailable: String? {
+        session.capabilities.shell ? nil
+            : session.capabilities.noShellReason ?? "This server can't work out checksums (it allows file transfers only)."
+    }
+
+    /// Another criterion: the folders are compared again (if they were already).
+    private func compareAgain() {
+        guard started else { return }
+        comparing?.cancel()
+        comparison = nil
+        failure = nil
+        folders = 0
+        checked = 0
+        reversed = []
+        plan = Sync.Plan()
+        comparing = Task { [weak self] in await self?.run() }
     }
 
     /// Other patterns: the plan shown no longer holds (Synchronize is off), and the folders are compared again once
@@ -270,13 +347,31 @@ final class SyncModel: ObservableObject {
 
     private func replan() {
         guard let comparison else { return }
-        plan = Sync.plan(comparison.differences, direction: direction, delete: delete && direction != .both)
+        plan = Sync.plan(comparison.differences, direction: direction, delete: delete && direction != .both, onlyBoth: onlyBoth,
+                         mirror: mirror && direction != .both)
     }
 
-    /// The plan's ticked steps: what Synchronize does.
+    /// The step as it will be done: the other way when reversed (two files: this Mac's and the server's).
+    func effective(_ step: Sync.Step) -> Sync.Step {
+        guard reversed.contains(step.path), let pair = reversible(step) else { return step }
+        return step.action == .upload
+            ? Sync.Step(action: .download, item: pair.remote, destination: pair.local.path, replaces: true, path: step.path)
+            : Sync.Step(action: .upload, item: pair.local, destination: pair.remote.path, replaces: true, path: step.path)
+    }
+
+    /// The two files of a copy step that can be reversed (both sides have the file), else nil.
+    func reversible(_ step: Sync.Step) -> (local: FileItem, remote: FileItem)? {
+        guard [.upload, .download].contains(step.action),
+              let difference = comparison?.differences.first(where: { $0.path == step.path }),
+              let local = difference.local, let remote = difference.remote, !local.isFolder, !remote.isFolder else { return nil }
+        return (local, remote)
+    }
+
+    /// The plan's ticked steps, as they will be done: what Synchronize does.
     var chosen: Sync.Plan {
         var chosen = plan
         if !unticked.isEmpty { chosen.steps.removeAll { unticked.contains($0.path) } }
+        chosen.steps = chosen.steps.map(effective)
         return chosen
     }
 
@@ -357,6 +452,28 @@ struct SyncView: View {
                 .help(model.direction == .both ? "Not for Both ways: there, what is only on one side is copied to the other"
                       : "Off by default. On also removes what the other side doesn't have: to the Trash on this Mac, "
                         + "deleted on the server")
+            HStack(spacing: 14) {
+                Picker("Compare by:", selection: $model.criterion) {
+                    ForEach(Sync.Criterion.allCases, id: \.self) { criterion in
+                        Text(criterion.rawValue).tag(criterion)
+                            .disabled(criterion == .contents && model.contentsUnavailable != nil)
+                    }
+                }
+                .fixedSize()
+                .accessibilityIdentifier("sync.criterion")
+                .help(model.contentsUnavailable.map { "Contents isn't possible here: " + $0 }
+                      ?? "When two files count as the same: size and date (the default), one of them, or their contents "
+                        + "(SHA-256 of files of the same size, on both sides: slower, exact)")
+                Toggle("Only files on both sides", isOn: $model.onlyBoth)
+                    .accessibilityIdentifier("sync.onlyBoth")
+                    .help("Off by default. On leaves alone what is on one side only: only files that both sides have are updated")
+            }
+            Toggle("Also replace newer files on \(model.direction == .download ? "this Mac" : model.server)",
+                   isOn: model.direction == .both ? .constant(false) : $model.mirror)
+                .disabled(model.direction == .both)
+                .accessibilityIdentifier("sync.mirror")
+                .help(model.direction == .both ? "Not for Both ways: there, the newer file always wins"
+                      : "Off by default. On makes the destination a copy of the source: its newer files are replaced too")
             VStack(alignment: .leading, spacing: 3) {
                 HStack {
                     Text("Leave out:")
@@ -364,12 +481,13 @@ struct SyncView: View {
                         .accessibilityIdentifier("sync.leaveOut")
                         .help(Text(verbatim: "Names or patterns to leave alone wherever they are (* ? [ ] work; commas "
                                    + "separate them), remembered for this server"))  // not Markdown
+                    if AppleIntelligence.ready { SuggestButton(field: .leaveOut) { model.leaveOut = $0 } }
                 }
                 Text(model.leaveOutNote).font(.caption).foregroundColor(.secondary).fixedSize(horizontal: false, vertical: true)
             }
             if model.comparison != nil {
                 List(model.plan.steps.indices, id: \.self) { index in
-                    let step = model.plan.steps[index]
+                    let planned = model.plan.steps[index], step = model.effective(planned)
                     HStack {
                         Toggle(step.path, isOn: Binding(get: { !model.unticked.contains(step.path) }, set: { ticked in
                             if ticked { model.unticked.remove(step.path) } else { model.unticked.insert(step.path) }
@@ -382,7 +500,16 @@ struct SyncView: View {
                         Spacer()
                         Text(step.item.isFolder ? "" : FileList.size(step.item.size)).foregroundColor(.secondary)
                     }
-                    .help(Self.describe(step) + "; untick to leave it as it is")  // the box's too
+                    .help(Self.describe(step) + "; untick to leave it as it is" + (model.reversible(planned) == nil ? ""
+                          : "; right-click to copy it the other way"))  // the box's too
+                    .contextMenu {
+                        if model.reversible(planned) != nil {
+                            Button(model.reversed.contains(step.path) ? "Copy the Planned Way" : "Reverse") {
+                                if model.reversed.contains(step.path) { model.reversed.remove(step.path) } else { model.reversed.insert(step.path) }
+                            }
+                            .help("Copy this file the other way: the other side's copy replaces this side's")
+                        }
+                    }
                 }
                 .frame(minHeight: 260)
                 if !model.plan.steps.isEmpty {
@@ -409,7 +536,8 @@ struct SyncView: View {
             } else {
                 HStack {
                     ProgressView().controlSize(.small)
-                    Text("Comparing… (\(model.folders.formatted()) \(model.folders == 1 ? "folder" : "folders"))")
+                    Text("Comparing… (\(model.folders.formatted()) \(model.folders == 1 ? "folder" : "folders")"
+                         + (model.checked > 0 ? ", \(model.checked.formatted()) checked by contents" : "") + ")")
                         .foregroundColor(.secondary)
                 }
                 .frame(minHeight: 260)  // the list's: the sheet keeps its size while Leave out is typed
@@ -422,6 +550,7 @@ struct SyncView: View {
                 Button("Cancel", action: close).keyboardShortcut(.cancelAction).help("Close without copying anything")
                 Button("Synchronize") { synchronize(model.chosen) }
                     .keyboardShortcut(.defaultAction).primaryTint()
+                    .accessibilityIdentifier("sync.synchronize")
                     .disabled(model.chosen.steps.isEmpty)
                     .help(model.comparison == nil ? "Compare first" : model.plan.steps.isEmpty ? "Nothing to do this way"
                           : model.chosen.steps.isEmpty ? "Nothing is ticked: tick the items to do"

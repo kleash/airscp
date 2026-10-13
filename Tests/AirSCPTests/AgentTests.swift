@@ -5,7 +5,7 @@ import Testing
 @testable import AirSCP
 @testable import AirSCPCore
 
-// Agent control's server (PLAN.md T): the socket's token and modes, the snapshot, menus with their reasons, SwiftUI
+// Agent control's server: the socket's token and modes, the snapshot, menus with their reasons, SwiftUI
 // sheets driven through their accessibility nodes, screenshots, waits, and a whole session against a throwaway sshd.
 // The bridge's own tests (MCP framing, `--agent`) are in AgentBridgeTests.swift.
 
@@ -24,16 +24,26 @@ import Testing
 
 @MainActor var keptDelegates: [AppDelegate] = []
 
-/// An off-screen main window under agent control, with its server's folder in the test's scratch space.
+/// An off-screen main window under agent control, with its server's folder in the test's scratch space. Its changes
+/// don't wait for anyone (nobody is at the Mac to allow them), unless a test turns that on again.
 @MainActor
 func agentWindow(_ model: AppModel, _ askpass: AskpassServer) throws -> (main: MainWindowController, server: AgentServer, dir: String) {
     useAppMenuBar()
+    if model.data.settings.askBeforeAgentChanges { model.data.settings.askBeforeAgentChanges = false }
     let main = MainWindowController(model: model, askpass: askpass)
     keptWindows.append(main)
     main.window?.setFrame(NSRect(x: -20000, y: -20000, width: 1000, height: 640), display: false)
     let dir = try scratch() + "/agent"
     // Only this test's window: other tests' windows and sheets share NSApp.
-    return (main, try AgentServer(main: main, model: model, directory: URL(fileURLWithPath: dir), windows: { [] }), dir)
+    let server = try AgentServer(main: main, model: model, directory: URL(fileURLWithPath: dir), windows: { [] })
+    server.showQuestion = offScreen
+    return (main, server, dir)
+}
+
+/// A question to the person at the Mac, shown off the screen as the tests' windows are.
+@MainActor func offScreen(_ panel: AgentQuestionPanel) {
+    panel.setFrameOrigin(NSPoint(x: -21000, y: -21000))
+    panel.orderFront(nil)
 }
 
 /// A tool's reply: its text as JSON, or the error text; and its image, if any.
@@ -87,7 +97,7 @@ func field(_ sheet: [String: Any]?, _ id: String) -> [String: Any]? {
     #expect(mode(dir) == 0o700 && mode(dir + "/sock") == 0o600 && mode(dir + "/token") == 0o600)
     let token = try String(contentsOfFile: dir + "/token", encoding: .utf8)
     #expect(token.count == 64 && token.allSatisfy(\.isHexDigit))
-    #expect(DebugLog.redacted("token \(token)") == "(line left out: it held a password or token)")  // PLAN.md AE
+    #expect(DebugLog.redacted("token \(token)") == "(line left out: it held a password or token)")  // the debug log
     // The server answers on the main actor: the requests go from another thread.
     func exchange(_ request: [String: Any]) async -> [String: Any]? {
         await Task.detached { Askpass.exchange(request, socket: dir + "/sock") }.value
@@ -336,7 +346,8 @@ func field(_ sheet: [String: Any]?, _ id: String) -> [String: Any]? {
 // MARK: Other windows: menus, keys and lists there
 
 /// Commands and keys go to the window named by `in` (an editor's File > Close, ⌘W, Select All), lists in other windows
-/// and in sheets are selected and their rows read, and Quick Look (a panel an agent can't close) is refused.
+/// and in sheets are selected and their rows read (the Keys window's Add to Agent asks first), and Quick Look (a panel
+/// an agent can't close) is refused.
 @MainActor @Test func agentWorksInOtherWindowsAndTheirLists() async throws {
     _ = NSApplication.shared
     useAppMenuBar()
@@ -420,6 +431,16 @@ func field(_ sheet: [String: Any]?, _ id: String) -> [String: Any]? {
     #expect(buttons.first { $0["title"] as? String == "Install on Host…" }?["enabled"] as? Bool == true)
     #expect(buttons.first { $0["title"] as? String == "Add to Agent" }?["enabled"] as? Bool == true)
     #expect(await call(server, "select", ["in": "window:Keys", "names": ["nothing"]]).error?.contains("No list") == true)
+    // Add to Agent changes this Mac (the ssh agent, the login Keychain): it asks first. (Never pressed unless it asks: it
+    // would reach the user's own agent.)
+    let addToAgent = try #require(buttons.first { $0["title"] as? String == "Add to Agent" }?["id"] as? String)
+    try #require(AgentServer.changingControls.contains(addToAgent))
+    model.data.settings.askBeforeAgentChanges = true
+    server.showQuestion = offScreen
+    let adding = Task { await call(server, "press", ["title": "Add to Agent", "in": "window:Keys"]) }
+    try #require(await waitForQuestion(server)).answer = .deny
+    #expect(await adding.value.error == AgentBridge.declined + "press “Add to Agent”.")
+    model.data.settings.askBeforeAgentChanges = false
 
     // A list in a sheet: the Proxies sheet's proxy, then Edit… opens its editor.
     main.showProxies()
@@ -703,7 +724,7 @@ func field(_ sheet: [String: Any]?, _ id: String) -> [String: Any]? {
     }
 }
 
-/// go and open (owner's report, 1.0.0: an agent clicked its way through a server's folders): a folder by its path
+/// go and open (in 1.0.0 an agent clicked its way through a server's folders): a folder by its path
 /// (absolute, ~, relative, ..) and a row by its name, through the pane's own navigation (the pane moves, its Back list
 /// follows), answered with the folder's rows (the first 100, `more` counting the others) or a plain error, and no
 /// error sheet left to close; a file opens as Return opens it.
@@ -810,7 +831,8 @@ func field(_ sheet: [String: Any]?, _ id: String) -> [String: Any]? {
 }
 
 /// Test Connection in the host editor works while AirSCP isn't the active app (ssh's question comes on the editor), and
-/// a tunnel's switch, Edit… and Remove are pressed by the tunnel's name, with its state in the snapshot.
+/// a tunnel's switch, Edit… and Remove are pressed by the tunnel's name, with its state in the snapshot; switching it
+/// asks the person at the Mac first.
 @MainActor @Test func agentTestsAConnectionAndSwitchesATunnel() async throws {
     _ = NSApplication.shared
     try await withServer { @MainActor server in
@@ -857,6 +879,18 @@ func field(_ sheet: [String: Any]?, _ id: String) -> [String: Any]? {
             return (workspace?["tunnels"] as? [[String: Any]])?.first { $0["title"] as? String == tunnel }?["on"] as? Bool
         }
         #expect(await on() == false)
+        // Switching it opens a port: with the questions on, the person at the Mac is asked first, pressed or set.
+        model.data.settings.askBeforeAgentChanges = true
+        for (tool, arguments) in [("press", ["title": tunnel]), ("set", ["title": tunnel, "value": true])] as [(String, [String: Any])] {
+            let switching = Task { await call(agent, tool, arguments) }
+            let question = try #require(await waitForQuestion(agent), "\(tool)")
+            #expect(question.change == "switch “\(tunnel)” on", "\(tool)")
+            question.answer = .deny
+            #expect(await switching.value.error == AgentBridge.declined + "switch “\(tunnel)” on.", "\(tool)")
+        }
+        #expect(await call(agent, "set", ["title": tunnel, "value": false]).error == nil && agent.question == nil)  // as it is
+        #expect(await on() == false && !canConnect(to: free.port))
+        model.data.settings.askBeforeAgentChanges = false
         #expect(await call(agent, "press", ["title": tunnel]).error == nil)
         #expect(await eventually { canConnect(to: free.port) })
         #expect(await eventually { await on() == true })
@@ -933,7 +967,7 @@ func field(_ sheet: [String: Any]?, _ id: String) -> [String: Any]? {
     }
 }
 
-/// Find Files and Synchronize through the agent (PLAN.md S.1): their sheets' fields by id, `wait found` and `wait
+/// Find Files and Synchronize through the agent: their sheets' fields by id, `wait found` and `wait
 /// compared` with the results and the plan, Show, and a Synchronize that leaves the two folders the same.
 @MainActor @Test func agentFindsFilesAndSynchronizesFolders() async throws {
     _ = NSApplication.shared
@@ -1301,7 +1335,7 @@ extension RDPWindowsTests {
     #expect(await call(server, "wait", ["until": "disconnected", "host": "Windows VM", "timeout": 30]).error == nil)
 }
 
-/// An agent's clicks, typing and window sizes on a desktop that fits the window (round 1's Remote Desktop findings): a
+/// An agent's clicks, typing and window sizes on a desktop that fits the window (each was found broken once): a
 /// click on a Windows button presses it (the mouse-up arrived at a corner of the desktop, so Windows saw a drag); text
 /// typed into Windows 11's Notepad arrives as typed (it came out backwards, without capitals or accents, when typed
 /// faster); and a window made bigger and at once smaller again ends with the desktop at the smaller size (the second

@@ -50,7 +50,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
         self.model = model
         self.askpass = askpass
         detail = DetailController(model: model)
-        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 1100, height: 700),
+        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 1180, height: 700),
                               styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView],
                               backing: .buffered, defer: false)
         window.minSize = NSSize(width: 760, height: 460)
@@ -75,7 +75,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
         toolbar.delegate = self
         toolbar.displayMode = .iconOnly
         window.toolbar = toolbar
-        window.open(size: NSSize(width: 1100, height: 700), autosave: layoutName("Main"))
+        window.open(size: NSSize(width: 1180, height: 700), autosave: layoutName("Main"))
         sidebar.onSelect = { [weak self] in self?.selectionChanged() }
         titles = model.$data.sink { [weak self] data in self?.updateTitle(data) }
     }
@@ -229,10 +229,30 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
     }
 
     /// A new host and desktop check their servers as Settings ▸ Security says.
-    func newHost() {
+    /// `link`: the address, user and port of an sftp:// or ssh:// link with no saved host yet.
+    func newHost(from link: HostLink? = nil) {
         var host = SSHHost()
         host.hostKeyCheck = model.data.settings.hostKeyCheck
+        if let link {
+            host.hostname = link.host
+            host.username = link.user
+            host.port = link.port
+            if link.scheme == .sftp { host.defaultRemoteDir = link.path }
+        }
         editHost(host, isNew: true)
+    }
+
+    /// An sftp:// or ssh:// link: the saved host it names shown and connected, at its path (sftp) or in its Terminal tab
+    /// (ssh); without one, New Host… filled in from it.
+    func open(_ link: HostLink) {
+        showWindow(nil)
+        guard let host = model.data.hosts.first(where: link.matches) else { return newHost(from: link) }
+        open(host.id) { workspace in
+            if link.scheme == .ssh { return workspace.showTerminal() }
+            guard !link.path.isEmpty, let pane = workspace.browser.right else { return }
+            // "~/logs" as Go to Folder takes it: in the home folder (a quoted ~ would be a folder called "~").
+            Task { await pane.open(pane.resolve(link.path) ?? link.path) }
+        }
     }
 
     func newRemoteDesktop() {
@@ -384,6 +404,17 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
     @objc func showTunnels(_ sender: Any?) { selectedWorkspace?.showTunnels() }
     @objc func showTerminal(_ sender: Any?) { selectedWorkspace?.showTerminal() }
     @objc func copySSHCommand(_ sender: Any?) { selectedHost.map { copyCommand($0, in: model.data) } }
+    @objc func showServerInfo(_ sender: Any?) { selectedWorkspace?.showServerInfo() }
+    @objc func changePassword(_ sender: Any?) { selectedWorkspace?.changePassword() }
+
+    /// Host ▸ Copy Link: sftp://user@host:port/<the folder shown> (ssh:// when no server folder is shown); no password.
+    @objc func copyLink(_ sender: Any?) {
+        guard let host = selectedHost else { return }
+        let path = selectedWorkspace.flatMap { $0.session.state == .connected ? $0.browser.right.dir : nil }
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(HostLink.string(for: host, path: path ?? (host.defaultRemoteDir.isEmpty ? nil : host.defaultRemoteDir)),
+                                       forType: .string)
+    }
     @objc func editHost(_ sender: Any?) { sidebar.selection.map(edit) }
     @objc func duplicateHost(_ sender: Any?) { sidebar.selection.map(duplicate) }
     @objc func deleteHost(_ sender: Any?) { sidebar.selection.map(delete) }
@@ -448,6 +479,16 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
             let capabilities = selectedWorkspace?.session.capabilities
             guard state == .connected, capabilities?.shell != true else { return (true, nil) }
             return (false, capabilities?.noShellReason ?? "This server doesn't run commands.")
+        case #selector(copyLink(_:)):
+            return (selectedHost != nil, noHost)
+        case #selector(showServerInfo(_:)):
+            guard selectedHost != nil else { return (false, noHost) }
+            return (state == .connected, "Connect to the host first: the facts come from the connection.")
+        case #selector(changePassword(_:)):
+            guard selectedHost != nil else { return (false, noHost) }
+            guard state == .connected else { return (false, "Connect to the host first: passwd runs in its Terminal tab.") }
+            let capabilities = selectedWorkspace?.session.capabilities
+            return (capabilities?.shell == true, capabilities?.noShellReason ?? "This server doesn't run commands.")
         case #selector(copySSHCommand(_:)):
             guard let host = selectedHost else { return (false, noHost) }
             let problem = copyCommandProblem(host, in: model.data)
@@ -544,7 +585,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
     private func updateTitle(_ data: AirSCPData) {
         guard let window else { return }
         let id = sidebar.selection?.id
-        // The route goes with the state: "Connected · via corp-proxy → bastion" (PLAN.md U.1).
+        // The route goes with the state: "Connected · via corp-proxy → bastion".
         if let host = data.host(id) {
             window.title = host.displayName
             window.subtitle = ([Self.describe(workspaces[host.id]?.connection.state ?? .idle)]

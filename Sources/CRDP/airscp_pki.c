@@ -1,4 +1,4 @@
-// The Certificate Manager (PLAN.md AA) over the OpenSSL that is linked for FreeRDP: in process, no openssl command.
+// The Certificate Manager over the OpenSSL that is linked for FreeRDP: in process, no openssl command.
 
 #include "airscp_pki.h"
 
@@ -8,6 +8,7 @@
 #include <time.h>
 
 #include <openssl/bio.h>
+#include <openssl/bn.h>
 #include <openssl/core_names.h>
 #include <openssl/err.h>
 #include <openssl/evp.h>
@@ -15,6 +16,7 @@
 #include <openssl/pem.h>
 #include <openssl/pkcs12.h>
 #include <openssl/pkcs7.h>
+#include <openssl/rand.h>
 #include <openssl/x509.h>
 #include <openssl/x509v3.h>
 
@@ -351,7 +353,8 @@ char *airscp_pki_describe_certificate(const uint8_t *der, size_t length) {
     if (path >= 0) add_number(&lines, "pathLength", path);
     add(&lines, "signature", OBJ_nid2ln(X509_get_signature_nid(certificate)));
     add_key(&lines, X509_get0_pubkey(certificate));
-    add(&lines, "selfIssued", X509_check_issued(certificate, certificate) == X509_V_OK ? "yes" : "no");
+    // Issued by itself, whatever its key usage says (a server's self-signed certificate may not sign others).
+    add(&lines, "selfIssued", X509_self_signed(certificate, 0) == 1 ? "yes" : "no");
     X509_free(certificate);
     ERR_clear_error();
     return lines.text;
@@ -426,6 +429,31 @@ uint8_t *airscp_pki_public_key(int kind, const uint8_t *der, size_t length, size
 
 // MARK: Writing
 
+// A copy of OpenSSL's `der` (`length` bytes, maybe a key) for the caller to free with airscp_pki_free; OpenSSL's is
+// cleared and freed.
+static uint8_t *handed_over(unsigned char *der, int length, size_t *out_length) {
+    uint8_t *copy = der && length > 0 ? malloc((size_t)length) : NULL;
+    if (copy) {
+        memcpy(copy, der, (size_t)length);
+        *out_length = (size_t)length;
+    }
+    if (der) OPENSSL_clear_free(der, length > 0 ? (size_t)length : 0);
+    return copy;
+}
+
+// A PKCS#12 file's DER with the MAC that lets a reader check the password and that nothing was changed: SHA-256, or
+// SHA-1 for older systems (as openssl pkcs12 -legacy writes it). Frees `pkcs12`.
+static uint8_t *pkcs12_der(PKCS12 *pkcs12, const char *password, int legacy, size_t *out_length) {
+    uint8_t *result = NULL;
+    if (pkcs12 && PKCS12_set_mac(pkcs12, password, -1, NULL, 0, 2048, legacy ? EVP_sha1() : EVP_sha256())) {
+        unsigned char *der = NULL;
+        int length = i2d_PKCS12(pkcs12, &der);
+        result = handed_over(der, length, out_length);
+    }
+    PKCS12_free(pkcs12);
+    return result;
+}
+
 uint8_t *airscp_pki_pkcs12(const uint8_t *key, size_t key_length, const uint8_t *certificate, size_t certificate_length,
                            const uint8_t *const *chain, const size_t *chain_lengths, int chain_count, const char *name,
                            const char *password, int legacy, size_t *out_length) {
@@ -440,25 +468,41 @@ uint8_t *airscp_pki_pkcs12(const uint8_t *key, size_t key_length, const uint8_t 
     }
     uint8_t *result = NULL;
     if ((key && !private_key) || (certificate && !leaf)) goto done;
-    // Modern: AES-256-CBC with PBKDF2 and a SHA-256 MAC. Legacy: 3DES (and RC2-free 3DES for certificates) with SHA-1.
-    int key_cipher = legacy ? NID_pbe_WithSHA1And3_Key_TripleDES_CBC : NID_aes_256_cbc;
-    int cert_cipher = legacy ? NID_pbe_WithSHA1And3_Key_TripleDES_CBC : NID_aes_256_cbc;
-    PKCS12 *pkcs12 = PKCS12_create_ex(password, name, private_key, leaf, sk_X509_num(others) ? others : NULL, key_cipher,
-                                      cert_cipher, 2048, -1, 0, NULL, NULL);
-    if (!pkcs12) goto done;
-    if (!legacy) PKCS12_set_mac(pkcs12, password, -1, NULL, 0, 2048, EVP_sha256());
-    unsigned char *der = NULL;
-    int written = i2d_PKCS12(pkcs12, &der);
-    PKCS12_free(pkcs12);
-    if (written > 0 && (result = malloc((size_t)written))) {
-        memcpy(result, der, (size_t)written);
-        *out_length = (size_t)written;
-    }
-    OPENSSL_free(der);
+    // Modern: AES-256-CBC with PBKDF2. Legacy: 3DES, the certificates too (RC2 isn't in this OpenSSL).
+    int cipher = legacy ? NID_pbe_WithSHA1And3_Key_TripleDES_CBC : NID_aes_256_cbc;
+    result = pkcs12_der(PKCS12_create_ex(password, name, private_key, leaf, sk_X509_num(others) ? others : NULL, cipher,
+                                         cipher, 2048, -1, 0, NULL, NULL),
+                        password, legacy, out_length);
 done:
     EVP_PKEY_free(private_key);
     X509_free(leaf);
     sk_X509_pop_free(others, X509_free);
+    ERR_clear_error();
+    return result;
+}
+
+// The attribute keytool gives a trusted certificate in a PKCS#12 file (openssl pkcs12 -jdktrust anyExtendedKeyUsage).
+static int trusted_for_java(PKCS12_SAFEBAG *bag, void *unused) {
+    (void)unused;
+    return PKCS12_add1_attr_by_NID(bag, NID_oracle_jdk_trustedkeyusage, V_ASN1_OBJECT,
+                                   (const unsigned char *)OBJ_nid2obj(NID_anyExtendedKeyUsage), -1) ? 1 : -1;
+}
+
+uint8_t *airscp_pki_truststore(const uint8_t *const *certificates, const size_t *lengths, const char *const *aliases,
+                               int count, const char *password, size_t *out_length) {
+    STACK_OF(X509) *trusted = sk_X509_new_null();
+    int ok = trusted && count > 0;
+    for (int i = 0; ok && i < count; i++) {
+        const unsigned char *p = certificates[i];
+        X509 *one = d2i_X509(NULL, &p, (long)lengths[i]);
+        ok = one && X509_alias_set1(one, (const unsigned char *)aliases[i], -1) && sk_X509_push(trusted, one);
+        if (!ok) X509_free(one);
+    }
+    uint8_t *result = ok ? pkcs12_der(PKCS12_create_ex2(password, NULL, NULL, NULL, trusted, NID_aes_256_cbc, NID_aes_256_cbc,
+                                                        2048, -1, 0, NULL, NULL, trusted_for_java, NULL),
+                                      password, 0, out_length)
+                         : NULL;
+    sk_X509_pop_free(trusted, X509_free);
     ERR_clear_error();
     return result;
 }
@@ -501,6 +545,115 @@ int airscp_pki_signed_by(const uint8_t *der, size_t length, const uint8_t *issue
     X509_free(signer);
     ERR_clear_error();
     return result;
+}
+
+// MARK: New keys, requests and self-signed certificates
+
+uint8_t *airscp_pki_new_key(int type, size_t *out_length) {
+    EVP_PKEY *key = NULL;
+    switch (type) {
+    case AIRSCP_PKI_RSA_2048: key = EVP_PKEY_Q_keygen(NULL, NULL, "RSA", (size_t)2048); break;
+    case AIRSCP_PKI_RSA_3072: key = EVP_PKEY_Q_keygen(NULL, NULL, "RSA", (size_t)3072); break;
+    case AIRSCP_PKI_RSA_4096: key = EVP_PKEY_Q_keygen(NULL, NULL, "RSA", (size_t)4096); break;
+    case AIRSCP_PKI_EC_P256: key = EVP_PKEY_Q_keygen(NULL, NULL, "EC", "P-256"); break;
+    case AIRSCP_PKI_EC_P384: key = EVP_PKEY_Q_keygen(NULL, NULL, "EC", "P-384"); break;
+    case AIRSCP_PKI_ED25519: key = EVP_PKEY_Q_keygen(NULL, NULL, "ED25519"); break;
+    }
+    PKCS8_PRIV_KEY_INFO *info = key ? EVP_PKEY2PKCS8(key) : NULL;
+    unsigned char *der = NULL;
+    int length = info ? i2d_PKCS8_PRIV_KEY_INFO(info, &der) : 0;
+    PKCS8_PRIV_KEY_INFO_free(info);
+    EVP_PKEY_free(key);
+    ERR_clear_error();
+    return handed_over(der, length, out_length);
+}
+
+// Calls `take` with each "name=value" line of `text` (empty lines skipped): 0 when a line has no '=' or `take` refuses.
+static int each_line(const char *text, int (*take)(const char *name, const char *value, void *context), void *context) {
+    char *copy = strdup(text ? text : "");
+    int ok = copy != NULL;
+    for (char *rest = copy, *line; ok && (line = strsep(&rest, "\n"));) {
+        char *value = strchr(line, '=');
+        if (!*line) continue;
+        ok = value != NULL;
+        if (ok) {
+            *value++ = 0;
+            ok = take(line, value, context);
+        }
+    }
+    free(copy);
+    return ok;
+}
+
+static int add_name_entry(const char *field, const char *value, void *name) {
+    return X509_NAME_add_entry_by_txt(name, field, MBSTRING_UTF8, (const unsigned char *)value, -1, -1, 0);
+}
+
+typedef struct {
+    X509V3_CTX *context;
+    STACK_OF(X509_EXTENSION) *extensions;
+} Extensions;
+
+// One extension, read as openssl's -addext reads it (the same parser).
+static int add_extension(const char *name, const char *value, void *into) {
+    Extensions *all = into;
+    X509_EXTENSION *extension = X509V3_EXT_nconf(NULL, all->context, name, value);
+    if (extension && sk_X509_EXTENSION_push(all->extensions, extension)) return 1;
+    X509_EXTENSION_free(extension);
+    return 0;
+}
+
+// A random positive serial number of 16 bytes at most.
+static int random_serial(X509 *certificate) {
+    unsigned char bytes[16];
+    if (RAND_bytes(bytes, sizeof bytes) != 1) return 0;
+    bytes[0] &= 0x7F;
+    BIGNUM *number = BN_bin2bn(bytes, sizeof bytes, NULL);
+    int ok = number && BN_to_ASN1_INTEGER(number, X509_get_serialNumber(certificate)) != NULL;
+    BN_free(number);
+    return ok;
+}
+
+uint8_t *airscp_pki_new_certificate(const uint8_t *key, size_t key_length, const char *subject, const char *extensions,
+                                    int days, size_t *out_length) {
+    EVP_PKEY *private_key = load_key(AIRSCP_PKI_PRIVATE_KEY, key, key_length);
+    X509_NAME *name = X509_NAME_new();
+    X509_REQ *request = days == 0 ? X509_REQ_new() : NULL;
+    X509 *certificate = days != 0 ? X509_new() : NULL;
+    X509V3_CTX context;
+    X509V3_set_ctx(&context, certificate, certificate, request, NULL, 0);
+    Extensions added = {&context, sk_X509_EXTENSION_new_null()};
+    // Ed25519 hashes what it signs itself: no digest may be named.
+    const EVP_MD *digest = private_key && EVP_PKEY_get_base_id(private_key) == EVP_PKEY_ED25519 ? NULL : EVP_sha256();
+    int ok = private_key && name && (request || certificate) && added.extensions
+        && each_line(subject, add_name_entry, name) && X509_NAME_entry_count(name) > 0
+        && each_line(extensions, add_extension, &added);
+    unsigned char *der = NULL;
+    int length = 0;
+    if (ok && request) {
+        ok = X509_REQ_set_version(request, X509_REQ_VERSION_1) && X509_REQ_set_subject_name(request, name)
+            && X509_REQ_set_pubkey(request, private_key)
+            && (sk_X509_EXTENSION_num(added.extensions) == 0 || X509_REQ_add_extensions(request, added.extensions))
+            && X509_REQ_sign(request, private_key, digest) > 0;
+        if (ok) length = i2d_X509_REQ(request, &der);
+    } else if (ok) {
+        ok = X509_set_version(certificate, X509_VERSION_3) && random_serial(certificate)
+            && X509_gmtime_adj(X509_getm_notBefore(certificate), 0)
+            && X509_time_adj_ex(X509_getm_notAfter(certificate), days, 0, NULL)
+            && X509_set_subject_name(certificate, name) && X509_set_issuer_name(certificate, name)
+            && X509_set_pubkey(certificate, private_key);
+        for (int i = 0; ok && i < sk_X509_EXTENSION_num(added.extensions); i++) {
+            ok = X509_add_ext(certificate, sk_X509_EXTENSION_value(added.extensions, i), -1);
+        }
+        if (ok && X509_sign(certificate, private_key, digest) > 0) length = i2d_X509(certificate, &der);
+    }
+    sk_X509_EXTENSION_pop_free(added.extensions, X509_EXTENSION_free);
+    X509_REQ_free(request);
+    X509_free(certificate);
+    X509_NAME_free(name);
+    EVP_PKEY_free(private_key);
+    ERR_clear_error();
+    return handed_over(der, length, out_length);
 }
 
 void airscp_pki_free(void *pointer) { free(pointer); }

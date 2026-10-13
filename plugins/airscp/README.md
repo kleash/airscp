@@ -26,5 +26,6 @@ you watch it happen in AirSCP's window.
 /plugin install airscp@airscp
 ```
 
-Agents never see saved passwords, and AirSCP keeps asking before it deletes or replaces anything.
+Agents never see saved passwords, AirSCP keeps asking before it deletes or replaces anything, and Claude's changes
+(deleting, copying, running commands, typing) wait until you allow them in AirSCP's question window.
 More: [AI agents (MCP)](https://kleash.github.io/airscp/ai-agents.html) in AirSCP Help.

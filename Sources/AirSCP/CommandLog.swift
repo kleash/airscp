@@ -101,6 +101,13 @@ struct CommandLogView: View {
                 }
                 .disabled(log.entries.isEmpty)
                 .help("Forget the listed commands (new ones keep coming)")
+                if AppleIntelligence.ready {
+                    Button("Summarize…") { AppleIntelligence.ask(AssistantContext.summarizeLog(log.entries.map(\.command))) }
+                        .disabled(log.entries.isEmpty)
+                        .help(log.entries.isEmpty ? "Nothing to summarize yet"
+                              : "Ask Apple Intelligence (on this Mac) what these commands did and whether any failed")
+                        .accessibilityIdentifier("log.summarize")
+                }
             }
             .controlSize(.small)
             .padding(.horizontal, 10)

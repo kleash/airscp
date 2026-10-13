@@ -1,7 +1,7 @@
 import Darwin
 import Foundation
 
-/// The agent side of agent control (PLAN.md T): `AirSCP --mcp` speaks MCP over stdio (newline-delimited JSON-RPC 2.0)
+/// The agent side of agent control: `AirSCP --mcp` speaks MCP over stdio (newline-delimited JSON-RPC 2.0)
 /// and `AirSCP --agent <tool> [json] [--out shot.png]` runs one tool from a shell. Both send each tool call to the
 /// running app's agent socket (`<support dir>/agent/sock`, with the token from `agent/token`) and pass its reply on:
 /// the app already answers in MCP's tool-result shape, `{content: [{type: text|image, …}], isError}`.
@@ -12,6 +12,16 @@ public enum AgentBridge {
     static let offMessage = "AirSCP isn't running, or agent control is off (AirSCP ▸ Settings ▸ Allow AI agents to control AirSCP)."
     static let busyMessage = "AirSCP didn't answer: it may be busy with many calls at once, or quitting. Check with snapshot, "
         + "then try again."
+    /// How a request that changes something ends when the person at the Mac says no, or doesn't answer within
+    /// `approvalWait` seconds (Settings ▸ Ask before agents change things): nothing was done.
+    public static let declined = "The person at the Mac declined: "
+    public static let noAnswer = "The person at the Mac didn't answer"
+    public static let approvalWait: TimeInterval = 45
+    /// What the tools that can change something say about that wait.
+    static let mayWait = " A change (deleting, replacing, renaming, killing, disconnecting, quitting, running a command, "
+        + "typing into a terminal or a Windows desktop, copying files, changing permissions, putting a key on a server or "
+        + "in the ssh agent, switching a tunnel) may first wait up to \(Int(approvalWait)) s for the person at the Mac to "
+        + "allow it: an error starting “\(declined)” or “\(noAnswer)” means nothing was done."
 
     /// The MCP tools: name, description and input schema. The app answers each of these names.
     public static let tools: [[String: Any]] = [
@@ -34,27 +44,27 @@ public enum AgentBridge {
              + "context menu: \"context > Rename…\" (a file pane's, for its selected rows; pane=transfers: the Transfers "
              + "panel's, for its selected jobs). A disabled item is refused with its reason. in: the window whose command "
              + "it is (as if it were in front), e.g. File > Close for an editor window. file / files: what an Open or Save "
-             + "panel the command opens chooses (Export Hosts…, Import Hosts…, Upload…), instead of showing it.",
+             + "panel the command opens chooses (Export Hosts…, Import Hosts…, Upload…), instead of showing it." + mayWait,
              ["path": string("Menu path"), "pane": string("left | right | transfers (for context)"),
               "in": string("window:<title> | sheet (default: the main window)"), "file": string("A Mac path for its panel"),
               "files": array("Mac paths for its panel")], required: ["path"]),
         tool("press", "Press a button, checkbox, tab or segment by its id or title, in the frontmost sheet or alert, "
              + "else the main window. file / files: what an Open or Save panel it opens chooses (Choose…, Other Key File…, "
-             + "Paste Items to Mac…), instead of showing it.",
+             + "Paste Items to Mac…), instead of showing it." + mayWait,
              ["id": string("Accessibility id"), "title": string("Button title"), "in": string("sheet | window:<title>"),
               "file": string("A Mac path for its panel"), "files": array("Mac paths for its panel")]),
         tool("set", "Set a field: text or password field, checkbox (true/false), pop-up menu or segmented control "
              + "(by option title). Find it by id, label, title or placeholder (a row's box in Synchronize's list: the "
-             + "item's path). file: what a panel the choice opens takes (Log in with ▸ Other Key File…).",
+             + "item's path). file: what a panel the choice opens takes (Log in with ▸ Other Key File…)." + mayWait,
              ["id": string("Accessibility id"), "title": string("Label, title or placeholder"), "value": any("New value"),
               "in": string("sheet | window:<title>"), "file": string("A Mac path for its panel")], required: ["value"]),
         tool("key", "Press keys, e.g. \"cmd+shift+n\", \"return\", \"escape\", \"down\", \"cmd+v\". target: window "
              + "(default: the frontmost sheet, else the main window, or the window named by in) or rdp (the Windows "
              + "desktop: drive Windows by keys first, e.g. \"win+e\" File Explorer, \"alt+d\" its address bar, "
-             + "\"win+r\" Run, \"win\" Start, \"ctrl+shift+escape\", \"alt+f4\"; win is the Windows key).",
+             + "\"win+r\" Run, \"win\" Start, \"ctrl+shift+escape\", \"alt+f4\"; win is the Windows key)." + mayWait,
              ["combo": string("Key combination"), "target": string("window | rdp"), "in": string("window:<title> | sheet")],
              required: ["combo"]),
-        tool("type", "Type text into the focused field (or the Windows desktop with target rdp).",
+        tool("type", "Type text into the focused field (or the Windows desktop with target rdp)." + mayWait,
              ["text": string("Text"), "target": string("window | rdp"), "in": string("window:<title> | sheet")], required: ["text"]),
         tool("click", "Click at x, y. target rdp: x, y are pixels of the Windows desktop's picture (screenshot "
              + "target=rdp) from its top left, as they are; the reply shows what was there, zoomed, with a red cross where "
@@ -62,7 +72,7 @@ public enum AgentBridge {
              + "in a screenshot of it at scale 1. Refused in the file panes and the sidebar (go, open, select and menu take "
              + "folders, rows and hosts by name), elsewhere only a last resort after press and set. On the Windows desktop "
              + "the pointer rests there first; wheel turns the mouse wheel there instead of clicking (notches, up when "
-             + "positive). For Windows, keys first: click when no key does it.",
+             + "positive). For Windows, keys first: click when no key does it." + mayWait,
              ["x": number("X"), "y": number("Y"), "target": string("rdp: x, y are pixels of screenshot target=rdp"),
               "button": string("left | right"), "count": integer("2 for a double-click"),
               "modifiers": string("e.g. cmd+shift"), "wheel": integer("Wheel notches on the Windows desktop (up > 0)"),
@@ -78,7 +88,7 @@ public enum AgentBridge {
              ["pane": string("right (default) | left"), "path": string("Folder")], required: ["path"]),
         tool("open", "Open a file pane's row by its name, as a double-click does: a folder (or a link to one) is shown in "
              + "the pane, answered as go answers; \"..\" is the enclosing folder; a file opens in its app on this Mac "
-             + "(outside AirSCP: download a file to read it).",
+             + "(outside AirSCP: download a file to read it)." + mayWait,
              ["pane": string("right (default) | left"), "name": string("The row's name, exactly, or ..")],
              required: ["name"]),
         tool("select", "Select rows: pane left|right (file names, exactly; also focuses the pane), sidebar (a host or "
@@ -96,11 +106,11 @@ public enum AgentBridge {
         tool("drop", "Drop files as a drag would: files (Mac paths) onto pane left|right, target desktop (the RDP "
              + "shared folder) or target keys (the Keys window: Import Key for a PuTTY .ppk); or the selected rows from: "
              + "left|right to: left|right|local:<Mac folder> (Download To…)|finder:<Mac folder> (a drag into Finder: no "
-             + "questions). Conflicts and folder questions appear as sheets.",
+             + "questions). Conflicts and folder questions appear as sheets." + mayWait,
              ["files": array("Mac paths"), "pane": string("left | right"), "target": string("desktop | keys"),
               "from": string("left | right"), "to": string("left | right | local:<dir> | finder:<dir>"),
               "into": string("Folder (default: the pane's)"),
-              "move": boolean("Move within a server instead of copying")]),
+              "move": boolean("Move instead of copying: within a server, or between this Mac and a server (the originals are deleted once copied; AirSCP asks first)")]),
         tool("wait", "Wait (polling, no sleeping needed) until: connected | disconnected (host), sheet | no_sheet, listed "
              + "(pane, optional path or text = a row name), transfers_done, rdp_connected, rdp_drawn (the desktop shows a "
              + "picture), text (anywhere in the snapshot or AirSCP's other windows), monitor (the Monitor has read the "
