@@ -109,6 +109,10 @@ changing the code.
   without the tracking loop (`AXNode.click`: next state, then the action), and `./test.sh` fails a run that never
   prints Swift Testing's "Test run with N tests" line. Anything that pulls events (`nextEvent`, `runModal`, a real
   mouse click) still stops a test process: tests don't do it.
+- CI's test process still ended mid-run (1.2.0): `quittingAsksAboutUnsavedEditorText` reached `performClose`, whose
+  click on the close button waits for events, and a later window-server event stopped the main run loop.
+  `applicationShouldTerminate` asks through `windowShouldClose` now. Rule: no test reaches an AppKit `perform…` that
+  simulates a click.
 - Apple's on-device model (1.2.0, first runs with Apple Intelligence on): a `DynamicGenerationSchema` string with
   a regex guide (`.pattern`) fails generation outright (`GenerativeError` 1020000), anchored or not: Suggest uses plain
   strings and `SuggestField.problem` checks them. Its plans are readable but padded: a connect before each action, a

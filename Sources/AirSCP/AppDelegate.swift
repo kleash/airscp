@@ -138,7 +138,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSMenu
         if let edited = NSApp.windows.first(where: { $0.isDocumentEdited && ($0.isVisible || $0.isMiniaturized) }) {
             if edited.isMiniaturized { edited.deminiaturize(nil) }
             edited.makeKeyAndOrderFront(nil)
-            edited.performClose(nil)
+            // Asked as the close button asks, without performClose's click on it: the click waits for events, which
+            // later ended the test process (docs/dev/regression-history.md).
+            if edited.delegate?.windowShouldClose?(edited) != false { edited.close() }
             return .terminateCancel
         }
         guard let main else { return .terminateNow }
