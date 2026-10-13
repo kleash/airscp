@@ -72,6 +72,9 @@ changing the code.
   takeover copied that frame, and AppKit clamps such a frame to the whole screen; Settings opened as tall as its form.
   A saved frame is used only when it fits on a screen, the takeover leaves frames out, and Settings opens 600 points
   tall (its form scrolls).
+- bash 3.2 read a command line ending exactly at the Terminal's right edge together with its first output line: with
+  marks in its prompt, readline 5 goes back up and down at Return without ending the wrap. A line feed into a blank line
+  now ends the line it leaves; the real-shell test's 74-column bash prompt catches it on every Mac.
 
 ## Test-suite lessons
 
