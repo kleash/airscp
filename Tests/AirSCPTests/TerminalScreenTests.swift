@@ -378,7 +378,10 @@ private func marked(_ text: String, columns: Int = 30, rows: Int = 8) -> Termina
         var options = TestServer.Options()
         options.shell = shell
         try await withServer(options) { @MainActor server in
-            try write("export FROM_FILES=yes\nPROMPT_COMMAND='LAST=$?'\n", to: server.path(".bash_profile"))
+            // bash's prompt is 74 columns, as a CI runner's long host name makes it: the printf line below ends at the
+            // screen's right edge.
+            try write("export FROM_FILES=yes\nPROMPT_COMMAND='LAST=$?'\nPS1='\(String(repeating: "p", count: 72))\\$ '\n",
+                      to: server.path(".bash_profile"))
             try write("export FROM_FILES=yes\nprecmd() { LAST=$? }\n", to: server.path(".zshrc"))
             let session = try await server.connectedSession()
             let screen = TerminalScreen(columns: 100, rows: 30)

@@ -249,7 +249,13 @@ public final class TerminalScreen {
             cursorX = max(cursorX - 1, 0)
         case 0x09:
             cursorX = tabStops.filter { $0 > cursorX }.min() ?? columns - 1
-        case 0x0A, 0x0B, 0x0C: index()
+        case 0x0A, 0x0B, 0x0C:
+            // Into a blank line, a line feed ends the line it leaves (moving down a long command line, readline comes
+            // into the rest of it). At Return after a command line that ends at the right edge, bash 3.2's readline
+            // (with marks in its prompt) goes back up from the blank it wrapped onto and down again without the erase
+            // newer ones send: the command's output would read as its line going on.
+            if lines[cursorY].wrapped, cursorY + 1 < rows, lines[cursorY + 1].text.isEmpty { lines[cursorY].wrapped = false }
+            index()
         case 0x0D:
             wrapPending = false
             cursorX = 0
