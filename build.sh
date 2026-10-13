@@ -18,13 +18,13 @@ app=build/AirSCP.app
 # changes (versions, options). It downloads and builds them, which takes a few minutes and, the first time, the internet.
 [ "$(cat vendor/out/stamp 2>/dev/null)" = "$(shasum -a 256 scripts/build-freerdp.sh | cut -d' ' -f1)" ] || scripts/build-freerdp.sh
 
-# App Intents (Shortcuts, Siri, Spotlight, PLAN.md AD): their metadata comes from Xcode's processor and the compiler's
+# App Intents (Shortcuts, Siri, Spotlight): their metadata comes from Xcode's processor and the compiler's
 # constant values. With the Command Line Tools alone the app builds without it, and Shortcuts doesn't list AirSCP.
 intents=$(xcrun --find appintentsmetadataprocessor 2>/dev/null || true)
 flags=()
 mkdir -p build
 if [ -n "$intents" ]; then
-    printf '%s' '["AppIntent","EntityQuery","EntityStringQuery","EntityPropertyQuery","AppEntity","TransientEntity","AppEnum","AppShortcutProviding","AppShortcutsProvider","AnyResolverProviding","AppIntentsPackage","DynamicOptionsProvider"]' \
+    printf '%s' '["AppIntent","EntityQuery","EntityStringQuery","EntityPropertyQuery","AppEntity","TransientEntity","AppEnum","AppShortcutProviding","AppShortcutsProvider","AnyResolverProviding","AppIntentsPackage","DynamicOptionsProvider","IndexedEntity","OpenIntent","SetValueIntent","ControlConfigurationIntent"]' \
         > build/intent-protocols.json
     flags=(-Xswiftc -emit-const-values -Xswiftc -Xfrontend -Xswiftc -const-gather-protocols-file -Xswiftc -Xfrontend -Xswiftc
            "$PWD/build/intent-protocols.json")
@@ -46,7 +46,7 @@ cp Resources/AirSCP-Info.plist "$app/Contents/Info.plist"
 plutil -replace CFBundleShortVersionString -string "$version" "$app/Contents/Info.plist"
 plutil -replace CFBundleVersion -string "$version" "$app/Contents/Info.plist"
 cp Resources/AppIcon.icns "$app/Contents/Resources/"
-cp -R Resources/Licenses "$app/Contents/Resources/"  # FreeRDP's and OpenSSL's (Apache 2.0)
+cp -R Resources/Licenses "$app/Contents/Resources/"  # FreeRDP's and OpenSSL's (Apache 2.0), and FreeRDP's notices
 cp Resources/AgentGuide.md "$app/Contents/Resources/"  # served by AirSCP --mcp (instructions, the guide tool)
 
 if [ -n "$intents" ]; then

@@ -120,8 +120,8 @@ extension FilePane {
 
     @objc func renameItem(_ sender: Any?) {
         guard let item = targets(sender).first, let dir, let window = view.window else { return }
-        askName("Rename “\(item.name)”", initial: item.name, button: "Rename", on: window, selectBaseName: true,
-                windows: isWindows) { [self] name in
+        askName("Rename “\(item.name)”", initial: item.name, button: "Rename", id: "prompt.rename", on: window,
+                selectBaseName: true, windows: isWindows) { [self] name in
             // By the bytes: "café" composed and decomposed are two names on a Linux server.
             guard !name.utf8.elementsEqual(item.name.utf8) else { return }
             Task { await rename(item, to: name, in: dir) }
@@ -233,9 +233,11 @@ extension FilePane {
         let entries = targets(sender).compactMap(\.entry)
         guard let first = entries.first else { return }
         let title = entries.count == 1 ? "Permissions of “\(first.name)”" : "Permissions of \(FileList.items(entries.count))"
+        let owners = Set(entries.map(\.owner)), groups = Set(entries.map(\.group))
         presentSheet(on: window) { close in
             PermissionsSheet(title: title, mode: first.mode & 0o7777, hasFolders: entries.contains { $0.kind == .directory },
-                             close: close) { [self] mode, recursive in
+                             owner: owners.count == 1 ? owners.first! : "", group: groups.count == 1 ? groups.first! : "",
+                             namesAllowed: session.capabilities.shell, close: close, apply: { [self] mode, recursive in
                 Task {
                     // In one go: each item whatever happened to the one before, what failed in one sheet.
                     await perform("Changing permissions…", failure: "Can't change the permissions") {
@@ -243,7 +245,14 @@ extension FilePane {
                     }
                     await relist(dir, select: entries.map(\.name))
                 }
-            }
+            }, changeOwner: { [self] owner, group, recursive in
+                Task {
+                    await perform("Changing the owner…", failure: "Can't change the owner or group") {
+                        try await session.setOwner(entries, owner: owner, group: group, recursive: recursive)
+                    }
+                    await relist(dir, select: entries.map(\.name))
+                }
+            })
         }
     }
 
@@ -351,8 +360,12 @@ extension FilePane {
         field.toolTip = "Words to pass to the program, as you would type them after its name"
         field.setAccessibilityIdentifier("run.arguments")
         alert.accessoryView = field
-        alert.addButton(withTitle: "Run").toolTip = "Run it and show its output in AirSCP"
-        alert.addButton(withTitle: "Run in Terminal").toolTip = "Run it in Terminal, for programs that ask questions or need sudo"
+        let run = alert.addButton(withTitle: "Run")
+        run.toolTip = "Run it and show its output in AirSCP"
+        run.setAccessibilityIdentifier("run.run")
+        let terminal = alert.addButton(withTitle: "Run in Terminal")
+        terminal.toolTip = "Run it in Terminal, for programs that ask questions or need sudo"
+        terminal.setAccessibilityIdentifier("run.runInTerminal")
         alert.addButton(withTitle: "Cancel").toolTip = "Don't run it"
         alert.window.initialFirstResponder = field
         alert.beginSheetModal(for: window) { [self] response in
@@ -383,6 +396,10 @@ extension FilePane {
             }, close: {
                 model.stop()
                 close()
+            }, download: { [weak self] paths in
+                self?.downloadFound(paths)
+            }, delete: { [weak self] paths in
+                self?.deleteFound(paths, from: model)
             })
         }
     }
@@ -403,7 +420,7 @@ extension FilePane {
         }
     }
 
-    // MARK: Favourites (PLAN.md S.2)
+    // MARK: Favourites
 
     /// The favourite folders of the server this pane shows (Go ▸ Favourites), as saved.
     var favourites: [String] {
@@ -413,19 +430,34 @@ extension FilePane {
     /// Go ▸ Add to Favourites: the server folder shown, kept for its host.
     @objc func addToFavourites(_ sender: Any?) {
         guard let session, let dir else { return }
-        browser?.workspace?.model.updateHost(session.host.id) { if !$0.favourites.contains(dir) { $0.favourites.append(dir) } }
+        // With this Mac in the other pane, its folder too: the favourite then shows both.
+        let other = browser?.otherPane(of: self)
+        let local = other?.isRemote == false ? other?.dir : nil
+        browser?.workspace?.model.updateHost(session.host.id) {
+            if !$0.favourites.contains(dir) { $0.favourites.append(dir) }
+            $0.favouriteLocalFolders[dir] = local
+        }
     }
 
-    /// Go ▸ Favourites ▸ <folder> (the item's representedObject).
+    /// Go ▸ Favourites ▸ <folder> (the item's representedObject); this Mac's folder kept with it shows in the other pane
+    /// when that pane shows this Mac.
     @objc func openFavourite(_ sender: NSMenuItem) {
         guard let path = sender.representedObject as? String else { return }
-        Task { await open(path) }
+        let local = session.flatMap { browser?.workspace?.model.host($0.host.id)?.favouriteLocalFolders[path] }
+        let other = browser?.otherPane(of: self)
+        Task {
+            await open(path)
+            if let local, let other, !other.isRemote, FileManager.default.fileExists(atPath: local) { await other.open(local) }
+        }
     }
 
     /// Go ▸ Favourites ▸ Remove ▸ <folder>.
     @objc func removeFavourite(_ sender: NSMenuItem) {
         guard let session, let path = sender.representedObject as? String else { return }
-        browser?.workspace?.model.updateHost(session.host.id) { $0.favourites.removeAll { $0 == path } }
+        browser?.workspace?.model.updateHost(session.host.id) {
+            $0.favourites.removeAll { $0 == path }
+            $0.favouriteLocalFolders[path] = nil
+        }
     }
 
     /// Go ▸ Favourites, filled by the pane that gets Go ▸ Add to Favourites when the Go menu's items are checked (as it
@@ -433,10 +465,13 @@ extension FilePane {
     /// pane through the responder chain, as the Go menu's others do.
     func fillFavourites(_ menu: NSMenu) {
         menu.removeAllItems()
+        let locals = session.flatMap { browser?.workspace?.model.host($0.host.id)?.favouriteLocalFolders } ?? [:]
         func entry(_ path: String, _ action: Selector) -> NSMenuItem {
             let item = NSMenuItem(title: path, action: action, keyEquivalent: "")
             item.representedObject = path
-            item.toolTip = MenuHelp.tips[action]
+            item.toolTip = MenuHelp.tips[action].map { tip in
+                locals[path].map { tip + ", with \(($0 as NSString).abbreviatingWithTildeInPath) on this Mac" } ?? tip
+            }
             return item
         }
         guard !favourites.isEmpty else {
@@ -454,7 +489,7 @@ extension FilePane {
         menu.addItem(remove)
     }
 
-    /// Synchronize this Mac's folder with the server's in the other pane (PLAN.md S.1).
+    /// Synchronize this Mac's folder with the server's in the other pane.
     @objc func synchronize(_ sender: Any?) {
         browser?.synchronize()
     }
@@ -481,6 +516,18 @@ extension FilePane {
         let targets = targets(sender)
         guard !targets.isEmpty else { return }
         browser?.copyToOtherPane(targets, from: self)
+    }
+
+    /// Upload and Delete (this Mac's pane) / Download and Delete (a server's): copied to the other pane's folder, then
+    /// deleted here once each copy is done.
+    @objc func uploadAndDelete(_ sender: Any?) { moveToOtherPane(sender) }
+
+    @objc func downloadAndDelete(_ sender: Any?) { moveToOtherPane(sender) }
+
+    private func moveToOtherPane(_ sender: Any?) {
+        let targets = targets(sender)
+        guard !targets.isEmpty else { return }
+        browser?.copyToOtherPane(targets, from: self, move: true)
     }
 
     /// Choose files on this Mac to upload into the folder shown.
@@ -556,6 +603,7 @@ extension FilePane {
             entries += [("New Folder…", #selector(newFolder(_:)))]
             if isRemote { entries += [("New File…", #selector(newFile(_:))), ("Upload…", #selector(chooseUpload(_:)))] }
             entries += [nil, ("Paste", #selector(paste(_:))), ("Copy Path", #selector(copyPath(_:))), nil]
+            if isRemote { entries += [("New Symbolic Link…", #selector(newSymbolicLink(_:)))] }
             if isRemote {
                 entries += [("Open Terminal Here", #selector(openTerminalHere(_:))),
                             ("Calculate Folder Sizes", #selector(calculateFolderSizes(_:))), ("Find Files…", #selector(findFiles(_:)))]
@@ -573,6 +621,10 @@ extension FilePane {
         entries += isRemote ? [("Get Info", #selector(getInfo(_:)))] : [("Show in Finder", #selector(revealInFinder(_:)))]
         entries.append(nil)
         if let title = browser?.transferTitle(for: self).menu { entries += [(title, #selector(copyToOtherPane(_:)))] }
+        if let other = browser?.otherPane(of: self), other.isRemote != isRemote {
+            entries += [isRemote ? ("Download and Delete…", #selector(downloadAndDelete(_:)))
+                        : ("Upload and Delete…", #selector(uploadAndDelete(_:)))]
+        }
         if isRemote {
             entries += [("Download To…", #selector(downloadTo(_:))), ("Download as .tar.gz…", #selector(downloadArchive(_:)))]
         } else if browser?.otherPane(of: self).isRemote == true {
@@ -586,6 +638,8 @@ extension FilePane {
         }
         entries += [nil, ("Rename…", #selector(renameItem(_:)))]
         if isRemote {
+            entries += [("Move To…", #selector(moveTo(_:))), ("Copy To…", #selector(copyTo(_:)))]
+            if single != nil { entries += [("New Symbolic Link…", #selector(newSymbolicLink(_:)))] }
             entries += [("Duplicate", #selector(duplicateItems(_:))), ("Compress…", #selector(compressItems(_:)))]
             if let single, Session.isArchive(single.name) {
                 entries += [("Extract Here", #selector(extractHere(_:))), ("Extract to New Folder", #selector(extractToFolder(_:)))]
@@ -593,12 +647,19 @@ extension FilePane {
         }
         entries += [nil]
         if isRemote { entries += [("Cut", #selector(cut(_:)))] }
-        entries += [("Copy", #selector(copy(_:))), ("Copy Path", #selector(copyPath(_:))), nil,
+        entries += [("Copy", #selector(copy(_:))), ("Copy Path", #selector(copyPath(_:))), ("Copy Name", #selector(copyNames(_:))), nil,
                     (isRemote ? "Delete…" : "Move to Trash", #selector(deleteItems(_:)))]
         return entries
     }
 
     func validateMenuItem(_ item: NSMenuItem) -> Bool {
+        if item.action == #selector(runSnippetOnItems(_:)) {
+            let snippet = fileSnippets.first { $0.id == item.representedObject as? UUID }
+            let problem = view.window?.attachedSheet != nil ? "A sheet is open: answer or close it first."
+                : snippet.map { snippetProblem($0, for: targets(item)) } ?? "The snippet is gone."
+            item.explain(enabled: problem == nil, reason: problem)
+            return problem == nil
+        }
         if item.action == #selector(addToFavourites(_:)), let favourites = item.menu?.item(withTitle: "Favourites")?.submenu {
             fillFavourites(favourites)
         }
@@ -627,6 +688,7 @@ extension FilePane {
             ok ? (true, nil) : (false, !isConnected ? "Not connected: connect the host first." : dir == nil ? "Open a folder first." : reason)
         }
         let serverOnly = "Works in a server pane."
+        if let habit = habitCheck(action, for: targets) { return habit }
         switch action {
         case #selector(goBack(_:)): return need(!back.isEmpty && isConnected, "Nothing to go back to: this is the first folder shown here.")
         case #selector(goForward(_:)): return need(!forward.isEmpty && isConnected, "Nothing to go forward to: Go ▸ Back first.")
@@ -655,6 +717,16 @@ extension FilePane {
         case #selector(paste(_:)):
             let problem = browser.map { $0.pasteProblem(into: self) } ?? "Copy items first (in AirSCP, or files in Finder)."
             return need(listed && problem == nil, problem ?? "")
+        case #selector(uploadAndDelete(_:)), #selector(downloadAndDelete(_:)):
+            let upload = action == #selector(uploadAndDelete(_:))
+            guard isRemote != upload else {
+                return (false, upload ? "Works in the This Mac pane: in a server pane, use Download and Delete."
+                        : "Works in a server pane: in the This Mac pane, use Upload and Delete.")
+            }
+            let other = browser?.otherPane(of: self)
+            return need(listed && !targets.isEmpty && other?.dir != nil && other?.isConnected == true && other?.isRemote == upload,
+                        upload ? "Select items, and show a connected server's folder in the other pane."
+                            : "Select server items, and show a folder on this Mac in the other pane.")
         case #selector(copyToOtherPane(_:)):
             let other = browser?.otherPane(of: self)
             return need(listed && !targets.isEmpty && other?.dir != nil && other?.isConnected == true
@@ -730,10 +802,10 @@ extension FilePane {
 
 /// Asks for a file name in a sheet; `done` gets it as typed, unless cancelled. Names that can't be files are refused
 /// with a message (`windows`: also those a Windows server can't store). `selectBaseName`: the part before the
-/// extension is selected, as Finder does when renaming.
+/// extension is selected, as Finder does when renaming. `id`: the button's, for agent control.
 @MainActor
-func askName(_ message: String, initial: String, button: String, on window: NSWindow, selectBaseName: Bool = false,
-             windows: Bool = false, done: @escaping (String) -> Void) {
+func askName(_ message: String, initial: String, button: String, id: String? = nil, on window: NSWindow,
+             selectBaseName: Bool = false, windows: Bool = false, done: @escaping (String) -> Void) {
     let alert = NSAlert()
     alert.messageText = message
     let field = NSTextField(frame: NSRect(x: 0, y: 0, width: 300, height: 22))
@@ -741,7 +813,9 @@ func askName(_ message: String, initial: String, button: String, on window: NSWi
     field.setAccessibilityIdentifier("prompt.name")
     field.toolTip = "Type the name"
     alert.accessoryView = field
-    alert.addButton(withTitle: button).toolTip = message
+    let ok = alert.addButton(withTitle: button)
+    ok.toolTip = message
+    if let id { ok.setAccessibilityIdentifier(id) }
     alert.addButton(withTitle: "Cancel").toolTip = "Close without doing anything"
     alert.window.initialFirstResponder = field
     alert.beginSheetModal(for: window) { response in

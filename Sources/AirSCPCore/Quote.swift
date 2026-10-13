@@ -15,9 +15,11 @@ public enum Quote {
     }
 
     /// An argument in an sftp batch line: "text", with \ and " backslash-escaped. Inside quotes sftp treats
-    /// * ? [ ] literally by itself, so they are left alone.
+    /// * ? [ ] literally by itself, so they are left alone. A line break can't be written in a batch line: it would end
+    /// the line, and sftp would read what follows as a command of its own. It is written as ?, which matches no name.
     public static func sftp(_ text: String) -> String {
-        "\"" + text.replacingOccurrences(of: "\\", with: "\\\\").replacingOccurrences(of: "\"", with: "\\\"") + "\""
+        let escaped = text.replacingOccurrences(of: "\\", with: "\\\\").replacingOccurrences(of: "\"", with: "\\\"")
+        return "\"" + String(String.UnicodeScalarView(escaped.unicodeScalars.map { $0 == "\n" ? "?" : $0 })) + "\""
     }
 
     /// The remote path of an scp download (scp in SFTP mode globs it; no shell is involved): \ * ? [ ] escaped

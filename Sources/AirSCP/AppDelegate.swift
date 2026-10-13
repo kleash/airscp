@@ -25,7 +25,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSMenu
     private var agentForced = Env.value("AGENT") == "1"
     private var observers: [AnyCancellable] = []
     private var saveFailing = false
-    /// Agent control's socket (PLAN.md T), while Settings allow it or AIRSCP_AGENT=1.
+    /// Agent control's socket, while Settings allow it or AIRSCP_AGENT=1.
     private var agent: AgentServer?
     /// Held while transfers are queued or running: App Nap would throttle AirSCP's own copying (folder streams,
     /// server-to-server copies) when its window isn't visible, and the Mac shouldn't fall asleep mid-transfer.
@@ -42,7 +42,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSMenu
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
-        Store.migrateFromPorter()  // the first start after the rename (PLAN.md X), before any window or setting is read
+        Store.migrateFromPorter()  // the first start after the rename, before any window or setting is read
         if Env.value("SSH_DIR") != nil { useTestSSHDirectory() }
         model = AppModel(data: Store.load())
         // Once until a save works again: every change (a folder opened, a key typed in a snippet) tries to save.
@@ -54,7 +54,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSMenu
             showError(shown, title: "AirSCP can't save its settings", on: self.main?.window)
         }
         model.onSaved = { [weak self] in self?.saveFailing = false }
-        // Settings ▸ Debug logging, or AIRSCP_DEBUG=1: commands started from then on are logged (PLAN.md AE).
+        // Settings ▸ Debug logging, or AIRSCP_DEBUG=1: commands started from then on are logged.
         observers.append(model.$data.map(\.settings.debugLogging).removeDuplicates().sink { [weak self] on in
             DebugLog.enabled = on || DebugLog.forced
             self?.model.debugLoggingOn = DebugLog.enabled
@@ -91,7 +91,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSMenu
         observers.append(model.$activeTransfers.map { $0.values.reduce(0, +) }.removeDuplicates().sink { [weak self] count in
             NSApp.dockTile.badgeLabel = count > 0 ? String(count) : nil
             self?.holdActivity(while: count > 0)
+            WhenDoneModel.shared.activeChanged(count, unfinished: TransferCenter.shared.jobs.contains { !$0.status.isFinished })
         })
+        WhenDoneModel.shared.perform = { [weak self] choice, seconds in
+            guard let self else { return }
+            switch choice {
+            case .nothing: break
+            case .disconnect: self.model.connected.forEach { self.main.disconnect($0) }
+            case .sleep:
+                if let problem = WhenDoneModel.sleepMac() { showError(AirSCPError(.other, problem), title: "Can't sleep", on: self.main.window) }
+            case .notify: WhenDoneModel.notify(after: seconds, summary: AirSCPActions.transferStatus())
+            }
+        }
+        // Spotlight finds saved hosts and desktops by name (macOS 15 and later), indexed again when they change.
+        observers.append(model.$data.map { $0.hosts.map(\.displayName) + $0.rdpEntries.map(\.displayName) }.removeDuplicates()
+            .sink { [weak self] _ in self.map { SpotlightIndex.update($0.model.data) } })
         // After sleep: connected hosts check their connection, reconnecting ones try again.
         observers.append(NSWorkspace.shared.notificationCenter.publisher(for: NSWorkspace.didWakeNotification)
             .sink { [weak self] _ in self?.main?.workspaces.values.forEach { $0.session.didWake() } })
@@ -109,6 +123,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSMenu
     }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { false }
+
+    /// sftp:// and ssh:// links.
+    func application(_ application: NSApplication, open urls: [URL]) {
+        for url in urls { if let link = HostLink(url) { main?.open(link) } }
+    }
 
     func applicationSupportsSecureRestorableState(_ app: NSApplication) -> Bool { true }
 
@@ -154,6 +173,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSMenu
     func applicationWillTerminate(_ notification: Notification) {
         agent?.close()
         askpass?.close()
+        SpotlightIndex.removeThrowaway()
     }
 
     /// Begins or ends the activity that keeps App Nap (and idle sleep) away while transfers run.
@@ -226,6 +246,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSMenu
                       title: "Can't run “\(snippet.name)” now", on: snippets)
             return
         }
+        if snippet.usesPlaceholders {
+            return showError(AirSCPError(.other, AirSCPActions.selectedItemsOnly), title: "Can't run “\(snippet.name)” here",
+                             on: snippets)
+        }
         if snippet.runInTerminal {
             main.openTerminal(for: id, command: snippet.command)
         } else {
@@ -272,7 +296,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSMenu
         }
     }
 
-    /// Help ▸ AirSCP Help, Getting Started, What's New and Report a Problem: pages on the web (PLAN.md Y).
+    /// Help ▸ AirSCP Help, Getting Started, What's New and Report a Problem: pages on the web.
     @objc func showHelpSite(_ sender: Any?) { NSWorkspace.shared.open(HelpPage.home.url) }
 
     @objc func showGettingStarted(_ sender: Any?) { NSWorkspace.shared.open(HelpPage.gettingStarted.url) }
@@ -379,6 +403,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSMenu
         if ask == nil { ask = AskWindowController() }
         let window = ask!
         window.model.assistant = AppleIntelligence.assistant
+        window.model.actions = AppAssistantActions()
+        window.model.data = { [weak self] in self?.model.data ?? AirSCPData() }
         window.model.context = assistantContext()
         if let question {
             window.model.question = question
@@ -488,7 +514,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSMenu
             + running.prefix(8).joined(separator: "\n") + (running.count > 8 ? "\n… and \(running.count - 8) more" : "")
             + "\n\nKeep them only if you trust whoever made the file."
         alert.addButton(withTitle: "Leave Them Out").toolTip = "Import the hosts without the options that run programs here"
-        alert.addButton(withTitle: "Keep Them").toolTip = "Import the hosts with these options, as the file has them"
+        let keep = alert.addButton(withTitle: "Keep Them")
+        keep.toolTip = "Import the hosts with these options, as the file has them"
+        keep.setAccessibilityIdentifier("import.keepOptions")
         alert.addButton(withTitle: "Cancel").toolTip = "Import nothing"
         alert.beginSheetModal(for: window) { [self] response in
             switch response {
@@ -758,6 +786,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSMenu
                 item("Tunnels", #selector(MainWindowController.showTunnels(_:))),
                 item("Terminal Tab", #selector(MainWindowController.showTerminal(_:)), "t", [.command, .control]),
                 item("Copy ssh Command", #selector(MainWindowController.copySSHCommand(_:)), "C"),
+                item("Copy Link", #selector(MainWindowController.copyLink(_:))),
+                item("Server Info…", #selector(MainWindowController.showServerInfo(_:))),
+                item("Change Password…", #selector(MainWindowController.changePassword(_:))),
                 .separator(),
                 item("Edit…", #selector(MainWindowController.editHost(_:))),
                 item("Duplicate", #selector(MainWindowController.duplicateHost(_:))),

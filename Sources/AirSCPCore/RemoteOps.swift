@@ -1,3 +1,4 @@
+import CryptoKit
 import Foundation
 
 /// Get Info for a remote item. Shell hosts fill in everything; sftp-only hosts only what the listing shows (`kind`,
@@ -30,7 +31,7 @@ public struct FoundItem: Equatable {
     public let isFolder: Bool
 }
 
-/// Copy, move and run within a host, Get Info, folder sizes and Find Files (PLAN.md B, H and S.1). Paths are absolute.
+/// Copy, move and run within a host, Get Info, folder sizes and Find Files. Paths are absolute.
 /// Conflicts are checked by the caller first (`Names.existing` against the destination's listing), as for `rename`.
 extension Session {
     /// Find Files: what is below `dir`, at any depth, whose name matches `pattern` (* ? [ ] as in the shell, in any
@@ -120,6 +121,67 @@ extension Session {
         } catch {
             if move { try? await self.move(part, to: path) } else { try? await deleteFolders([part], slot: .control) }
             throw error
+        }
+    }
+
+    public enum ChecksumAlgorithm: String, CaseIterable, Sendable {
+        case sha256 = "SHA-256", sha1 = "SHA-1", md5 = "MD5"
+    }
+
+    /// A file's checksum in lower-case hex (Get Info): worked out on the server with whichever tool it
+    /// has (GNU's or BusyBox's sha256sum/sha1sum/md5sum, Perl's shasum, the BSDs' sha256/sha1/md5); without a shell, from
+    /// a temporary copy downloaded to this Mac (deleted afterwards). Cancelling the calling task stops it.
+    public func checksum(_ path: String, _ algorithm: ChecksumAlgorithm) async throws -> String {
+        if capabilities.shell {
+            let file = Quote.shell(path)
+            let (gnu, perl, bsd, length): (String, String, String, Int) = {
+                switch algorithm {
+                case .sha256: return ("sha256sum", "shasum -a 256", "sha256", 64)
+                case .sha1: return ("sha1sum", "shasum -a 1", "sha1", 40)
+                case .md5: return ("md5sum", "", "md5", 32)
+                }
+            }()
+            var script = "if command -v \(gnu) >/dev/null 2>&1; then \(gnu) -- \(file); "
+            if !perl.isEmpty { script += "elif command -v shasum >/dev/null 2>&1; then \(perl) -- \(file); " }
+            script += "elif command -v \(bsd) >/dev/null 2>&1; then \(bsd) -q -- \(file); "
+                + "else echo 'The server has no \(gnu) or \(bsd) to work out a checksum with.' >&2; exit 127; fi"
+            let output = try await cancellable { cancellation in try await self.shell(script, cancellation: cancellation) }
+            let hash = String(output.drop { $0 == "\\" }.prefix(length)).lowercased()
+            guard hash.count == length, hash.allSatisfy(\.isHexDigit) else {
+                throw AirSCPError(.other, "The server's checksum tool didn't answer with a checksum.", details: output)
+            }
+            return hash
+        }
+        let copy = FileManager.default.temporaryDirectory.appendingPathComponent("AirSCP-checksum-" + UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: copy) }
+        _ = try await cancellable { cancellation in
+            try await self.sftp(["get \(Quote.sftp(path)) \(Quote.sftp(copy.path))"], slot: .transfer, cancellation: cancellation)
+        }
+        guard let file = FileHandle(forReadingAtPath: copy.path) else {
+            throw AirSCPError(.other, "Can't read the temporary copy of \(RemotePath.name(path)).")
+        }
+        defer { try? file.close() }
+        // A megabyte at a time: the file may be bigger than the memory.
+        func digest<H: HashFunction>(_ hash: H) throws -> String {
+            var hash = hash
+            while let chunk = try file.read(upToCount: 1 << 20), !chunk.isEmpty { hash.update(data: chunk) }
+            return hash.finalize().map { String(format: "%02x", $0) }.joined()
+        }
+        switch algorithm {
+        case .sha256: return try digest(SHA256())
+        case .sha1: return try digest(Insecure.SHA1())
+        case .md5: return try digest(Insecure.MD5())
+        }
+    }
+
+    /// A symbolic link at `path` to `target` (as typed: relative to the link's folder, or absolute). Nothing may be at
+    /// `path`. `ln -s` on shell hosts, sftp's symlink without one.
+    public func makeLink(_ path: String, to target: String) async throws {
+        if capabilities.shell {
+            try await unlessExists(path, "ln -s -- \(Quote.shell(target)) \(Quote.shell(path))")
+        } else {
+            guard try await !exists(path) else { throw AirSCPError(.failure, "\(RemotePath.name(path)) already exists there.") }
+            try await sftp(["symlink \(Quote.sftp(target)) \(Quote.sftp(path))"])
         }
     }
 

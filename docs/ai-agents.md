@@ -26,12 +26,42 @@ questions, and AirSCP's own screenshots. AirSCP is an MCP server for them. It is
 
 {% include shot.html name="settings-agents" alt="Settings: Allow AI agents to control AirSCP (MCP), turned on" %}
 
+## Allow or deny what an agent changes
+
+Before an agent changes something, AirSCP asks you. A small window shows what the agent wants to do, over every app:
+
+- **Deny** (the default, also <kbd>Return</kbd> and <kbd>Esc</kbd>): the agent is told that you said no.
+- **Allow Once**: just this change.
+- **Allow for 15 Minutes**: this change, and every change agents ask for in the next 15 minutes, without asking again.
+
+If nobody answers within 45 seconds, nothing is done, and the agent is told so.
+
+AirSCP asks before an agent:
+
+- deletes, replaces or renames files, or copies them to or from a server (uploads, downloads, drops, Synchronize);
+- opens a file in another app;
+- changes files' permissions or owners (Make Executable too), or puts a key on a server or in the ssh agent;
+- switches a tunnel on or off;
+- runs a command, a file or a snippet, or types into a Terminal tab;
+- kills a process, cancels, retries or resumes transfers, disconnects or quits;
+- types, presses keys or clicks on a Windows desktop.
+
+It doesn't ask when an agent only looks, selects, goes to a folder, opens AirSCP's own windows or fills in their fields.
+When AirSCP asks a question of its own first (Delete asks “Delete …?”), the window comes when the agent answers it.
+
+To turn these questions off, open **AirSCP ▸ Settings…** and turn off **Ask before agents change things**. Agents
+can't turn it off.
+
+{% include shot.html name="settings-ask" alt="Settings: Ask before agents change things, turned off" %}
+
 ## See what an agent does
 
 - The sidebar's footer shows **Agent control on**. While an agent acts, its dot pulses and the footer names the agent and
   its last action.
 - Hover over it to see who is connected and since when. Click it for the last 20 actions in plain words, with **Turn
   Off Agent Control** and **Settings…**.
+- While AirSCP asks you about a change, the footer says **Waiting for your OK**. After **Allow for 15 Minutes**, the
+  hover text says until when agents may change things without asking.
 
 {% include shot.html name="agent-activity" alt="The agent's recent actions: it dropped three files on the server pane, set a speed limit and selected a file" %}
 
@@ -52,6 +82,7 @@ An agent can work in a Remote Desktop too. It works the way a careful person at 
   at every launch.
 - Agents never see saved passwords: password fields read as •••, and no tool reads the Keychain.
 - AirSCP's questions stay in the way: Delete still asks, and the agent has to answer.
+- Changes wait for your OK (see [Allow or deny what an agent changes](#allow-or-deny-what-an-agent-changes)).
 - Turning the setting off closes the connection at once.
 
 ## For agents and scripts

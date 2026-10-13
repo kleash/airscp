@@ -3,7 +3,7 @@ import CoreGraphics
 import Foundation
 
 /// A Windows desktop over RDP: FreeRDP (vendored, linked statically) behind the C shim in Sources/CRDP, with its event
-/// loop on a thread of its own (PLAN.md M, R and S). One RDPSession per connection attempt. The rest of the app sees
+/// loop on a thread of its own. One RDPSession per connection attempt. The rest of the app sees
 /// only `State`, through `RDPWorkspaceController`.
 ///
 /// Callbacks arrive on the main queue. The input, resize and clipboard methods may be called from any thread; they do
@@ -56,7 +56,7 @@ public final class RDPSession {
         public var sharedFolder: String?
         /// Where the certificates trusted with Always are kept (FreeRDP's own store).
         public var configDirectory = Store.directory.appendingPathComponent("freerdp").path
-        /// How the server's certificate is checked (PLAN.md U.4); `caFile` for `.companyCA`.
+        /// How the server's certificate is checked; `caFile` for `.companyCA`.
         public var certificateCheck = CertificateCheck.ask
         public var caFile = ""
 
@@ -217,7 +217,7 @@ public final class RDPSession {
         rdp_keyboard_layout()
     }
 
-    /// FreeRDP's log lines into the debug log (PLAN.md AE), with the desktop that connected last (FreeRDP's log is one for
+    /// FreeRDP's log lines into the debug log, with the desktop that connected last (FreeRDP's log is one for
     /// the whole app).
     private static let logLine: rdp_log_handler = { line in
         if let line { DebugLog.write(String(cString: line), host: logLock.locked { logHost }) }

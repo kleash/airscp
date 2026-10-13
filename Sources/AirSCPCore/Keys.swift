@@ -67,7 +67,7 @@ public enum Keys {
         return (bits, parts[1], comment == "no comment" ? "" : comment, type)  // ssh-keygen's words for none
     }
 
-    // MARK: New key pairs (PLAN.md K.1)
+    // MARK: New key pairs
 
     /// A type and size in New Key Pair's menu.
     public struct Kind: Hashable, Identifiable {
@@ -171,7 +171,7 @@ public enum Keys {
         return result.output.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
-    // MARK: PuTTY keys (PLAN.md K.2)
+    // MARK: PuTTY keys
 
     /// Imports a PuTTY key (.ppk text) as an OpenSSH key pair at `path` and `path`.pub, never over an existing file.
     /// The .ppk's MAC is checked with `passphrase` (wrong: `.authFailed`). The key is written unencrypted only in a

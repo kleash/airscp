@@ -164,7 +164,7 @@ final class MonitorController: NSViewController {
                 confirm(title,
                         info: "The process belongs to another user. Kill it with sudo in Terminal? Terminal asks for "
                             + "your password on the server.",
-                        button: "Kill with sudo in Terminal", on: view.window) { [self] in
+                        button: "Kill with sudo in Terminal", destructive: true, on: view.window) { [self] in
                     workspace?.openTerminal(command: Monitor.sudoKillCommand(denied.map { $0.pid }, force: force))
                 }
             }
@@ -363,6 +363,13 @@ struct MonitorView: View {
                     }
                 }
                 .frame(height: min(150, CGFloat(snapshot.disks.count) * 22))
+            }
+            if AppleIntelligence.ready {
+                Spacer()
+                Button("Explain…") { AppleIntelligence.ask(AssistantContext.explainMonitor(MonitorText.readings(snapshot))) }
+                    .controlSize(.small)
+                    .help("Ask Apple Intelligence (on this Mac) whether these readings show a problem")
+                    .accessibilityIdentifier("monitor.explain")
             }
         }
     }
@@ -860,6 +867,24 @@ extension MonitorPort {
 
 enum MonitorText {
     /// A failure with what still works: an sftp-only account can't be read, but its Files tab works.
+    /// The readings for Explain: the figures, the disks and the busiest processes' names (no command lines).
+    static func readings(_ snapshot: MonitorSnapshot) -> String {
+        var lines = [
+            "CPU: " + (snapshot.cpu.map { String(format: "%.0f%%", $0) } ?? "unknown"),
+            "Load (1, 5, 15 min): " + snapshot.load.map { String(format: "%.2f", $0) }.joined(separator: ", "),
+            "Memory: \(FileList.size(snapshot.memoryUsed)) of \(FileList.size(snapshot.memoryTotal)) in use",
+            "Swap: " + (snapshot.swapTotal == 0 ? "none" : "\(FileList.size(snapshot.swapUsed)) of \(FileList.size(snapshot.swapTotal))"),
+            "Up: " + uptime(snapshot.uptime), "System: " + snapshot.system,
+        ]
+        lines += snapshot.disks.map { "Disk \($0.mountPoint): \(FileList.size($0.available)) free of \(FileList.size($0.size))" }
+        let busiest = snapshot.processes.sorted { ($0.cpu ?? 0, $0.rss) > ($1.cpu ?? 0, $1.rss) }.prefix(8)
+        lines += busiest.map { process in
+            "Process \(process.name): " + (process.cpu.map { String(format: "%.0f%% CPU, ", $0) } ?? "")
+                + FileList.size(process.rss) + " memory"
+        }
+        return lines.joined(separator: "\n")
+    }
+
     static func explained(_ failure: String) -> String {
         failure.hasPrefix("This account allows file transfers (sftp) only")
             ? "This account allows file transfers (sftp) only, so AirSCP can't read the system. The Files tab works." : failure

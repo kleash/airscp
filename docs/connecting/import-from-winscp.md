@@ -7,7 +7,7 @@ nav_order: 13
 # Import your sites from WinSCP
 
 Coming from WinSCP on Windows? AirSCP can make a host for each of your WinSCP sites, with its folder, its key, its
-tunnel (as a jump host) and its HTTP proxy.
+tunnel (as a jump host) and its proxy.
 
 ## Steps
 
@@ -21,7 +21,10 @@ tunnel (as a jump host) and its HTTP proxy.
 - Each SFTP or SCP site becomes a host: address, port, user name and the folder it opens in.
 - A folder of sites becomes a group. A site in a folder in a folder goes in a group such as “Work/Web”.
 - **Tunnel** settings become a jump host, shared by the sites that use it. See [Connect through a jump host](jump-hosts.md).
-- An HTTP proxy becomes a proxy. See [Connect through an HTTP proxy](proxies.md).
+  A site that also goes through a proxy gets a jump host through that proxy (named “bastion via proxy”), so the
+  proxy is never skipped. Hosts you already have are never changed.
+- An HTTP or SOCKS5 proxy becomes a proxy. See [Connect through a proxy](proxies.md). Sites through SOCKS4 or a
+  proxy WinSCP runs itself stay behind.
 - A .ppk key without a passphrase becomes an OpenSSH key in your key folder (~/.ssh unless Settings names another),
   and the host logs in with it.
 
@@ -30,7 +33,7 @@ tunnel (as a jump host) and its HTTP proxy.
 - **Saved passwords**: AirSCP never reads them. It asks for a password when you connect, and can keep it in the
   Keychain.
 - **FTP, WebDAV and S3 sites**: AirSCP connects over SSH only.
-- **SOCKS proxies** and proxies that WinSCP runs itself: add those hosts by hand.
+- **SOCKS4 proxies** and proxies that WinSCP runs itself: add those hosts by hand.
 - A .ppk key **with a passphrase**: import it in **Window ▸ Keys**, then choose it in **Edit Host**.
 
 ## Tips

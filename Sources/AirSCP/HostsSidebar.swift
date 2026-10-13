@@ -245,7 +245,7 @@ struct Sidebar: View {
 struct HostRow: View {
     let host: SSHHost
     let state: Session.State?
-    /// Through a jump host or proxy: shown under the name instead of the address (PLAN.md U.1).
+    /// Through a jump host or proxy: shown under the name instead of the address.
     var route: Route?
     /// Queued and running transfers (shown in the Connected section).
     var transfers = 0
@@ -389,7 +389,7 @@ private struct ShortcutLabel: View {
     }
 }
 
-// MARK: Agent control (PLAN.md U.2)
+// MARK: Agent control
 
 /// The footer's "Agent control on": the dot pulses while an agent acts, and the text then names the agent and its last
 /// action. Hover: the state, who is connected, the last action and how many there were; click: the recent actions,
@@ -425,8 +425,12 @@ struct AgentIndicator: View {
         .popover(isPresented: $showing, attachmentAnchor: .point(.topTrailing), arrowEdge: .top) { AgentActivityView(model: model) }
     }
 
-    /// "Agent control on · claude-code", or while it acts "Agent: claude-code — Pressed “Trust”…".
+    /// "Agent control on · claude-code", while it acts "Agent: claude-code — Pressed “Trust”…", or while a change waits
+    /// for the person at the Mac "Waiting for your OK: press “Delete”".
     private var footer: Text {
+        if let question = model.agentQuestion {
+            return Text("Waiting for your OK: ") + Text(verbatim: question).fontWeight(.semibold).foregroundColor(.primary)
+        }
         if model.agentActive, let last = model.agentActions.last { return Text("Agent: \(last.client) — \(last.text)") }
         guard let client = model.agentClient else { return Text("Agent control on") }
         return Text("Agent control on · ") + Text(client.name).fontWeight(.semibold).foregroundColor(.primary)
@@ -443,11 +447,21 @@ enum AgentStatus {
         return formatter
     }()
 
-    /// The state now: acting, connected (and since when) or idle.
+    /// The state now: waiting for the person's OK, acting, connected (and since when) or idle; and until when agents may
+    /// change things without asking.
     static func state(_ model: AppModel) -> String {
-        if model.agentActive { return "An agent is acting now" + (model.agentClient.map { ": " + $0.name } ?? ".") }
-        if let client = model.agentClient { return "An agent is connected: \(client.name), since \(time.string(from: client.since))." }
-        return "Idle: no agent is connected."
+        var state = "Idle: no agent is connected."
+        if let question = model.agentQuestion {
+            state = "An agent waits for your OK in the window AirSCP shows: it wants to \(question)."
+        } else if model.agentActive {
+            state = "An agent is acting now" + (model.agentClient.map { ": " + $0.name } ?? ".")
+        } else if let client = model.agentClient {
+            state = "An agent is connected: \(client.name), since \(time.string(from: client.since))."
+        }
+        if let until = model.agentAllowedUntil, until > Date() {
+            state += " Agents may change things without asking until \(time.string(from: until))."
+        }
+        return state
     }
 
     /// The tooltip: what agent control is, the state, the last action and how many there were.

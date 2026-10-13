@@ -1,6 +1,7 @@
 import AirSCPCore
 import AppKit
 import Combine
+import SwiftUI
 
 /// The host workspace's Files tab: two panes side by side. The left one shows this Mac or any connected server (its
 /// source menu), the right one this host. Items go between them by drag and drop, the transfer buttons or copy and
@@ -31,6 +32,9 @@ final class BrowserContentController: NSViewController {
     private var askingToUpload = false
     /// Finished jobs whose folder was listed again (or that had finished before this tab existed).
     private var handledJobs: Set<UUID> = []
+    /// Upload and Delete / Download and Delete: what each job's source was, deleted once the job is done (to the Trash
+    /// on this Mac; `server` nil), never after a failure or a copy with errors.
+    private var deleteAfter: [UUID: (items: [FileItem], server: Session?)] = [:]
     /// Folders of finished jobs, listed again once their host has no transfer left (a batch lists a folder once), or
     /// after 10 s.
     private var pendingReloads: [(hostID: UUID, local: Bool, dir: String, since: Date)] = []
@@ -215,10 +219,10 @@ final class BrowserContentController: NSViewController {
         }
     }
 
-    func copyToOtherPane(_ items: [FileItem], from pane: FilePane) {
+    func copyToOtherPane(_ items: [FileItem], from pane: FilePane, move: Bool = false) {
         let other = otherPane(of: pane)
         guard let dir = other.dir else { return }
-        transfer(items, from: pane.source, to: other.source, into: dir, move: false)
+        transfer(items, from: pane.source, to: other.source, into: dir, move: move)
     }
 
     /// What a drop of `items` would do: copy, move (within one server, unless ⌥ is held) or nothing.
@@ -233,6 +237,10 @@ final class BrowserContentController: NSViewController {
             if mask.contains(.move) { return items.allSatisfy { RemotePath.parent($0.path) == dir } ? [] : .move }
             // A copy within the server is cp: not on an account without a shell (a move is sftp's rename).
             return mask.contains(.copy) && from.capabilities.shell ? .copy : []
+        case (.local, .remote), (.remote, .local):
+            // ⌘ held (no copy in the mask), as Finder moves between disks: copied, then deleted where it was.
+            if !mask.contains(.copy) && (mask.contains(.generic) || mask.contains(.move)) { return .move }
+            return mask.contains(.copy) ? .copy : []
         default:
             return mask.contains(.copy) ? .copy : []
         }
@@ -248,9 +256,9 @@ final class BrowserContentController: NSViewController {
             defer { planning -= 1 }
             switch (source, destination) {
             case (.local, .remote(let server)):
-                await upload(items, to: server, into: dir)
+                await upload(items, to: server, into: dir, deleteSources: move)
             case (.remote(let server), .local):
-                await download(items, from: server, into: dir)
+                await download(items, from: server, into: dir, deleteSources: move)
             case (.remote(let from), .remote(let to)) where from.host.id == to.host.id:
                 await copyWithin(items, on: to, into: dir, move: move)
             case (.remote(let from), .remote(let to)):
@@ -262,9 +270,12 @@ final class BrowserContentController: NSViewController {
     }
 
     /// `compress`: Upload Compressed (nil: asked about for folders and many items).
-    private func upload(_ items: [FileItem], to server: Session, into dir: String, compress forced: Bool? = nil) async {
+    /// `deleteSources`: Upload and Delete.
+    private func upload(_ items: [FileItem], to server: Session, into dir: String, compress forced: Bool? = nil,
+                        deleteSources: Bool = false) async {
         guard isConnected(server), namesFit(items, on: server) else { return }
         let place = name(of: dir, on: server)
+        if deleteSources, await !confirmMove(items, to: place, from: "this Mac") { return }
         guard let existing = await entries(of: dir, on: server, failure: "Can't upload to \(place)") else { return }
         var compress = forced ?? false, leaveOut: [String] = []
         let folders = items.filter { FileList.isLocalFolder($0.path) }.count
@@ -302,19 +313,48 @@ final class BrowserContentController: NSViewController {
             // One archive per folder on this Mac that the items are in (Finder drops can mix folders).
             let groups = Dictionary(grouping: chosen) { RemotePath.parent($0.item.path) }
             for (folder, group) in groups.sorted(by: { $0.key < $1.key }) {
-                server.transfers.uploadCompressed(group.map(\.item.name), in: folder, to: dir,
-                                                  replacing: group.contains { $0.step.replaces != nil }, excluding: leaveOut)
+                let job = server.transfers.uploadCompressed(group.map(\.item.name), in: folder, to: dir,
+                                                            replacing: group.contains { $0.step.replaces != nil }, excluding: leaveOut)
+                if deleteSources { deleteAfter(job, group.map(\.item), leaveOut: leaveOut, server: nil) }
             }
         } else {
             for (item, step) in chosen {
-                server.transfers.upload(item.path, to: RemotePath.join(dir, step.name), isFolder: FileList.isLocalFolder(item.path),
-                                        replacing: step.replaces != nil, preserveTimes: settings.preserveTimes, excluding: leaveOut)
+                let job = server.transfers.upload(item.path, to: RemotePath.join(dir, step.name),
+                                                  isFolder: FileList.isLocalFolder(item.path), replacing: step.replaces != nil,
+                                                  preserveTimes: settings.preserveTimes, excluding: leaveOut)
+                if deleteSources { deleteAfter(job, [item], leaveOut: leaveOut, server: nil) }
             }
         }
     }
 
-    private func download(_ items: [FileItem], from server: Session, into dir: String) async {
+    /// Asks once before a move between this Mac and a server: the items are deleted where they are once copied.
+    private func confirmMove(_ items: [FileItem], to place: String, from side: String) async -> Bool {
+        let alert = NSAlert()
+        let what = items.count == 1 ? "“\(items[0].name)”" : FileList.items(items.count)
+        alert.messageText = "Move \(what) to \(place)?"
+        alert.informativeText = "Each item is deleted from \(side) once it has been copied" + (side == "this Mac" ? " (to the Trash)" : "")
+            + ", and only then: an item that fails to copy, or copies with errors, stays where it is."
+            + (TransferCenter.shared.verifyTransfers ? " Each file is checked (SHA-256) first." : "")
+        alert.addButton(withTitle: "Move").toolTip = "Copy, then delete each item where it was"
+        alert.addButton(withTitle: "Cancel").toolTip = "Don't move anything"
+        return await run(alert) == .alertFirstButtonReturn
+    }
+
+    /// Notes `job`'s sources for deleting once it is done. A folder with Leave out patterns stays: what was left out of
+    /// the copy is still in it.
+    private func deleteAfter(_ job: UUID, _ items: [FileItem], leaveOut: [String], server: Session?) {
+        let deletable = leaveOut.isEmpty ? items : items.filter { !$0.isFolder && !(server == nil && FileList.isLocalFolder($0.path)) }
+        if deletable.count < items.count {
+            workspace?.show(AirSCPError(.other, "Folders stay where they are: Leave out kept some of what is in them out of the "
+                                        + "copy."), title: "Moved, except folders")
+        }
+        if !deletable.isEmpty { deleteAfter[job] = (deletable, server) }
+    }
+
+    /// `deleteSources`: Download and Delete.
+    private func download(_ items: [FileItem], from server: Session, into dir: String, deleteSources: Bool = false) async {
         guard isConnected(server) else { return }
+        if deleteSources, await !confirmMove(items, to: "“\(RemotePath.name(dir))”", from: server.host.displayName) { return }
         let existing = await Task.detached(priority: .userInitiated) { FileList.localNames(dir) }.value
         let place = "“\(RemotePath.name(dir))”"
         var compress = false, leaveOut: [String] = []
@@ -340,12 +380,15 @@ final class BrowserContentController: NSViewController {
             }
             let base = chosen.count == 1 ? chosen[0].item.name : "Archive"
             let archive = Names.unique(base + ".tar.gz", existing: existing, caseInsensitive: true)
-            server.transfers.downloadArchive(chosen.map(\.item.name), in: RemotePath.parent(chosen[0].item.path),
-                                             to: RemotePath.join(dir, archive), extract: true, excluding: leaveOut)
+            let job = server.transfers.downloadArchive(chosen.map(\.item.name), in: RemotePath.parent(chosen[0].item.path),
+                                                       to: RemotePath.join(dir, archive), extract: true, excluding: leaveOut)
+            if deleteSources { deleteAfter(job, chosen.map(\.item), leaveOut: leaveOut, server: server) }
         } else {
             for (item, step) in chosen {
-                server.transfers.download(item.path, to: RemotePath.join(dir, step.name), isFolder: item.kind != .file,
-                                          replacing: step.replaces != nil, preserveTimes: settings.preserveTimes, excluding: leaveOut)
+                let job = server.transfers.download(item.path, to: RemotePath.join(dir, step.name), isFolder: item.kind != .file,
+                                                    replacing: step.replaces != nil, preserveTimes: settings.preserveTimes,
+                                                    excluding: leaveOut)
+                if deleteSources { deleteAfter(job, [item], leaveOut: leaveOut, server: server) }
             }
         }
     }
@@ -482,6 +525,9 @@ final class BrowserContentController: NSViewController {
             guard let item = items.first(where: { $0.name == name }), let old = found[name] else { return nil }
             if let there = destination(old) { return FileList.comparison(new: item, existing: there) }
             return pending.contains(old) ? "A transfer that is queued or running puts an item of that name there." : nil
+        }, newer: { name in
+            guard let item = items.first(where: { $0.name == name }), let old = found[name], let there = destination(old) else { return nil }
+            return FileList.isNewer(item, than: there)
         }) else { return nil }
         for name in keepingBoth { choices[name] = .keepBoth }
         let decided = choices
@@ -505,12 +551,17 @@ final class BrowserContentController: NSViewController {
     /// Replace / Keep Both / Skip for each name, with "Apply to all"; nil when cancelled. `keepBoth` false: the
     /// transfer can't rename (archives and server-to-server copies). `detail`: a name's line about both items.
     func askConflicts(_ names: [String], in place: String, keepBoth: Bool,
-                      detail: (String) -> String? = { _ in nil }) async -> [String: FileList.Choice]? {
+                      detail: (String) -> String? = { _ in nil }, newer: (String) -> Bool? = { _ in nil }) async -> [String: FileList.Choice]? {
         var choices: [String: FileList.Choice] = [:]
-        var forAll: FileList.Choice?
+        // An answer for the rest: one choice, or "if newer" (Replace each newer one, skip the others).
+        var forAll: FileList.Choice?, ifNewerForAll = false
         for (index, name) in names.enumerated() {
             if let forAll {
                 choices[name] = forAll
+                continue
+            }
+            if ifNewerForAll {
+                choices[name] = newer(name) == true ? .replace : .skip
                 continue
             }
             let alert = NSAlert()
@@ -520,6 +571,13 @@ final class BrowserContentController: NSViewController {
             let replace = alert.addButton(withTitle: "Replace")
             replace.hasDestructiveAction = true
             replace.toolTip = "Put the new item in place of the existing one"
+            // Replace If Newer: for two files whose times are known.
+            let canCompare = newer(name) != nil
+            if canCompare {
+                let ifNewer = alert.addButton(withTitle: "Replace If Newer")
+                ifNewer.toolTip = "Replace it only if the new one is newer, else skip it"
+                ifNewer.setAccessibilityIdentifier("conflict.replaceIfNewer")
+            }
             if keepBoth { alert.addButton(withTitle: "Keep Both").toolTip = "Keep both: the new one gets a number" }
             alert.addButton(withTitle: "Skip").toolTip = "Leave the existing one as it is; don't copy this item"
             alert.addButton(withTitle: "Cancel").toolTip = "Stop: copy nothing"
@@ -532,11 +590,18 @@ final class BrowserContentController: NSViewController {
             }
             alert.addHelp(.conflicts)
             let response = await run(alert)
-            let buttons: [FileList.Choice] = keepBoth ? [.replace, .keepBoth, .skip] : [.replace, .skip]
+            // nil stands for Replace If Newer.
+            let buttons: [FileList.Choice?] = [.replace] + (canCompare ? [nil] : []) + (keepBoth ? [.keepBoth] : []) + [.skip]
             let index = response.rawValue - NSApplication.ModalResponse.alertFirstButtonReturn.rawValue
             guard index >= 0, index < buttons.count else { return nil }
-            choices[name] = buttons[index]
-            if alert.suppressionButton?.state == .on { forAll = buttons[index] }
+            let all = alert.suppressionButton?.state == .on
+            if let choice = buttons[index] {
+                choices[name] = choice
+                if all { forAll = choice }
+            } else {
+                choices[name] = newer(name) == true ? .replace : .skip
+                ifNewerForAll = all
+            }
         }
         return choices
     }
@@ -582,7 +647,13 @@ final class BrowserContentController: NSViewController {
         caption.font = .systemFont(ofSize: NSFont.smallSystemFontSize)
         caption.textColor = .secondaryLabelColor
         caption.preferredMaxLayoutWidth = 300
-        let stack = NSStackView(views: [NSTextField(labelWithString: "Leave out:"), field, caption])
+        var row: [NSView] = [field]
+        if AppleIntelligence.ready {
+            row.append(NSHostingView(rootView: SuggestButton(field: .leaveOut) { field.stringValue = $0 }))
+        }
+        let fieldRow = NSStackView(views: row)
+        fieldRow.spacing = 4
+        let stack = NSStackView(views: [NSTextField(labelWithString: "Leave out:"), fieldRow, caption])
         stack.orientation = .vertical
         stack.alignment = .leading
         stack.spacing = 4
@@ -670,7 +741,7 @@ final class BrowserContentController: NSViewController {
         return (local, remote)
     }
 
-    /// Synchronize (PLAN.md S.1): compares the two panes' folders, shows what would be copied or deleted, and on
+    /// Synchronize: compares the two panes' folders, shows what would be copied or deleted, and on
     /// Synchronize queues it.
     func synchronize() {
         guard let window = view.window, let (local, remote) = synchronizedPanes, let server = remote.session,
@@ -955,7 +1026,9 @@ final class BrowserContentController: NSViewController {
         alert.messageText = "Upload the changes to “\(file.local.lastPathComponent)”?"
         alert.informativeText = "It was changed in another app since AirSCP downloaded it from \(file.session.host.displayName) "
             + "(\(file.remotePath))."
-        alert.addButton(withTitle: "Upload").toolTip = "Upload the changed file to the server now"
+        let upload = alert.addButton(withTitle: "Upload")
+        upload.toolTip = "Upload the changed file to the server now"
+        upload.setAccessibilityIdentifier("openWith.upload")
         alert.addButton(withTitle: "Not Now").toolTip = "Keep the change on this Mac only, for now"
         alert.beginSheetModal(for: window) { [self] response in
             askingToUpload = false
@@ -974,6 +1047,32 @@ final class BrowserContentController: NSViewController {
     private func reloadPanes(showing dir: String, on server: Session) {
         for pane in [left!, right!] where pane.session?.host.id == server.host.id && pane.dir == dir {
             Task { await pane.reload() }
+        }
+    }
+
+    /// Whether a finished move (Upload and Delete / Download and Delete) may delete the originals: only a sound copy —
+    /// no check asked for (nil), or a matching SHA-256 (`verified`). A mismatch or a check that couldn't run keeps them.
+    nonisolated static func moveMayDelete(_ checksum: TransferJob.Checksum?) -> Bool {
+        switch checksum {
+        case nil, .verified: return true
+        default: return false
+        }
+    }
+
+    /// A moved item's source, once its copy is done: to the Trash on this Mac, deleted on a server.
+    private func deleteSources(_ items: [FileItem], on server: Session?) {
+        Task {
+            do {
+                if let server {
+                    try await server.delete(items.compactMap(\.entry))
+                    for pane in [left, right].compactMap({ $0 }) where pane.session?.host.id == server.host.id { await pane.reload() }
+                } else {
+                    for item in items { try FileManager.default.trashItem(at: URL(fileURLWithPath: item.path), resultingItemURL: nil) }
+                    for pane in [left, right].compactMap({ $0 }) where !pane.isRemote { await pane.reload() }
+                }
+            } catch {
+                workspace?.show(error, title: "Copied, but can't delete the originals")
+            }
         }
     }
 
@@ -996,6 +1095,20 @@ final class BrowserContentController: NSViewController {
                 if job.status == .done { open(file) }
                 if job.status == .done || job.status == .cancelled { opening[job.id] = nil }
                 continue
+            }
+            if let move = deleteAfter.removeValue(forKey: job.id), job.status == .done {
+                // Only once the copy is sound: a mismatch or a check that couldn't run (Settings ▸ Verify transfers
+                // with SHA-256) leaves the originals where they are, as the Move question promised.
+                if Self.moveMayDelete(job.checksum) {
+                    deleteSources(move.items, on: move.server)
+                } else if case .mismatch = job.checksum {
+                    workspace?.show(AirSCPError(.other, "The copy's checksum didn't match the original (SHA-256): the "
+                        + "originals are kept. Retry the transfer, then delete them if you want to."),
+                        title: "Copied, but kept the originals")
+                } else {
+                    workspace?.show(AirSCPError(.other, "AirSCP couldn't check the copy against the original, so the "
+                        + "originals are kept."), title: "Copied, but kept the originals")
+                }
             }
             switch job.status {
             case .done, .completedWithErrors: break
@@ -1053,13 +1166,19 @@ final class BrowserContentController: NSViewController {
             item("Find Files…", #selector(FilePane.findFiles(_:)), "F"),
             .separator(),
             item("Copy to Other Pane", #selector(FilePane.copyToOtherPane(_:))),
+            item("Upload and Delete…", #selector(FilePane.uploadAndDelete(_:))),
+            item("Download and Delete…", #selector(FilePane.downloadAndDelete(_:))),
             item("Upload…", #selector(FilePane.chooseUpload(_:))),
             item("Download To…", #selector(FilePane.downloadTo(_:))),
             item("Download as .tar.gz…", #selector(FilePane.downloadArchive(_:))),
             item("Upload Compressed", #selector(FilePane.uploadCompressed(_:))),
             item("Synchronize…", #selector(FilePane.synchronize(_:))),
+            item("Compare Folders", #selector(FilePane.compareFolders(_:))),
             .separator(),
             item("Rename…", #selector(FilePane.renameItem(_:))),
+            item("Move To…", #selector(FilePane.moveTo(_:))),
+            item("Copy To…", #selector(FilePane.copyTo(_:))),
+            item("New Symbolic Link…", #selector(FilePane.newSymbolicLink(_:))),
             item("Duplicate", #selector(FilePane.duplicateItems(_:)), "d"),
             item("Compress…", #selector(FilePane.compressItems(_:))),
             item("Extract Here", #selector(FilePane.extractHere(_:))),
@@ -1069,6 +1188,7 @@ final class BrowserContentController: NSViewController {
             item("Run…", #selector(FilePane.runItem(_:))),
             .separator(),
             item("Copy Path", #selector(FilePane.copyPath(_:)), "c", [.command, .option]),
+            item("Copy Names", #selector(FilePane.copyNames(_:))),
             item("Open Terminal Here", #selector(FilePane.openTerminalHere(_:)), "t", [.command, .option]),
             item("Show in Finder", #selector(FilePane.revealInFinder(_:))),
             .separator(),
@@ -1080,6 +1200,19 @@ final class BrowserContentController: NSViewController {
         for entry in [NSMenuItem.separator()] + fileItems {
             file.insertItem(entry, at: index)
             index += 1
+        }
+
+        // Selection (Edit), after Select All.
+        let edit = submenu("Edit", after: "File")
+        var at = (edit.items.firstIndex { $0.action == #selector(NSText.selectAll(_:)) } ?? edit.numberOfItems - 1) + 1
+        for entry in [
+            item("Select by Pattern…", #selector(FilePane.selectByPattern(_:)), "+"),
+            item("Deselect by Pattern…", #selector(FilePane.deselectByPattern(_:)), "-"),
+            item("Select Same Kind", #selector(FilePane.selectSameKind(_:))),
+            item("Invert Selection", #selector(FilePane.invertSelection(_:)), "I"),
+        ] {
+            edit.insertItem(entry, at: at)
+            at += 1
         }
 
         let view = submenu("View", after: "Edit")
@@ -1099,7 +1232,7 @@ final class BrowserContentController: NSViewController {
         view.addItem(columns)
 
         let go = submenu("Go", after: "View")
-        // A server's favourite folders (PLAN.md S.2): the focused pane fills the submenu (`FilePane.fillFavourites`).
+        // A server's favourite folders: the focused pane fills the submenu (`FilePane.fillFavourites`).
         let favourites = NSMenuItem(title: "Favourites", action: nil, keyEquivalent: "")
         favourites.toolTip = MenuHelp.submenus["Favourites"]
         favourites.submenu = NSMenu(title: "Favourites")
@@ -1111,6 +1244,7 @@ final class BrowserContentController: NSViewController {
             .separator(),
             item("Home", #selector(FilePane.goHome(_:)), "H"),
             item("Go to Folder…", #selector(FilePane.goToFolder(_:)), "G"),
+            item("Other Pane's Folder", #selector(FilePane.goToOtherPanesFolder(_:)), "o", [.command, .option]),
             .separator(),
             item("Add to Favourites", #selector(FilePane.addToFavourites(_:))),
             favourites,

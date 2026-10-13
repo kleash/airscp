@@ -2,7 +2,7 @@ import AirSCPCore
 import AppKit
 import SwiftUI
 
-// Server key and certificate checks (PLAN.md U.4): their words in the editors and Settings, and the orange shield that
+// Server key and certificate checks: their words in the editors and Settings, and the orange shield that
 // marks a host or desktop whose checks are off, in the sidebar and above its workspace.
 
 extension HostKeyCheck {

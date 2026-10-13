@@ -11,7 +11,7 @@ by the `guide` tool, and shown in Help ▸ Agent Guide).
 |---|---|---|
 | Bridge | `Sources/AirSCPCore/AgentBridge.swift` | `AirSCP --mcp`: newline-delimited JSON-RPC over stdio (initialize with instructions, ping, tools/list, tools/call). `AirSCP --agent <tool> key=value…`: one call from a shell (`--json`, `--out file.png`). Holds the static tool list, so `tools/list`, `initialize` and `guide` work while the app is closed. |
 | Server | `Sources/AirSCP/AgentServer.swift` | A unix socket in `<support dir>/agent/sock` (folder 0700), a 64-hex token in `agent/token` rewritten each launch, a uid check of the peer, 1 MB requests, one request per connection. Dispatches the tools on the main actor. |
-| Snapshot | `Sources/AirSCP/AgentSnapshot.swift` | The state as JSON, and `AXNode`: the in-process accessibility tree of AppKit views and SwiftUI nodes (what VoiceOver reads), with secure values as `•••(n)`. Always `debugLog` (on, path): an agent reads the debug log's file itself (PLAN.md AE). |
+| Snapshot | `Sources/AirSCP/AgentSnapshot.swift` | The state as JSON, and `AXNode`: the in-process accessibility tree of AppKit views and SwiftUI nodes (what VoiceOver reads), with secure values as `•••(n)`. Always `debugLog` (on, path): an agent reads the debug log's file itself. |
 | Indicator | `Sources/AirSCP/HostsSidebar.swift` (`AgentIndicator`) | "Agent control on" in the sidebar footer; the dot pulses while an agent acts; hover: who and since when; click: the last 20 actions in plain words, Turn Off, Settings. |
 
 ## How every feature is reached (first tier that fits)
@@ -67,15 +67,36 @@ throwaway instance. Same user only (0700 folder + token + uid check). No tool re
 as `•••(n)`; a password from a shell goes on stdin (`value=-`). AirSCP's confirmations stay in the way (Delete still
 asks). Turning the setting off removes the socket and token at once; quitting removes them too.
 
+**Changes wait for the person at the Mac** (Settings ▸ Ask before agents change things, on by default). Each tool
+works out, where it acts, what it would change outside AirSCP's own windows (`AgentServer.ask`, worked out only while
+the setting is on): a button that a question marks as destructive (`hasDestructiveAction`; Type cd and Run passwd
+too, which type into a Terminal tab that may be busy), a control in `changingControls` (by id), a command in
+`changingCommands` (by selector, for menus, context menus, shortcuts and buttons with that action; Delete, Disconnect
+and Quit only when they don't ask their own question, whose destructive button asks then), keys and text for a
+Terminal tab (a snippet chosen in its Insert Snippet too), keys, text and clicks for a Windows desktop, drops, opening
+a file in its app, and a Save panel that would replace a file. Open Terminal Here's `cd` at an empty prompt goes to
+a folder and doesn't ask. The Certificate Manager's saves ask only that way, through the Save panel when they would
+replace a file (New… never replaces one: it saves nothing then). `approve` shows `AgentQuestionPanel` (floating, on
+every Space, not modal, Deny the default) for up to 45 s; Allow for 15 Minutes lets every change through until then.
+What was allowed is worked out again before it happens: a selection that changed meanwhile fails the request. The
+panel isn't one of the agents' windows (`appWindows`) and their screenshots leave it out; the setting itself is
+refused to them. The replies (`AgentBridge.declined`, `noAnswer`) are in the guide's troubleshooting topic and the
+tool descriptions. Tests, scripts and throwaway instances that nobody answers turn it off in airscp.json
+(`testModel`, `agentWindow`, `LaunchedAirSCP`, `scripts/agent-session.sh`, `scripts/docs-screenshots.sh`,
+`testenv/*smoke.sh`).
+
 ## Adding a control or feature
 
-1. Give new controls a stable `.accessibilityIdentifier` (`area.name`) and a tooltip (section U).
+1. Give new controls a stable `.accessibilityIdentifier` (`area.name`) and a tooltip ([ux-copy.md](ux-copy.md)).
 2. If agents need to read new state, add it to the snapshot section it belongs to (no new state just for agents:
    read the model the view already has).
 3. Document it in `Resources/AgentGuide.md` (the right `## topic`). `AgentBridgeTests` fail if the guide names a tool,
    menu path or id that doesn't exist.
 4. Test it through the agent server (`AgentTests`, in-process) and, for flows across processes, `AgentLabTests` or
    `scripts/agent-session.sh`.
+5. A control or command that changes something outside AirSCP without a question of its own (deletes, runs, copies,
+   disconnects…): its id in `AgentServer.changingControls`, or its selector in `changingCommands`, so that it waits
+   for the person at the Mac. A button a question marks as destructive asks by itself.
 
 ## Known limits
 

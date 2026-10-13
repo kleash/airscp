@@ -9,6 +9,18 @@
 	<string>AirSCP</string>
 	<key>CFBundleIconFile</key>
 	<string>AppIcon</string>
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleURLName</key>
+			<string>SFTP and SSH links</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>sftp</string>
+				<string>ssh</string>
+			</array>
+		</dict>
+	</array>
 	<key>CFBundleIdentifier</key>
 	<string>com.kleash.airscp</string>
 	<key>CFBundleInfoDictionaryVersion</key>

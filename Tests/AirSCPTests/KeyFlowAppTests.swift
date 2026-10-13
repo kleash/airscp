@@ -5,7 +5,7 @@ import Testing
 @testable import AirSCP
 @testable import AirSCPCore
 
-// PLAN.md K.1, K.2 and U.4 through the app's windows and agent control: New Key Pair, Export for PuTTY and Import Key
+// Keys and server checks through the app's windows and agent control: New Key Pair, Export for PuTTY and Import Key
 // in the Keys window (keys in scratch folders, never ~/.ssh); Generate New Key… in the host editor, installed on a
 // throwaway sshd and used to log in; the orange shield and the snapshot's check fields. With the other heavy window
 // tests, one at a time.
@@ -38,11 +38,8 @@ extension FeatureRoundAppTests {
             window.orderOut(nil)
             main.window?.orderOut(nil)
         }
-        let clipboard = NSPasteboard.general.string(forType: .string)
-        defer {
-            NSPasteboard.general.clearContents()
-            if let clipboard { NSPasteboard.general.setString(clipboard, forType: .string) }
-        }
+        await TestClipboard.take()
+        defer { TestClipboard.give() }
 
         // New Key Pair: ECDSA 384 in PKCS#8 with a passphrase; ssh-keygen's questions are answered from the sheet.
         #expect(await call(agent, "press", ["title": "New Key Pair…", "in": "window:Keys"]).error == nil)
@@ -196,7 +193,7 @@ extension FeatureRoundAppTests {
     }
 
     /// Checks off: the sidebar's orange shield and the banner say so; the snapshot carries every host's and desktop's
-    /// check (PLAN.md U.4); a new host and desktop start with Settings ▸ Security's choice.
+    /// check; a new host and desktop start with Settings ▸ Security's choice.
     @MainActor @Test func checksOffShowAShieldAndAgentsSeeEveryCheck() async throws {
         _ = NSApplication.shared
         var open = SSHHost(label: "lab printer", hostname: "printer")
@@ -274,11 +271,9 @@ extension FeatureRoundAppTests {
             _ = await call(agent, "menu", ["path": "Host > Connect"])
             #expect(await call(agent, "wait", ["until": "sheet", "text": "prompt.answer", "timeout": 60]).error == nil)
             _ = await call(agent, "set", ["id": "prompt.answer", "value": "mistyped-1"])
-            // Ticked as a click does (the test process has no running NSApp: a click there ends its run loop).
-            func checkboxes(_ view: NSView?) -> [NSButton] {
-                ((view as? NSButton).map { [$0] } ?? []) + (view?.subviews.flatMap(checkboxes) ?? [])
-            }
-            try #require(checkboxes(main.window?.attachedSheet?.contentView).first { $0.title == "Remember in Keychain" }).state = .on
+            // Ticked by the agent, as a person clicks it: this press once ended the test process, so the
+            // lines after it went unchecked.
+            #expect(await call(agent, "press", ["title": "Remember in Keychain"]).error == nil)
             _ = await call(agent, "press", ["title": "OK"])
             let again = await call(agent, "wait", ["until": "sheet", "text": "wasn't accepted", "timeout": 60])
             #expect((field(again.json, "prompt.remember")?["value"] as? NSNumber)?.boolValue == true, "\(again.json) \(again.error ?? "")")
@@ -287,3 +282,4 @@ extension FeatureRoundAppTests {
         }
     }
 }
+

@@ -5,7 +5,7 @@ import Testing
 @testable import AirSCP
 @testable import AirSCPCore
 
-// PLAN.md S.1: Find Files and Synchronize. Without a server: the comparison of times and what a plan does in each
+// Find Files and Synchronize. Without a server: the comparison of times and what a plan does in each
 // direction. Against throwaway sshd servers (a shell, and sftp only): searching, comparing and synchronizing.
 
 /// Sets a file's modification time (and access time) to `time` seconds since 1970.
@@ -220,6 +220,7 @@ private func filesTab(_ session: Session) async -> BrowserContentController {
         browser.apply(plan, on: session)
         #expect(await eventually { !exists(there + "/only-there.txt") && !exists(there + "/olddir") })
         await session.transfers.waitUntilIdle()
+        #expect(session.transfers.jobs.allSatisfy { $0.status == .done }, "\(session.transfers.jobs.map { "\($0.source): \($0.status)" })")
         #expect(read(there + "/new.txt") == "new" && read(there + "/changed.txt") == "changed here")
         #expect(read(there + "/sub/inner.txt") == "inner" && read(there + "/newdir/deeper/x.txt") == "deep")
         #expect(read(there + "/theirs-newer.txt") == "newer on the server" && exists(there + "/.airscp-12345678.part"))

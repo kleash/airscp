@@ -47,6 +47,9 @@ watch it, and agents never see saved passwords.
 
 - Destructive steps (Delete, Replace, Synchronize with delete, Kill) ask in AirSCP on purpose. Press the destructive
   button only when the user asked for exactly that.
+- Changes (deleting, copying files, running a command, typing into a Terminal tab or a Windows desktop) wait until the
+  user allows them in AirSCP's question window. "The person at the Mac declined" or "didn't answer" means nothing was
+  done: tell the user, and don't try another way.
 - Don't type passwords for the user unless they gave you one for this task; prefer letting them answer the sheet.
 - Use `screenshot` only to check how something looks; `snapshot` has the facts and is much smaller.
 - Open and Save panels can't be driven: give the command that opens one `file=<path>` instead (see `guide`).

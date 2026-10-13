@@ -19,6 +19,8 @@ final class RunCommandModel: ObservableObject {
     @Published private(set) var failure: String?
     let connection: HostConnection
     private var cancellation: Cancellation?
+    /// Told each time a run ends (a snippet on selected files: its pane lists the folder again).
+    var finished: (() -> Void)?
 
     init(connection: HostConnection, command: String, sh: Bool = false) {
         self.connection = connection
@@ -63,6 +65,7 @@ final class RunCommandModel: ObservableObject {
             }
             ticker.cancel()
             running = false
+            finished?()
         }
     }
 
@@ -161,6 +164,7 @@ struct RunCommandView: View {
                 Text(model.unavailableReason ?? "").font(.caption).foregroundColor(.secondary)
                 Spacer()
                 Button("Run in Terminal") { runInTerminal(model.sh ? OpenSSH.viaSh(model.command) : model.command) }
+                    .accessibilityIdentifier("runCommand.runInTerminal")
                     .help("Opens Terminal with a tty: for sudo, top, editors and anything interactive")
                     .disabled(model.command.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || model.unavailableReason != nil)
                 if model.running {
@@ -168,6 +172,7 @@ struct RunCommandView: View {
                 } else {
                     Button("Run") { model.run() }
                         .keyboardShortcut(.return, modifiers: .command)
+                        .accessibilityIdentifier("runCommand.run")
                         .help(model.command.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "Type a command first"
                               : "Runs the command and shows its output (⌘↩)")
                         .disabled(model.command.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
@@ -262,10 +267,15 @@ struct SnippetsView: View {
                 TextField("Name:", text: snippet.name).accessibilityIdentifier("snippet.name")
                     .help("How the snippet is listed")
                 LabeledContent("Command:") {
-                    PlainTextEditor(text: snippet.command, id: "snippet.command",
-                                    help: "The command line to run; several lines run one after another")
-                        .frame(minHeight: 90)
-                        .overlay(RoundedRectangle(cornerRadius: 4).stroke(Color.secondary.opacity(0.35)))
+                    VStack(alignment: .leading, spacing: 4) {
+                        PlainTextEditor(text: snippet.command, id: "snippet.command",
+                                        help: "The command line to run; several lines run one after another")
+                            .frame(minHeight: 90)
+                            .overlay(RoundedRectangle(cornerRadius: 4).stroke(Color.secondary.opacity(0.35)))
+                        FormCaption("Optional, for the items selected in a server pane (right-click ▸ Run Snippet): {file} "
+                                    + "each item's path (it runs once per item), {name} its name, {files} all the paths "
+                                    + "at once, {folder} the folder shown. AirSCP quotes them.")
+                    }
                 }
                 Toggle("Run in Terminal (for sudo, top or anything interactive)", isOn: snippet.runInTerminal)
                     .accessibilityIdentifier("snippet.runInTerminal")
@@ -283,8 +293,16 @@ struct SnippetsView: View {
                         .accessibilityIdentifier("snippet.host")
                         .help("The host to run it on now; AirSCP connects first if needed")
                         Button("Run") { if let hostID { run(snippet.wrappedValue, hostID) } }
+                            .accessibilityIdentifier("snippet.run")
                             .disabled(hostID == nil || empty)
                             .help(hostID == nil || empty ? "Choose a host and enter a command" : "Run the snippet on that host")
+                        if AppleIntelligence.ready {
+                            Button("Explain…") { AppleIntelligence.ask(AssistantContext.explainCommand(snippet.wrappedValue.command)) }
+                                .disabled(empty)
+                                .help(empty ? "Enter a command first"
+                                      : "Ask Apple Intelligence (on this Mac) what this command does before you run it")
+                                .accessibilityIdentifier("snippet.explain")
+                        }
                     }
                 }
             }

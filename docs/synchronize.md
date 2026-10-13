@@ -41,6 +41,15 @@ what it would copy. Nothing is copied until you click **Synchronize**.
   without `tar` (such as an sftp-only account) gets the whole folder. **Delete…** deletes such a folder with
   everything in it.
 
+## Options
+
+- **Compare by**: **Size and date** (the default), **Size only**, **Date only**, or **Contents (SHA-256)**. Contents
+  works out a checksum of each pair of files of the same size, on this Mac and on the server: slower, but exact, for
+  servers whose clocks or copies don't keep times. It needs an account that runs commands.
+- **Only files on both sides**: leave alone what is only on one side; only files both sides have are updated.
+- **Also replace newer files on …** (one way only): the destination becomes a copy of the source, newer files too.
+- **Reverse**: right-click a file in the list to copy it the other way: the other side's copy replaces this side's.
+
 ## Tips
 
 - When one of the folders is a home folder or `/`, AirSCP waits for you to click **Compare**: comparing everything can

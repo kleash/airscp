@@ -250,6 +250,20 @@ enum FileList {
         return "New: \(describe(new)) · Existing: \(describe(existing))"
     }
 
+    /// Whether `new` is newer than `existing`, for Replace If Newer: two files with known times, compared at the
+    /// listings' precision (a day for a listing that gives the day only); nil when that can't be told.
+    static func isNewer(_ new: FileItem, than existing: FileItem) -> Bool? {
+        guard !new.isFolder, !existing.isFolder, let newTime = new.modified, let oldTime = existing.modified else { return nil }
+        switch (new.entry == nil, existing.entry == nil) {
+        case (true, false): return Sync.order(newTime, oldTime, dateOnly: existing.dateOnly) == .orderedDescending  // upload
+        case (false, true): return Sync.order(oldTime, newTime, dateOnly: new.dateOnly) == .orderedAscending  // download
+        default:
+            // Both from listings (server to server, or this Mac to this Mac): to the minute, or the day.
+            let unit: TimeInterval = new.dateOnly || existing.dateOnly ? 86_400 : 60
+            return (newTime.timeIntervalSince1970 / unit).rounded(.down) > (oldTime.timeIntervalSince1970 / unit).rounded(.down)
+        }
+    }
+
     /// Each name's destination. A name that exists goes by `choices`: Replace takes the existing item's exact name,
     /// Keep Both a free "name 2", Skip (or no choice) nil. A name that comes twice keeps both.
     static func plan(_ names: [String], existing: [String], caseInsensitive: Bool, choices: [String: Choice]) -> [Planned?] {

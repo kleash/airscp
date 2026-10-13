@@ -1,8 +1,8 @@
 # Regression history: what broke, and what it taught
 
-AirSCP (then Porter) went through adversarial review, two break-it rounds and an every-feature cycle before v1. Each
-finding got a fix and, where it was cheap, a regression test that fails without the fix. The classes below are the
-ones worth remembering when changing the code.
+The bugs found in AirSCP (called Porter before v1), by review and by testing each feature, got a fix and, where it
+was cheap, a regression test that fails without the fix. The classes below are the ones worth remembering when
+changing the code.
 
 ## Classes of bugs found and fixed
 
@@ -17,6 +17,8 @@ ones worth remembering when changing the code.
 - A failed Keychain read could lead to a write that wiped every saved password: nothing is cached or written after a
   read that isn't success or not-found.
 - ⌘Q dropped unsaved editor text; Extract Here overwrote silently. Both ask now.
+- Upload and Delete and Download and Delete deleted the originals after a copy whose SHA-256 didn't match (Verify
+  transfers on): the originals go only after a copy that wasn't checked, or matched (`moveMayDelete`).
 
 **Security**
 - Path traversal through server names: listing drops names containing `/` at the parse boundary; every local path
@@ -25,13 +27,21 @@ ones worth remembering when changing the code.
   AirSCP started.
 - A jump host's changed key removed the target's known_hosts entry: the key named in ssh's message is the one removed.
 - A server's file name on the login shell's command line could run commands when that shell is fish, csh or tcsh
-  (they read POSIX quoting differently): every script goes to `sh -s` on standard input, File ▸ Run… too
-  (`Session.run(_:sh:)`); the terminal commands (Open Terminal Here, Run in Terminal of a file), whose standard input
+  (they read POSIX quoting differently): every script goes to `sh -s` on standard input, File ▸ Run… and snippets
+  run on selected files too (`Session.run(_:sh:)`); the terminal commands (Open Terminal Here, Run in Terminal of a file), whose standard input
   is the keyboard, carry it as printf octal escapes that only sh decodes (`OpenSSH.viaSh`). Checked against fish 4.6,
   tcsh, csh, zsh, bash and BusyBox sh login shells in a container: the old commands ran the injected `touch`, the new
   ones don't (unit test: this Mac's sh, bash, zsh, dash, ksh, csh and tcsh).
 - The tar consumer read its target folder as one line (`read`): a destination whose path had a line break was cut
   there and `rm -rf` removed another folder (a sibling, or the parent). Such a destination is refused now.
+- sftp reads a batch line into 2,048 bytes and takes what doesn't fit as a command of its own, where `!` runs it on
+  this Mac: a server's deep or quote-heavy names could make a listing, file operation, transfer or resume line
+  overflow (sftp-only accounts, browsing as another user, resumes). No line of 2,047 bytes or more is sent
+  (`Session.tooLongForSFTP`; a resume starts afresh instead), and a line break in a quoted name is written as `?`
+  (`Quote.sftp`).
+- Only the person at the Mac may turn off "Ask before agents change things", but an agent's Space on that switch went
+  through unasked when it had the keyboard (as Tab gives it with keyboard navigation on): SwiftUI's switches are
+  `NSSwitch`, and only a focused `NSButton` was checked. A Space on a focused button or switch is checked as a press.
 
 **Speed**
 - Streams crawled at 512 bytes per read when the Mac's pipe pool was exhausted (by other apps): all child I/O uses
@@ -81,12 +91,34 @@ ones worth remembering when changing the code.
   time bounds catch hangs and quadratic work only; a tunnel started on a just-freed port tries another if that one was
   taken. The suite passes so with 16 busy loops beside it on a 10-core Mac. ci.yml still runs a failed test once more
   alone, with a warning: treat that warning as a bug. RDP's silent-server test checks what ended it, not the clock.
+- Each full run left about two master ssh processes behind, connected to the sessions of a test sshd that had been
+  stopped (sshd's sessions outlive it): an app window's connection that its test didn't close itself kept them
+  alive. Stopping a test server now ends its sessions first (`TestServer.stopServer`).
 - Test helpers close each descriptor once: TestProxy closed an upstream socket twice when it stopped mid-request, which
   could close whatever socket or pipe had taken that number meanwhile (a likely cause of a test run killed by SIGPIPE).
 - The test process was still killed by SIGPIPE in about every other full run, always just after the RDP silent-server
   test: FreeRDP writing on the connection that the test's listener reset as it closed. FreeRDP's own clients ignore
   SIGPIPE, and `RDPSession` now does too (in the app as well: a server resetting the connection would have ended
   AirSCP); children keep the default (Runner.spawn and cpty reset every signal).
+- The test process ended mid-run with status 0 (1.2.0): an agent `press` on a checkbox used
+  `performClick`, whose tracking loop pulls events and so starts AppKit's event thread; from then on each window-server
+  event posts HIToolbox's `SignalMainThread` block, which calls `CFRunLoopStop` on the main run loop. In the app that
+  only ends a `nextEvent` wait inside `NSApp.run`; the test process has no `NSApp.run`, so it ended Swift
+  concurrency's `CFRunLoopRun` and `exit(0)` followed (found by interposing `CFRunLoopStop`/`CFRunLoopPerformBlock` from
+  a `DYLD_INSERT_LIBRARIES` dylib under `swiftpm-testing-helper`). Agents now click buttons as AppKit's click does,
+  without the tracking loop (`AXNode.click`: next state, then the action), and `./test.sh` fails a run that never
+  prints Swift Testing's "Test run with N tests" line. Anything that pulls events (`nextEvent`, `runModal`, a real
+  mouse click) still stops a test process: tests don't do it.
+- Apple's on-device model (1.2.0, first runs with Apple Intelligence on): a `DynamicGenerationSchema` string with
+  a regex guide (`.pattern`) fails generation outright (`GenerativeError` 1020000), anchored or not: Suggest uses plain
+  strings and `SuggestField.problem` checks them. Its plans are readable but padded: a connect before each action, a
+  Disconnect All nobody asked for, empty strings for fields it doesn't need, a tunnel named "web-01 port 8080". The
+  instructions now carry rules and examples, and `AssistantPlan.decode` tidies what comes back; Run stays the only way
+  to start anything. `AIRSCP_AI=1 ./test.sh --filter AIModelTests` prints each plan to look at.
+- Two lab tests failed on 1.1.0's own code once the lab grew (2026-10-12): macOS's Writing Tools submenu ("Make Table")
+  matched a check for window-tab menu items, and the 5,000-file compare took 11–12 s against a 10 s bound under the
+  whole lab suite (4 s alone). The tab check leaves Writing Tools out; the bound is 30 s, still far below a quadratic
+  compare.
 
 ## The Windows VM
 

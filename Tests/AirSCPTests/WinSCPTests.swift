@@ -2,7 +2,7 @@ import Foundation
 import Testing
 @testable import AirSCPCore
 
-// MARK: Import from WinSCP (task 70)
+// MARK: Import from WinSCP
 
 /// A WinSCP.ini as WinSCP's Tools ▸ Export/Backup Configuration writes it: escaped names and values, folders, a
 /// tunnel, an HTTP proxy, the default settings, a workspace, and sites AirSCP can't use.
@@ -70,24 +70,29 @@ private let ini = """
     #expect(sites[1].proxy == WinSCP.Hop(host: "proxy.corp", port: 3128, username: "me"))
     #expect(sites[3].leftOut == nil && sites[3].port == 22)
     #expect(sites[4].leftOut?.contains("FTP") == true)
-    #expect(sites[5].leftOut?.contains("SOCKS") == true)
+    // SOCKS5 comes in (port 1080 when unsaid); SOCKS4 stays out.
+    #expect(sites[5].leftOut == nil && sites[5].proxy == WinSCP.Hop(host: "socks.corp", port: 1080, username: "", socks: true))
+    #expect(WinSCP.sites(in: "[Sessions\\s4]\nHostName=h\nProxyMethod=1\nProxyHost=p\n")[0].leftOut?.contains("SOCKS4") == true)
     #expect(WinSCP.sites(in: "").isEmpty && WinSCP.sites(in: "[Sessions\\x]\nHostName=-oProxyCommand=x\n")[0].leftOut != nil)
 }
 
 @Test func winSCPSitesBecomeHostsGroupsJumpHostsAndProxies() throws {
     let existing = HostGroup(name: "Work/Web")
     let data = WinSCP.data(WinSCP.sites(in: ini), existing: AirSCPData(groups: [existing]), key: { $0 == "deploy.ppk" ? "/keys/deploy" : nil })
-    // The folder's group is the one AirSCP has; one jump host for both tunnels, one proxy, on the jump host.
+    // The folder's group is the one AirSCP has. db and cache go through the same bastion, db through a proxy and cache
+    // not: two jump hosts (one would take one of them past or through the proxy wrongly), the proxy on db's.
     #expect(data.groups.isEmpty)
-    #expect(data.hosts.map(\.label) == ["web 01", "bastion.example.com", "db", "cache", "plain"])
-    let web = data.hosts[0], jump = data.hosts[1], db = data.hosts[2], cache = data.hosts[3]
+    #expect(data.hosts.map(\.label) == ["web 01", "bastion.example.com via proxy.corp", "db", "bastion.example.com", "cache", "plain",
+                                         "socks"])
+    let web = data.hosts[0], jump = data.hosts[1], db = data.hosts[2], plainJump = data.hosts[3], cache = data.hosts[4]
     #expect(web.groupID == existing.id && web.port == 2222 && web.auth == .keyFile && web.keyFile == "/keys/deploy")
     #expect(web.defaultRemoteDir == "/var/www")
     #expect(jump.hostname == "bastion.example.com" && jump.port == 2022 && jump.username == "jump" && jump.auth == .agent)
-    #expect(db.jumpHostID == jump.id && cache.jumpHostID == jump.id && db.proxyID == nil)
+    #expect(db.jumpHostID == jump.id && cache.jumpHostID == plainJump.id && db.proxyID == nil && plainJump.proxyID == nil)
     let proxy = try #require(data.proxies.first)
-    #expect(data.proxies.count == 1 && jump.proxyID == proxy.id && proxy.host == "proxy.corp" && proxy.port == 3128)
-    #expect(data.hosts[4].port == nil && data.hosts[4].groupID == nil)
+    #expect(data.proxies.count == 2 && jump.proxyID == proxy.id && proxy.host == "proxy.corp" && proxy.port == 3128 && !proxy.isSOCKS)
+    #expect(data.proxies[1].isSOCKS && data.hosts[6].proxyID == data.proxies[1].id)
+    #expect(data.hosts[5].port == nil && data.hosts[5].groupID == nil)
     // Without the group in AirSCP, the folder makes one.
     #expect(WinSCP.data(WinSCP.sites(in: ini)).groups.map(\.name) == ["Work/Web"])
     // Imported again: nothing new; with the jump host and proxy known, a new site through them reuses both.
@@ -96,7 +101,26 @@ private let ini = """
     #expect(WinSCP.data(WinSCP.sites(in: ini), existing: have).hosts.isEmpty)
     have.hosts.removeAll { $0.label == "cache" }
     let again = WinSCP.data(WinSCP.sites(in: ini), existing: have)
-    #expect(again.hosts.map(\.label) == ["cache"] && again.hosts[0].jumpHostID == jump.id && again.proxies.isEmpty)
+    #expect(again.hosts.map(\.label) == ["cache"] && again.hosts[0].jumpHostID == plainJump.id && again.proxies.isEmpty)
+}
+
+/// A site through a bastion and an HTTP proxy, imported when AirSCP has that bastion without the proxy, keeps the proxy:
+/// it gets a jump host of its own through the proxy; AirSCP's host is left as it is.
+@Test func winSCPImportKeepsTheProxyOfASiteWhoseBastionAirSCPHasAlready() throws {
+    let have = SSHHost(label: "my bastion", hostname: "bastion.example.com", port: 2022, username: "jump")
+    let sites = WinSCP.sites(in: ini).filter { $0.name == "db" }
+    let data = WinSCP.data(sites, existing: AirSCPData(hosts: [have]))
+    #expect(data.hosts.map(\.label) == ["bastion.example.com via proxy.corp", "db"])
+    let jump = data.hosts[0]
+    #expect(data.hosts[1].jumpHostID == jump.id && jump.id != have.id && jump.proxyID == data.proxies.first?.id)
+    // With AirSCP's bastion already through that proxy, it is reused.
+    var through = have
+    through.proxyID = UUID()
+    let proxy = Proxy(id: through.proxyID!, host: "proxy.corp", port: 3128, username: "me")
+    var existing = AirSCPData(hosts: [through])
+    existing.proxies = [proxy]
+    let reused = WinSCP.data(sites, existing: existing)
+    #expect(reused.hosts.map(\.label) == ["db"] && reused.hosts[0].jumpHostID == have.id && reused.proxies.isEmpty)
 }
 
 @Test func winSCPKeysBesideTheFileBecomeOpenSSHKeys() async throws {

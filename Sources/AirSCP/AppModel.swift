@@ -53,11 +53,15 @@ final class AppModel: ObservableObject {
     @Published private(set) var agentActive = false
     private var agentQuiet: DispatchWorkItem?
     /// The agent that drives AirSCP now (the MCP client's name, or "AirSCP --agent") and since when; nil once its
-    /// process has gone (PLAN.md U.2).
+    /// process has gone.
     @Published private(set) var agentClient: (name: String, since: Date)?
     /// What agents did, in plain words (newest last, at most 20), and how many actions since AirSCP started.
     @Published private(set) var agentActions: [AgentAction] = []
     @Published private(set) var agentActionCount = 0
+    /// The change an agent waits for the person at the Mac to allow, in plain words; and until when agents may change
+    /// things without asking (Allow for 15 Minutes). Both for the indicator.
+    @Published var agentQuestion: String?
+    @Published var agentAllowedUntil: Date?
     /// The processes that made requests and still run, by pid: an MCP client's bridge stays named while a one-off
     /// `AirSCP --agent` comes and goes.
     private var agentClients: [pid_t: (name: String, since: Date, last: Date, watch: DispatchSourceProcess)] = [:]
@@ -405,7 +409,7 @@ struct AgentAction: Identifiable {
     let client: String
 }
 
-/// How a host's (or desktop's) connection goes, for the sidebar, the window's subtitle and agents (PLAN.md U.1).
+/// How a host's (or desktop's) connection goes, for the sidebar, the window's subtitle and agents.
 struct Route: Equatable {
     /// "via bastion", "via proxy corp-proxy", "via corp-proxy → bastion" (the first hop first).
     let short: String
@@ -416,7 +420,7 @@ struct Route: Equatable {
 }
 
 extension AirSCPData {
-    /// The route of a host through its jump host and the HTTP proxy of its first hop (with a jump host, the jump
+    /// The route of a host through its jump host and the proxy of its first hop (with a jump host, the jump
     /// host's own proxy); nil for a host that connects directly.
     func route(for host: SSHHost) -> Route? {
         guard let hops = hops(for: host) else { return Self.optionRoute(host) }
@@ -450,9 +454,9 @@ extension AirSCPData {
         if let proxyID {
             if let proxy = proxy(proxyID) {
                 let login = proxy.username.isEmpty ? "" : proxy.username + "@"
-                hops.append(("proxy " + proxy.displayName, "the HTTP proxy \(proxy.displayName) (\(login)\(proxy.host):\(proxy.port))"))
+                hops.append(("proxy " + proxy.displayName, "the proxy \(proxy.displayName) (\(login)\(proxy.host):\(proxy.port))"))
             } else {
-                hops.append((nil, "an HTTP proxy that no longer exists (edit the host to choose another)"))
+                hops.append((nil, "a proxy that no longer exists (edit the host to choose another)"))
             }
         }
         if host.jumpHostID != nil {
@@ -492,7 +496,7 @@ extension AirSCPData {
     private static func route(_ hops: [(name: String?, text: String)], target: String, verb: String) -> Route {
         let full = "\(verb) \(target) through " + hops.map(\.text).joined(separator: ", then ") + "."
         if let gone = hops.first(where: { $0.name == nil }) {
-            let what = gone.text.hasPrefix("an HTTP proxy") ? "proxy" : "jump host"
+            let what = gone.text.hasPrefix("a proxy") ? "proxy" : "jump host"
             return Route(short: "via a missing \(what)", full: full, missing: true)
         }
         // "via proxy corp-proxy" alone; "via corp-proxy → bastion" with a hop after it.

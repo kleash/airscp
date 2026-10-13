@@ -3,8 +3,7 @@ import Foundation
 import Testing
 @testable import AirSCPCore
 
-// Regression tests for the findings of the first break-it round (transfers, names, connections), against a throwaway
-// sshd on this Mac.
+// Regression tests for bugs found in transfers, names and connections, against a throwaway sshd on this Mac.
 
 private func job(_ id: UUID, in queue: TransferQueue) -> TransferJob? {
     queue.jobs.first { $0.id == id }

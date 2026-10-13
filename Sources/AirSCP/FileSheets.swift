@@ -38,6 +38,7 @@ struct PermissionsGrid: View {
                     .font(.system(.body, design: .monospaced))
                     .frame(width: 64)
                     .help("The same as a number, e.g. 644 or 755")
+                if AppleIntelligence.ready { SuggestButton(field: .mode) { octal = $0 } }
                 Text(invalid ? "Octal: 0 to 7777" : FileList.symbolic(mode))
                     .font(.system(.body, design: .monospaced))
                     .foregroundColor(invalid ? Color(nsColor: .systemRed) : .secondary)
@@ -76,18 +77,46 @@ struct PermissionsSheet: View {
     let title: String
     @State var mode: Int
     let hasFolders: Bool
+    /// The items' owner and group, when they all have the same (else empty), and whether names can be typed (a server
+    /// with a shell) or only numbers (sftp).
+    var owner = ""
+    var group = ""
+    var namesAllowed = true
     let close: () -> Void
     let apply: (_ mode: Int, _ recursive: Bool) -> Void
+    /// The owner and group typed, when changed (empty: unchanged).
+    var changeOwner: ((_ owner: String, _ group: String, _ recursive: Bool) -> Void)?
     @State private var recursive = false
     @State private var invalid = false
+    @State private var newOwner: String?
+    @State private var newGroup: String?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
             Text(title).font(.headline)
             PermissionsGrid(mode: $mode, invalid: $invalid)
+            if changeOwner != nil {
+                Grid(alignment: .leadingFirstTextBaseline, horizontalSpacing: 8, verticalSpacing: 6) {
+                    GridRow {
+                        Text("Owner:")
+                        TextField(owner.isEmpty ? "Unchanged" : owner, text: Binding(get: { newOwner ?? owner }, set: { newOwner = $0 }))
+                            .accessibilityIdentifier("permissions.owner")
+                            .help("The user who owns it (chown); only root can give it to another user")
+                    }
+                    GridRow {
+                        Text("Group:")
+                        TextField(group.isEmpty ? "Unchanged" : group, text: Binding(get: { newGroup ?? group }, set: { newGroup = $0 }))
+                            .accessibilityIdentifier("permissions.group")
+                            .help("Its group; you can choose a group you belong to")
+                    }
+                }
+                Text(namesAllowed ? "Optional: a name or a number. Leave as it is to keep it."
+                     : "Optional: numbers only (user and group IDs): this server allows file transfers only.")
+                    .font(.caption).foregroundColor(.secondary)
+            }
             if hasFolders {
                 Toggle("Change everything in the folders too", isOn: $recursive)
-                    .help("Off by default. On applies the same permissions to every file and folder inside (chmod -R)")
+                    .help("Off by default. On applies the same permissions (and owner) to every file and folder inside (chmod -R)")
             }
             HStack {
                 HelpButton(.permissions)
@@ -95,9 +124,13 @@ struct PermissionsSheet: View {
                 Button("Cancel", action: close).keyboardShortcut(.cancelAction).help("Close without changing anything")
                 Button("Apply") {
                     apply(mode, recursive)
+                    let owner = (newOwner ?? self.owner) == self.owner ? "" : newOwner ?? ""
+                    let group = (newGroup ?? self.group) == self.group ? "" : newGroup ?? ""
+                    if !owner.isEmpty || !group.isEmpty { changeOwner?(owner, group, recursive) }
                     close()
                 }
                 .keyboardShortcut(.defaultAction).primaryTint()
+                .accessibilityIdentifier("permissions.apply")
                 .disabled(invalid)
                 .help(invalid ? "Type an octal number from 0 to 7777 first" : "Change the permissions on the server now")
             }
@@ -148,6 +181,42 @@ final class InfoModel: ObservableObject {
 
     func cancel() {
         reading?.cancel()
+        checking?.cancel()
+    }
+
+    // MARK: Checksum
+
+    @Published var algorithm = Session.ChecksumAlgorithm.sha256
+    @Published private(set) var checksum: String?
+    @Published private(set) var checksumFailure: String?
+    @Published private(set) var computing = false
+    /// A checksum to compare with, pasted from a download page.
+    @Published var expected = ""
+    private var checking: Task<Void, Never>?
+
+    func computeChecksum() {
+        guard !computing else { return }
+        computing = true
+        checksum = nil
+        checksumFailure = nil
+        let algorithm = self.algorithm
+        checking = Task {
+            do {
+                checksum = try await session.checksum(entry.path, algorithm)
+            } catch {
+                if (error as? AirSCPError)?.kind != .cancelled {
+                    checksumFailure = (error as? AirSCPError)?.message ?? error.localizedDescription
+                }
+            }
+            computing = false
+        }
+    }
+
+    /// Whether the checksum matches the one pasted (nil: nothing to compare yet). Case and spaces don't matter.
+    var matches: Bool? {
+        let pasted = expected.lowercased().filter { !$0.isWhitespace }
+        guard let checksum, !pasted.isEmpty else { return nil }
+        return pasted == checksum
     }
 
     func applyPermissions() {
@@ -203,6 +272,10 @@ struct InfoView: View {
                 row("Group", info?.group ?? entry.group)
                 if let target = info?.linkTarget { row("Link to", target) }
             }
+            if entry.kind == .file {
+                Divider()
+                checksumSection
+            }
             Divider()
             Text("Permissions").font(.subheadline.weight(.semibold))
             // A link's own mode is 777, and chmod changes its target's: they are changed on the target.
@@ -232,6 +305,41 @@ struct InfoView: View {
         .padding(20)
         .frame(width: 460)
         .onExitCommand(perform: close)  // Escape, as in the other sheets (Return is Done)
+    }
+
+    private var checksumSection: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack {
+                Text("Checksum").font(.subheadline.weight(.semibold))
+                Picker("Checksum", selection: $model.algorithm) {
+                    ForEach(Session.ChecksumAlgorithm.allCases, id: \.self) { Text($0.rawValue).tag($0) }
+                }
+                .labelsHidden()
+                .fixedSize()
+                .accessibilityIdentifier("info.checksumAlgorithm")
+                .help("SHA-256 is today's choice; SHA-1 and MD5 for older published checksums")
+                Button(model.computing ? "Working It Out…" : "Calculate") { model.computeChecksum() }
+                    .disabled(model.computing)
+                    .accessibilityIdentifier("info.calculateChecksum")
+                    .help(model.session.capabilities.shell ? "Work out the file's checksum on the server"
+                          : "Download a temporary copy and work out its checksum here (this server allows file transfers only)")
+            }
+            if let checksum = model.checksum {
+                Text(checksum).font(.system(size: 11, design: .monospaced)).textSelection(.enabled)
+                    .accessibilityIdentifier("info.checksum")
+            }
+            if let failure = model.checksumFailure { Text(failure).font(.caption).foregroundColor(Color(nsColor: .systemRed)) }
+            HStack {
+                TextField("Optional: paste the published checksum to compare", text: $model.expected)
+                    .accessibilityIdentifier("info.expectedChecksum")
+                    .help("Paste the checksum a download page gives; AirSCP says whether it matches")
+                if let matches = model.matches {
+                    Text(matches ? "✓ Matches" : "✗ Doesn't match")
+                        .foregroundColor(Color(nsColor: matches ? .systemGreen : .systemRed))
+                        .accessibilityIdentifier("info.checksumMatch")
+                }
+            }
+        }
     }
 
     /// `file -b`'s words in Finder's: "directory" is a Folder, and so on.
@@ -278,7 +386,7 @@ final class FindModel: ObservableObject {
     @Published private(set) var results: [FoundItem] = []
     @Published private(set) var searching = false
     @Published private(set) var status = ""
-    @Published var selection: String?
+    @Published var selection: Set<String> = []
     private var search: Task<Void, Never>?
     /// Counts the searches started: matches that come late belong to the one they were found for.
     private var generation = 0
@@ -304,7 +412,7 @@ final class FindModel: ObservableObject {
         search?.cancel()
         let pattern = Self.glob(self.pattern)
         results = []
-        selection = nil
+        selection = []
         searching = true
         status = "Searching…"
         generation += 1
@@ -329,6 +437,15 @@ final class FindModel: ObservableObject {
             status = outcome
         }
     }
+
+    /// Results deleted from the server (Delete… in the sheet): off the list.
+    func removeResults(_ paths: Set<String>) {
+        results.removeAll { item in paths.contains(item.path) || paths.contains { item.path.hasPrefix($0 + "/") } }
+        selection.subtract(paths)
+    }
+
+    /// The selected results in the list's order.
+    var selectedPaths: [String] { results.map(\.path).filter(selection.contains) }
 
     /// Matches found so far by the search under way.
     private func add(_ found: [FoundItem], from search: Int) {
@@ -359,6 +476,9 @@ struct FindView: View {
     @ObservedObject var model: FindModel
     let show: (String) -> Void
     let close: () -> Void
+    /// Download…, Delete… on the selected results.
+    var download: ([String]) -> Void = { _ in }
+    var delete: ([String]) -> Void = { _ in }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -374,6 +494,7 @@ struct FindView: View {
                     .onSubmit { model.start() }
                     .accessibilityIdentifier("find.pattern")
                     .help(Text(verbatim: "Part of a name, or a pattern: *.log, report-??.pdf, [Rr]eadme*"))  // not Markdown
+                if AppleIntelligence.ready { SuggestButton(field: .findPattern) { model.pattern = $0 } }
                 Button(model.searching ? "Stop" : "Find") { model.searching ? model.stop() : model.start() }
                     .help(model.searching ? "Stop the search; what was found stays" : "Start the search (Return)")
             }
@@ -383,7 +504,15 @@ struct FindView: View {
                     .truncationMode(.middle)
                     .help("Double-click to go to the item")
             }
-            .contextMenu(forSelectionType: String.self, menu: { _ in }, primaryAction: { paths in
+            .contextMenu(forSelectionType: String.self, menu: { paths in
+                Button("Show") { if let path = paths.first { show(path) } }.help("Go to the item in the pane")
+                Button("Download…") { download(model.results.map(\.path).filter(paths.contains)) }
+                    .help("Download these to a folder on this Mac")
+                Button("Copy Paths") { Self.copy(model.results.map(\.path).filter(paths.contains)) }
+                    .help("Copy the full paths, one per line")
+                Button("Delete…") { delete(model.results.map(\.path).filter(paths.contains)) }
+                    .help("Delete these on the server (asks first)")
+            }, primaryAction: { paths in
                 if let path = paths.first { show(path) }
             })
             .frame(minHeight: 240)
@@ -392,13 +521,32 @@ struct FindView: View {
                 if model.searching { ProgressView().controlSize(.small) }
                 Text(model.status).foregroundColor(.secondary).lineLimit(2)
                 Spacer()
+                let none = model.selection.isEmpty
+                Button("Copy Paths") { Self.copy(model.selectedPaths) }
+                    .disabled(none)
+                    .accessibilityIdentifier("find.copyPaths")
+                    .help(none ? "Select results first" : "Copy the selected results' full paths, one per line")
+                Button("Delete…") { delete(model.selectedPaths) }
+                    .disabled(none || model.searching)
+                    .accessibilityIdentifier("find.delete")
+                    .help(none ? "Select results first" : model.searching ? "Wait for the search to end, or stop it"
+                          : "Delete the selected results on the server (asks first)")
+                Button("Download…") { download(model.selectedPaths) }
+                    .disabled(none)
+                    .accessibilityIdentifier("find.download")
+                    .help(none ? "Select results first" : "Download the selected results to a folder on this Mac")
                 Button("Done", action: close).keyboardShortcut(.cancelAction).help("Close (a search under way stops)")
-                Button("Show") { if let path = model.selection { show(path) } }
-                    .disabled(model.selection == nil)
-                    .help(model.selection == nil ? "Select a result first" : "Go to the selected item in the pane")
+                Button("Show") { if let path = model.selectedPaths.first { show(path) } }
+                    .disabled(model.selection.count != 1)
+                    .help(model.selection.count == 1 ? "Go to the selected item in the pane" : "Select one result first")
             }
         }
         .padding(20)
-        .frame(width: 540)
+        .frame(width: 640)
+    }
+
+    static func copy(_ paths: [String]) {
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(paths.joined(separator: "\n"), forType: .string)
     }
 }

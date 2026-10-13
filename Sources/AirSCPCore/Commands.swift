@@ -14,7 +14,7 @@ public enum OpenSSH {
     public static var configFile: String?
 
     /// The host's settings as -o options, shared verbatim by ssh, scp, sftp, ssh-copy-id and ssh -O. Only -o:
-    /// ssh's -p (port) means "preserve" to scp and sftp. The first hop goes through the host's HTTP proxy, or with a
+    /// ssh's -p (port) means "preserve" to scp and sftp. The first hop goes through the host's proxy, or with a
     /// jump host through the jump host's own proxy (nested in its ProxyCommand). `silent` (an automatic reconnect's
     /// master): the jump host's ssh tries one password at most, as the master itself does. `plain`: the first hop's
     /// proxy when it needs no login, for a command line that runs without AirSCP (macOS's nc then reaches it).
@@ -75,14 +75,14 @@ public enum OpenSSH {
             .joined(separator: " ")
     }
 
-    /// Through a saved HTTP proxy: AirSCP's own binary in proxy-connect mode (`ProxyConnect`). The path comes from
+    /// Through a saved proxy: AirSCP's own binary in proxy-connect mode (`ProxyConnect`). The path comes from
     /// $AIRSCP_HELPER, which the askpass environment sets (`AskpassServer.environment(for:)`, and for Terminal
     /// `terminalEnvironment`), as does the socket the helper asks the app for the proxy's address and password on.
     /// A proxy without a login (`plain`) is reached with macOS's own nc instead, for a command line used outside AirSCP.
     static func proxyCommand(_ proxy: UUID, plain: Proxy? = nil) -> String {
         if let plain, plain.id == proxy, plain.username.isEmpty {
             let address = Quote.shellWord(plain.host + ":\(plain.port)").replacingOccurrences(of: "%", with: "%%")
-            return "/usr/bin/nc -X connect -x \(address) %h %p"
+            return "/usr/bin/nc -X \(plain.isSOCKS ? "5" : "connect") -x \(address) %h %p"
         }
         return "\"$AIRSCP_HELPER\" --proxy-connect \(proxy.uuidString) %h %p"
     }
@@ -127,9 +127,11 @@ public enum OpenSSH {
 
     /// sftp reading its batch from standard input (`Quote.sftp` for the arguments). `limit`: -l, in Kbit/s (a resumed
     /// transfer under the speed limit), with fewer requests in flight (`limitedRequests`).
-    public static func sftpBatch(_ host: SSHHost, jump: SSHHost?, socket: String, limit: Int? = nil) -> [String] {
-        [sftp, "-b", "-"] + (limit.map { ["-l", String($0), "-R", limitedRequests] } ?? []) + config + mux(socket)
-            + options(host, jump: jump) + [destination(host)]
+    /// `server`: the sftp server to run instead of the subsystem (`sudo -n -u <user> <sftp-server>` for a host browsed
+    /// as another user).
+    public static func sftpBatch(_ host: SSHHost, jump: SSHHost?, socket: String, limit: Int? = nil, server: String? = nil) -> [String] {
+        [sftp, "-b", "-"] + (limit.map { ["-l", String($0), "-R", limitedRequests] } ?? []) + (server.map { ["-s", $0] } ?? [])
+            + config + mux(socket) + options(host, jump: jump) + [destination(host)]
     }
 
     /// Writes in flight for an upload under a speed limit. scp's and sftp's meter counts what the server has
@@ -159,8 +161,9 @@ public enum OpenSSH {
     /// shell (fish, csh, tcsh) mis-reads even a correctly single-quoted name on its command line and can run commands a
     /// name contains. `sh` reads the whole script from standard input (none of these scripts read it themselves), so it
     /// is left to run as written. Returns the command and that input.
-    static func longScript(_ script: String) -> (command: String, input: String?) {
-        ("exec sh -s", script + "\n")
+    /// `sudo`: run as that user with `sudo -n` (a host browsed as another user).
+    static func longScript(_ script: String, sudo: String = "") -> (command: String, input: String?) {
+        (sudo.isEmpty ? "exec sh -s" : "exec sudo -n -u \(Quote.shell(sudo)) sh -s", script + "\n")
     }
 
     /// The output and exit status of a `sentinel` command; nil when the markers are missing (no shell).
@@ -209,11 +212,92 @@ public enum OpenSSH {
 
     /// The remote command for AirSCP's own terminal: the login shell (in `directory`, else the login folder), after a
     /// line that tells the terminal the shell's pid (AirSCP's OSC 1337;AirSCPPid, which it doesn't show): the shell is
-    /// sh's own process once it execs, so its folder can be read on the server (`processDirectory`).
-    public static func terminalShell(in directory: String?) -> String {
+    /// sh's own process once it execs, so its folder can be read on the server (`processDirectory`). bash and zsh also
+    /// mark their prompts and commands, signed with `token` (`shellMarks`).
+    public static func terminalShell(in directory: String?, token: String) -> String {
         // In $HOME without a folder: the home the Files pane shows (sshd may start elsewhere when it differs).
         viaSh("printf '\\033]1337;AirSCPPid=%s\\007' \"$$\"; cd " + (directory.map(Quote.shell) ?? "\"$HOME\"")
-              + " 2>/dev/null; exec \"$SHELL\" -l")
+              + " 2>/dev/null\n" + shellMarks(token: token) + "exec \"$SHELL\" -l")
+    }
+
+    /// The sh lines that give bash and zsh marks for the Terminal tab (`TerminalScreen.Mark`): OSC 133 around the prompt,
+    /// the command and its output (with its exit status), at the end of bash's continuation prompt (PS2: a command read
+    /// off the screen leaves it out), and OSC 7 with the folder at each prompt, signed as the marks are (a program's
+    /// output can't move Follow in Files). Nothing on the server changes: a file in a folder of its own (mktemp, 0700)
+    /// that the shell reads at its start and deletes at once. bash reads it in place of its login files (`--rcfile`), and
+    /// runs them first as a login shell would; zsh reads it in place of ~/.zshenv (ZDOTDIR), then reads the user's own
+    /// files as usual. The hooks go last, after the user's own, so that the prompt they make gets the marks. Other shells
+    /// (BusyBox sh, fish…) start as before, without marks.
+    static func shellMarks(token: String) -> String {
+        #"""
+        case ${SHELL##*/} in
+        bash)
+          if "$SHELL" -c 'test -n "$BASH_VERSION"' </dev/null >/dev/null 2>&1 && AIRSCP_RC=$(mktemp -d "${TMPDIR:-/tmp}/airscp.XXXXXX" 2>/dev/null); then
+            export AIRSCP_RC
+            if cat >"$AIRSCP_RC/rc" <<'AIRSCP_RC_END'
+        # AirSCP's Terminal tab: marks for this shell only (OSC 133 around its prompt, command and output; OSC 7 with its
+        # folder). This file is gone already; the login files run first, as for bash -l.
+        [ -n "${AIRSCP_RC-}" ] && { command rm -f -- "$AIRSCP_RC/rc"; command rmdir -- "$AIRSCP_RC"; } 2>/dev/null
+        unset AIRSCP_RC
+        [ -r /etc/profile ] && . /etc/profile
+        if [ -r ~/.bash_profile ]; then . ~/.bash_profile; elif [ -r ~/.bash_login ]; then . ~/.bash_login; elif [ -r ~/.profile ]; then . ~/.profile; fi
+        [ "$(type -t logout)" = builtin ] && logout() { builtin exit "$@"; }
+        __airscp_a='\[\e]133;A;airscp=\#(token)\a\]' __airscp_b='\[\e]133;B;airscp=\#(token)\a\]' __airscp_c='\e]133;C;airscp=\#(token)\a'
+        __airscp_s='\[\e]133;B;k=s;airscp=\#(token)\a\]'
+        __airscp_keep() { __airscp_status=$?; return $__airscp_status; }
+        __airscp_prompt() {
+            builtin printf '\033]133;D;%s;airscp=\#(token)\007\033]7;file://%s%s;airscp=\#(token)\007' "$__airscp_status" "${HOSTNAME-}" "${PWD//\%/%25}"
+            case $PS1 in *"$__airscp_b"*) ;; *) PS1=$__airscp_a$PS1$__airscp_b ;; esac
+            case ${PS0-} in *"$__airscp_c"*) ;; *) PS0=${PS0-}$__airscp_c ;; esac
+            case ${PS2-} in *"$__airscp_s"*) ;; *) PS2=${PS2-}$__airscp_s ;; esac
+        }
+        PROMPT_COMMAND=$'__airscp_keep\n'"${PROMPT_COMMAND-}"$'\n__airscp_prompt'
+        AIRSCP_RC_END
+            then exec "$SHELL" --rcfile "$AIRSCP_RC/rc" -i; fi
+            rm -rf "$AIRSCP_RC"; unset AIRSCP_RC
+          fi ;;
+        zsh)
+          if AIRSCP_RC=$(mktemp -d "${TMPDIR:-/tmp}/airscp.XXXXXX" 2>/dev/null); then
+            export AIRSCP_RC
+            if cat >"$AIRSCP_RC/.zshenv" <<'AIRSCP_RC_END'
+        # AirSCP's Terminal tab: marks for this shell only (OSC 133 around its prompt, command and output; OSC 7 with its
+        # folder). zsh read this file in place of ~/.zshenv; it is gone already, and the user's own files run as usual.
+        [[ -n ${AIRSCP_RC-} ]] && { command rm -f -- "$AIRSCP_RC/.zshenv"; command rmdir -- "$AIRSCP_RC"; } 2>/dev/null
+        unset AIRSCP_RC
+        if [[ -n ${AIRSCP_ZDOTDIR+x} ]]; then ZDOTDIR=$AIRSCP_ZDOTDIR; else unset ZDOTDIR; fi
+        unset AIRSCP_ZDOTDIR
+        if [[ -r ${ZDOTDIR:-$HOME}/.zshenv ]]; then builtin source "${ZDOTDIR:-$HOME}/.zshenv"; fi
+        __airscp_precmd() {
+            local s=$?
+            if [[ -n ${__airscp_ran-} ]]; then builtin printf '\e]133;D;%s;airscp=\#(token)\a' $s; fi
+            __airscp_ran=
+            builtin printf '\e]7;file://%s%s;airscp=\#(token)\a' "${HOST-}" "${PWD//\%/%25}"
+            if [[ $PS1 != *'133;B;airscp=\#(token)'* ]]; then
+                PS1=$'%{\e]133;A;airscp=\#(token)\a%}'$PS1$'%{\e]133;B;airscp=\#(token)\a%}'
+            fi
+        }
+        __airscp_preexec() {
+            __airscp_ran=1
+            if [[ $1 == *[$'\a\e']* ]]; then builtin printf '\e]133;C;airscp=\#(token)\a'
+            else builtin printf '\e]133;C;airscp=\#(token);cmdline=%s\a' "$1"; fi
+        }
+        __airscp_start() {
+            precmd_functions=(${precmd_functions:#__airscp_start} __airscp_precmd)
+            preexec_functions+=(__airscp_preexec)
+            __airscp_precmd
+        }
+        precmd_functions+=(__airscp_start)
+        AIRSCP_RC_END
+            then
+              if [ -n "${ZDOTDIR+x}" ]; then AIRSCP_ZDOTDIR=$ZDOTDIR; export AIRSCP_ZDOTDIR; fi
+              ZDOTDIR=$AIRSCP_RC; export ZDOTDIR
+            else
+              rm -rf "$AIRSCP_RC"; unset AIRSCP_RC
+            fi
+          fi ;;
+        esac
+
+        """#
     }
 
     /// A shell command printing the current folder of process `pid` on the server: Linux's /proc, else lsof.

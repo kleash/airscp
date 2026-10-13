@@ -2,9 +2,9 @@ import CPTY
 import Darwin
 import Foundation
 
-/// A program on a pseudo-terminal, shown by a `TerminalScreen`: AirSCP's own terminal (PLAN.md W) runs ssh there,
-/// riding the host's master connection (no second login). What the program writes goes to the screen on the main
-/// queue; keys and pastes go back with `send`. The screen's answers (cursor position…) go back by themselves.
+/// A program on a pseudo-terminal, shown by a `TerminalScreen`: AirSCP's own terminal runs ssh there, riding the host's
+/// master connection (no second login). What the program writes goes to the screen on the main queue; keys and pastes
+/// go back with `send`. The screen's answers (cursor position…) go back by themselves.
 public final class TerminalSession {
     public let screen: TerminalScreen
     /// Called on the main queue after the screen changed.
@@ -33,6 +33,7 @@ public final class TerminalSession {
         exitWatch = DispatchSource.makeProcessSource(identifier: pid, eventMask: .exit, queue: queue)
         let fd = master
         reader.setEventHandler { [weak self] in
+            let arrived = Date()  // not when the main queue gets to it: a command's time comes from its marks'
             var buffer = [UInt8](repeating: 0, count: 65536)
             var data = Data()
             while true {
@@ -47,7 +48,7 @@ public final class TerminalSession {
             guard !data.isEmpty else { return }
             DispatchQueue.main.async {
                 guard let self else { return }
-                self.screen.feed(data)
+                self.screen.feed(data, arrived: arrived)
                 self.onChange()
             }
         }

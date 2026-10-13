@@ -5,6 +5,61 @@ nav_order: 18
 
 # What's new
 
+## AirSCP 1.2.0
+
+- **AI agents ask before they change things**: before an agent deletes, copies or runs something, types into a
+  Terminal tab or works on a Windows desktop, a small window asks you: **Deny**, **Allow Once** or **Allow for 15
+  Minutes**. Turn it off in **Settings ▸ Ask before agents change things**. See
+  [Allow or deny what an agent changes](ai-agents.md#allow-or-deny-what-an-agent-changes).
+- **More in Shortcuts, Siri and Spotlight**: **Upload Files**, **Download Files**, **Find Files**, **Run Snippet**,
+  **Start Tunnel**, **Stop Tunnel** and **Open Favourite Folder**. Spotlight (macOS 15 and later) finds your saved hosts
+  and Remote Desktops by name. See [Shortcuts, Siri & Apple Intelligence](shortcuts-and-ai.md).
+- **Ask AirSCP does things**: describe it (“upload ~/Sites/site to web-01, leave out node_modules”), click **Do It…**,
+  read the steps, then click **Run**. Nothing runs before that, and AirSCP still asks before it replaces anything.
+- **Explain, Summarize and Suggest**: **Explain…** in Monitor and in Snippets, **Summarize…** in the Command Log, and
+  **Suggest…** next to Other ssh options, Leave out, Find Files' pattern and permissions. All on this Mac.
+- **Select by pattern**: **Edit ▸ Select by Pattern…** (<kbd>⌘+</kbd>), Deselect by Pattern, Select Same Kind and
+  Invert Selection. **File ▸ Compare Folders** marks what differs between this Mac's folder and the server's. See
+  [Select by pattern, compare folders, move, link](files/select-and-compare.md).
+- **Move, copy and link on a server**: **File ▸ Move To…**, **Copy To…** and **New Symbolic Link…**; **Copy Names**;
+  **Go ▸ Other Pane's Folder**.
+- **Move between this Mac and a server**: **Upload and Delete…**, **Download and Delete…**, or hold <kbd>⌘</kbd> while
+  you drag. Originals go only after their copy is done (and its checksum matches, when transfers are verified).
+- **Replace If Newer** when a file already exists: only newer files are copied.
+- **The Transfers list**: **Move Up** and **Move Down** for waiting transfers, and **When Done**: disconnect, sleep this
+  Mac or a notification once everything has finished.
+- **Owner, group and checksums**: Permissions… changes the owner and group; Get Info works out a file's SHA-256 (or SHA-1,
+  MD5) and compares it with one you paste.
+- **Snippets on selected files**: `{file}`, `{files}`, `{name}` and `{folder}` in a snippet, then right-click ▸ **Run
+  Snippet**. See [Save commands as snippets](commands/snippets.md).
+- **Synchronize options**: compare by size and date, size only, date only or contents (SHA-256); only files on both
+  sides; also replace newer files; and **Reverse** one file. See [Synchronize](synchronize.md).
+- **Favourites remember this Mac's folder too**, when the other pane shows one.
+- **The editor** has a find bar (<kbd>⌘F</kbd>), **Go to Line…** (<kbd>⌘L</kbd>) and **Revert to Server Version**.
+- **Find Files' results**: select several, then **Download…**, **Delete…** or **Copy Paths**.
+- **The Terminal tab knows your commands** (bash and zsh): each one shows how it ended and how long it took;
+  right-click it for **Copy Output**, **Copy Command** and **Run Again**; <kbd>⌘↑</kbd> and <kbd>⌘↓</kbd> jump between
+  them. <kbd>⌘F</kbd> finds text, **Follow in Files** keeps the server pane in the shell's folder, **Insert Snippet**
+  types a snippet at the prompt, and a setting sends **Open Terminal Here** to the tab. See
+  [The Terminal tab](commands/terminal-tab.md).
+- **Server Info, Change Password, links**: **Host ▸ Server Info…** shows the server's key fingerprint, software,
+  encryption and free space; **Host ▸ Change Password…** runs `passwd` in the Terminal tab; `sftp://` and `ssh://` links
+  open in AirSCP, and **Host ▸ Copy Link** makes one. See [Server information](connecting/server-info.md).
+- **Browse and copy as root**: **Host ▸ Edit… ▸ Advanced ▸ Browse and transfer as**, with sudo that needs no password.
+  See [Browse and copy files as root](connecting/browse-as-root.md).
+- **Proxies**: SOCKS5 proxies; HTTP proxies that ask for a Digest login; and Import from WinSCP keeps a site's proxy
+  when you already have its bastion.
+- **Certificate Manager**: **New…** makes a key with a certificate request (CSR) or a self-signed certificate;
+  **JKS…** and **Truststore…** write Java keystores and truststores (PKCS#12 or JKS); **Verify…** checks a
+  certificate's chain against a CA bundle or the authorities this Mac trusts, for a host name too. See
+  [Create a certificate or request](certificates/create.md).
+- **Fixed**: on accounts that allow only sftp, a path longer than sftp takes on one line (about 2,000 bytes) is
+  refused with a message: a server with such deep folders could otherwise have had sftp run the rest of the path as a
+  command on this Mac.
+- **Fixed**: Get Transfer Status said nothing once every transfer had finished.
+- **Fixed**: PKCS#12 files made with **Compatible with older systems** had no password check (MAC), which older
+  systems expect.
+
 ## AirSCP 1.1.0
 
 - **Shortcuts, Siri and Apple Intelligence**: AirSCP's actions (Connect to Host, Open a Shell, Open Remote Desktop,

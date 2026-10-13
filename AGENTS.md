@@ -16,7 +16,8 @@ AirSCP is a Mac app for SSH servers, SCP/SFTP file transfers and Windows Remote 
 
 Agents never see saved passwords. They can type one they were given into AirSCP's password question
 (`set id=prompt.answer value=…`; from a shell, `value=-` with the password on standard input). AirSCP still asks
-before deleting or replacing anything.
+before deleting or replacing anything, and changes (deleting, copying, running commands, typing into a terminal or a
+Windows desktop) wait until the person at the Mac allows them (Settings ▸ Ask before agents change things).
 
 ## Working on this repository
 

@@ -5,7 +5,7 @@
 name: CI
 
 # Runs on pull requests and when one merges into main (the badge shows main), and by hand; not on other pushes or on a
-# schedule (owner's rule, 2026-10-05). After launch, main only changes through merged pull requests.
+# schedule: main only changes through merged pull requests, so a schedule would test the same commit again.
 on:
   push:
     branches: [main]
@@ -105,3 +105,50 @@ jobs:
           path: build/agent-session
           if-no-files-found: ignore
           retention-days: 14
+
+  # The same commit built as a release is, with Xcode: the App Intents metadata (Shortcuts, Siri, Spotlight), which the
+  # Command Line Tools job above can't make. The CLT job stays the gate for "builds with the Command Line Tools alone".
+  # The built app is kept for lab.yml's intents job.
+  xcode:
+    needs: build-and-test
+    runs-on: macos-26
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Use the newest Xcode 26
+        run: |
+          xcode=$(ls -d /Applications/Xcode_26*.app | sort -V | tail -n 1)
+          [ -n "$xcode" ] || { echo "::error::No Xcode 26 on this runner"; exit 1; }
+          echo "DEVELOPER_DIR=$xcode/Contents/Developer" >> "$GITHUB_ENV"
+          echo "Using $xcode"
+
+      - name: Restore FreeRDP and OpenSSL
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: vendor/out
+          key: freerdp-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('scripts/build-freerdp.sh') }}
+
+      - name: App with Xcode (./build.sh --native)
+        run: ./build.sh --native
+
+      - name: Every intent is in the App Intents metadata
+        run: scripts/check-intents.sh build/AirSCP.app
+
+      - name: The Info.plists and the signature are sound
+        run: |
+          for plist in build/AirSCP.app/Contents/Info.plist build/AirSCP.app/Contents/PlugIns/*.appex/Contents/Info.plist; do
+            [ -f "$plist" ] && plutil -lint "$plist"
+          done
+          codesign --verify --deep --strict build/AirSCP.app
+
+      - name: Keep the app for the lab (lab.yml's intents job)
+        run: ditto -c -k --keepParent build/AirSCP.app build/AirSCP-xcode.zip
+
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: AirSCP-xcode
+          path: build/AirSCP-xcode.zip
+          retention-days: 7

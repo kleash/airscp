@@ -183,7 +183,7 @@ private func cancelledTask<T>(_ body: @escaping () async throws -> T) async -> E
     }
 }
 
-/// PLAN.md S: a 50 000-entry folder lists within about two seconds: a shell's ls, one round trip. (The time budget is
+/// A 50 000-entry folder lists within about two seconds: a shell's ls, one round trip. (The time budget is
 /// loose: a debug build on a busy machine.)
 @Test func listingAFolderOf50000Entries() async throws {
     try await withServer { server in

@@ -6,7 +6,7 @@ import Testing
 @testable import AirSCP
 @testable import AirSCPCore
 
-// PLAN.md S.1 against the Docker lab (AIRSCP_DOCKER=1): Find Files with GNU and BusyBox find and over sftp only,
+// Find Files, Synchronize and resume against the Docker lab (AIRSCP_DOCKER=1): Find Files with GNU and BusyBox find and over sftp only,
 // Synchronize with each listing (GNU ls, BusyBox ls, sftp's), and resuming over an sftp-only account.
 
 private func touch(_ path: String, _ time: TimeInterval) {
@@ -104,7 +104,9 @@ struct S1LabTests {
                 comparison = try await Sync.compare(local: local, remote: dir, on: session, leavingOut: ["node_modules", "*.log"]) { _ in }
             }
             print("PERF Synchronize compare of 5,000 files in 51 folders on the lab target: \(String(format: "%.2f", seconds)) s")
-            #expect(comparison.folders == 51 && comparison.differences.count == 5_000 && seconds < 10,
+            // About 4 s alone; 11–12 s under the whole lab suite on a busy Mac (1.1.0 too). The bound catches a compare that
+            // went quadratic again (a folder at a time took minutes), not the machine's load.
+            #expect(comparison.folders == 51 && comparison.differences.count == 5_000 && seconds < 30,
                     "\(comparison.folders) \(comparison.differences.count) \(seconds)")
 
             // The sheet with its 5,000 rows, shown as the app shows it.

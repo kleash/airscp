@@ -30,18 +30,25 @@ final class TunnelsModel: ObservableObject {
     }
 
     func set(_ tunnel: Tunnel, on: Bool) {
+        Task { try? await change(tunnel, on: on) }
+    }
+
+    /// Switches the tunnel on or off and waits for it (intents and Ask): a failure shows under it, and is thrown.
+    func change(_ tunnel: Tunnel, on: Bool) async throws {
         guard !switching.contains(tunnel.id) else { return }
         switching.insert(tunnel.id)
         errors[tunnel.id] = nil
-        let session = connection.session
-        Task {
-            do {
-                if on { try await session.startTunnel(tunnel) } else { try await session.stopTunnel(tunnel) }
-            } catch {
-                errors[tunnel.id] = error as? AirSCPError ?? AirSCPError(.other, error.localizedDescription)
-            }
+        defer {
             switching.remove(tunnel.id)
             refresh()
+        }
+        let session = connection.session
+        do {
+            if on { try await session.startTunnel(tunnel) } else { try await session.stopTunnel(tunnel) }
+        } catch {
+            let failure = error as? AirSCPError ?? AirSCPError(.other, error.localizedDescription)
+            errors[tunnel.id] = failure
+            throw failure
         }
     }
 
@@ -167,6 +174,8 @@ struct TunnelsView: View {
                 .disabled(connection.state != .connected || tunnels.switching.contains(tunnel.id))
                 .help(connection.state != .connected ? "Connect the host first to switch tunnels on"
                       : "Open or close this port; tunnels close when the connection ends")
+                // An agent that switches it asks the person at the Mac first: it opens a port here or on the server.
+                .accessibilityIdentifier("tunnels.switch")
             VStack(alignment: .leading, spacing: 2) {
                 Text(title)
                 if let error = tunnels.errors[tunnel.id] {

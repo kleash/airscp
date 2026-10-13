@@ -271,7 +271,7 @@ Source: https://kleash.github.io/airscp/connecting/
 
 # Connecting
 
-How to save your servers and log in to them: with a key, a password, through a jump host or an HTTP proxy.
+How to save your servers and log in to them: with a key, a password, through a jump host or a proxy.
 
 (Picture: The sidebar with hosts in groups, a host that goes via a bastion and one via a proxy)
 
@@ -284,12 +284,14 @@ How to save your servers and log in to them: with a key, a password, through a j
 - [Log in with a key](https://kleash.github.io/airscp/connecting/log-in-with-a-key.html): no password to type.
 - [Trust a server the first time](https://kleash.github.io/airscp/connecting/trust-a-server.html): what the fingerprint question means.
 - [Connect through a jump host](https://kleash.github.io/airscp/connecting/jump-hosts.html): servers behind a bastion.
-- [Connect through an HTTP proxy](https://kleash.github.io/airscp/connecting/proxies.html): networks that only go out through a proxy.
+- [Connect through a proxy](https://kleash.github.io/airscp/connecting/proxies.html): networks that only go out through an HTTP or SOCKS5 proxy.
 - [Extra ssh settings](https://kleash.github.io/airscp/connecting/extra-ssh-settings.html): one ssh option per line, with examples.
 - [Self-signed certificates and corporate networks](https://kleash.github.io/airscp/connecting/self-signed-certificates.html).
 - [Stay connected](https://kleash.github.io/airscp/connecting/stay-connected.html): keep-alive and automatic reconnect.
 - [Groups, colours and search](https://kleash.github.io/airscp/connecting/organise-hosts.html).
 - [Move your hosts to another Mac](https://kleash.github.io/airscp/connecting/move-to-another-mac.html).
+- [Server information, change your password, links](https://kleash.github.io/airscp/connecting/server-info.html).
+- [Browse and copy files as root (sudo)](https://kleash.github.io/airscp/connecting/browse-as-root.html).
 
 
 ---
@@ -329,7 +331,7 @@ Click **Advanced** for settings most people never change.
 
 | Setting | What it does |
 |---|---|
-| **HTTP proxy** | Only when your network reaches servers through an HTTP proxy. See [Connect through an HTTP proxy](https://kleash.github.io/airscp/connecting/proxies.html). |
+| **Proxy** | Only when your network reaches servers through a proxy. See [Connect through a proxy](https://kleash.github.io/airscp/connecting/proxies.html). |
 | **Keep-alive every** | How often AirSCP checks that the connection still works: 15 seconds by default. The connection counts as lost after 3 unanswered checks. |
 | **Reconnect automatically** | On by default. When the connection drops, AirSCP connects again by itself. See [Stay connected](https://kleash.github.io/airscp/connecting/stay-connected.html). |
 | **Let the server use my ssh agent** | Off by default. Turn it on only if you use your keys from that server to reach others (agent forwarding). |
@@ -516,7 +518,7 @@ full.
 ## Tips
 
 - One hop is supported: Mac → bastion → server.
-- The bastion can use an HTTP proxy, so the full route can be Mac → proxy → bastion → server.
+- The bastion can use a proxy, so the full route can be Mac → proxy → bastion → server.
 - Take your time with the bastion's questions: the 15-second timeout is only for reaching a server directly.
 - A Windows computer can go through an SSH host too. See [Remote Desktop (Windows)](https://kleash.github.io/airscp/remote-desktop/).
 
@@ -530,18 +532,19 @@ full.
 
 Source: https://kleash.github.io/airscp/connecting/proxies.html
 
-# Connect through an HTTP proxy
+# Connect through a proxy
 
-Some company networks reach the internet only through an HTTP proxy. AirSCP can send a host's connection through such a
-proxy (HTTP CONNECT), with or without a user name and password. Most people need none.
+Some company networks reach the internet only through a proxy. AirSCP can send a host's connection through an HTTP
+proxy (HTTP CONNECT) or a SOCKS5 proxy, with or without a user name and password. Most people need none.
 
 ## Steps
 
 1. Choose **Host ▸ Proxies…** (or click **Proxies** at the bottom of the sidebar).
-2. Click **Add Proxy…**. Type its **Name**, **Address** and **Port**. Your network admin knows these.
+2. Click **Add Proxy…**. Choose its **Type** (**HTTP** or **SOCKS5**), then type its **Name**, **Address** and **Port**.
+   Your network admin knows these.
 3. If the proxy needs a login, type the **User name**. The password field appears then; leave it empty to be asked.
 4. Click **Add**, then **Done**.
-5. Edit the host (**Host ▸ Edit…**), click **Advanced**, and choose the proxy under **HTTP proxy**.
+5. Edit the host (**Host ▸ Edit…**), click **Advanced**, and choose the proxy under **Proxy**.
 
 (Picture: The Proxies sheet with one proxy)
 
@@ -549,7 +552,13 @@ proxy (HTTP CONNECT), with or without a user name and password. Most people need
 
 ## Tips
 
-- A host that connects through a jump host uses the jump host's proxy.
+- A host that connects through a jump host uses the jump host's proxy: the proxy is only on the way to the jump
+  host.
+- AirSCP logs in to an HTTP proxy the way it asks: Basic, or Digest (MD5 or SHA-256). With Digest, your password never
+  goes over the network.
+- A **SOCKS5** proxy is often on port 1080, or is an `ssh -D` tunnel. With a user name, AirSCP logs in with it.
+- **Copy ssh Command** works for a host behind a proxy without a login: the command reaches the proxy with macOS's
+  `nc`.
 - The sidebar shows **via proxy …** under a host that goes through a proxy.
 - The proxy's password is kept in your Keychain. A password the proxy refuses is forgotten, so you are asked again.
 - A proxy that hosts still use can't be removed.
@@ -558,7 +567,7 @@ proxy (HTTP CONNECT), with or without a user name and password. Most people need
 
 - **“The proxy rejected the user name or password”**: edit the proxy and check the user name; connect again to type
   the password.
-- SOCKS proxies aren't supported, only HTTP proxies that allow CONNECT.
+- SOCKS4 proxies aren't supported: only HTTP proxies that allow CONNECT, and SOCKS5 proxies.
 
 
 ---
@@ -755,7 +764,7 @@ Source: https://kleash.github.io/airscp/connecting/import-from-winscp.html
 # Import your sites from WinSCP
 
 Coming from WinSCP on Windows? AirSCP can make a host for each of your WinSCP sites, with its folder, its key, its
-tunnel (as a jump host) and its HTTP proxy.
+tunnel (as a jump host) and its proxy.
 
 ## Steps
 
@@ -769,7 +778,10 @@ tunnel (as a jump host) and its HTTP proxy.
 - Each SFTP or SCP site becomes a host: address, port, user name and the folder it opens in.
 - A folder of sites becomes a group. A site in a folder in a folder goes in a group such as “Work/Web”.
 - **Tunnel** settings become a jump host, shared by the sites that use it. See [Connect through a jump host](https://kleash.github.io/airscp/connecting/jump-hosts.html).
-- An HTTP proxy becomes a proxy. See [Connect through an HTTP proxy](https://kleash.github.io/airscp/connecting/proxies.html).
+  A site that also goes through a proxy gets a jump host through that proxy (named “bastion via proxy”), so the
+  proxy is never skipped. Hosts you already have are never changed.
+- An HTTP or SOCKS5 proxy becomes a proxy. See [Connect through a proxy](https://kleash.github.io/airscp/connecting/proxies.html). Sites through SOCKS4 or a
+  proxy WinSCP runs itself stay behind.
 - A .ppk key without a passphrase becomes an OpenSSH key in your key folder (~/.ssh unless Settings names another),
   and the host logs in with it.
 
@@ -778,7 +790,7 @@ tunnel (as a jump host) and its HTTP proxy.
 - **Saved passwords**: AirSCP never reads them. It asks for a password when you connect, and can keep it in the
   Keychain.
 - **FTP, WebDAV and S3 sites**: AirSCP connects over SSH only.
-- **SOCKS proxies** and proxies that WinSCP runs itself: add those hosts by hand.
+- **SOCKS4 proxies** and proxies that WinSCP runs itself: add those hosts by hand.
 - A .ppk key **with a passphrase**: import it in **Window ▸ Keys**, then choose it in **Edit Host**.
 
 ## Tips
@@ -792,6 +804,77 @@ tunnel (as a jump host) and its HTTP proxy.
 - **“No SSH sites in WinSCP.ini”**: the file has no SFTP or SCP sites. Check that you exported WinSCP's configuration,
   not a single site's URL.
 - **“deploy.ppk isn't beside the file”**: copy that key into the folder that holds WinSCP.ini, then import again.
+
+
+---
+
+Source: https://kleash.github.io/airscp/connecting/server-info.html
+
+# Server information, change your password, links
+
+## Server information
+
+1. Connect to the host.
+2. Choose **Host ▸ Server Info…**.
+3. You see:
+   - **Server key**: the server's key type and SHA-256 fingerprint, as your Mac trusts it. Compare it with what your
+     server's admin gives you.
+   - **Software**, **Key exchange** and **Cipher**: what the server runs and how the connection is encrypted. These need
+     **Help ▸ Turn On Debug Logging** before you connect.
+   - **Can**: what AirSCP found the server can do (run commands, tar, zip, checksums…).
+   - **Free space** in the folder the pane shows.
+4. Click **Copy** to put it all on the clipboard, for a support request.
+
+## Change your password on the server
+
+1. Connect to the host.
+2. Choose **Host ▸ Change Password…**. The Terminal tab opens and runs `passwd`.
+3. Type your current password, then the new one twice, as `passwd` asks.
+4. If AirSCP saved your old password, it offers to save the new one: type it once more and click **Save** (or
+   **Forget It**, and the next connect asks).
+
+AirSCP never reads the password back from your Keychain to do this.
+
+## Links
+
+- **Host ▸ Copy Link** copies a link like `sftp://deploy@web.example.com/var/www`: the host and the folder shown. It
+  never holds a password.
+- Opening an `sftp://` or `ssh://` link (in Safari, Mail or Terminal) opens it in AirSCP: the saved host with that
+  address at that folder, or its Terminal tab for `ssh://`. For a server you haven't saved, **New Host…** opens filled
+  in from the link.
+
+
+---
+
+Source: https://kleash.github.io/airscp/connecting/browse-as-root.html
+
+# Browse and copy files as root (sudo)
+
+Some files only root (or another user) may change: web server configs, other users' folders. AirSCP can browse,
+change and copy files as that user, with `sudo`.
+
+## Steps
+
+1. Choose **Host ▸ Edit…**, then **Advanced**.
+2. In **Browse and transfer as**, type the user, for example `root`.
+3. Click **Save**, then connect.
+
+From then on, listings, new folders, renames, deletes, permissions, uploads and downloads happen as that user. The
+commands you type (**Run Command…**, snippets) and the **Terminal** tab stay yours.
+
+## What the server needs
+
+- `sudo` that lets your user become that user **without a password** (a `NOPASSWD` rule in `/etc/sudoers`), for
+  example: `deploy ALL=(root) NOPASSWD: ALL`.
+- OpenSSH's `sftp-server` program (most Linux servers have it; BusyBox-only systems don't).
+
+When something is missing, connecting stops and says what, instead of browsing as your own user.
+
+## Tips
+
+- Files AirSCP makes this way belong to that user (root, say).
+- Copies go with sftp for such a host (scp can't change user); folders still go as one stream where the server has tar.
+- Use it only for the hosts that need it: everything you do there is done as root.
 
 
 ---
@@ -816,6 +899,7 @@ selected server. Drag between them to copy.
 - [New folder, rename, duplicate, delete, Get Info](https://kleash.github.io/airscp/files/manage-files.html).
 - [Change permissions](https://kleash.github.io/airscp/files/permissions.html).
 - [Compress and extract on the server](https://kleash.github.io/airscp/files/compress-and-extract.html).
+- [Select by pattern, compare folders, move, link](https://kleash.github.io/airscp/files/select-and-compare.html).
 
 ## Tips
 
@@ -860,6 +944,9 @@ Move around a server's folders like in Finder.
 
 - **Go ▸ Add to Favourites** keeps the server folder you see, for that host.
 - **Go ▸ Favourites** lists them: choose one to go there, or **Remove** one.
+- When the other pane shows a folder on this Mac as you add a favourite, AirSCP remembers it too: choosing the
+  favourite shows both folders again.
+- **Go ▸ Other Pane's Folder** (<kbd>⌥⌘O</kbd>) shows the folder the other pane shows (this Mac, or the same server).
 
 ## Tips
 
@@ -970,6 +1057,9 @@ and date of both, so you can decide.
    `New: 75 bytes, 2 Oct 2026 at 4:30 PM · Existing: 75 bytes, 28 Sep 2026 at 10:15 AM`.
 2. Choose:
    - **Replace**: the new file takes the old one's place.
+   - **Replace If Newer**: the new file takes its place only if it is newer; otherwise it is skipped. With **Do the
+     same for the other … conflicts** ticked, every newer file is copied and every older one skipped. Shown for two
+     files whose dates AirSCP knows.
    - **Keep Both**: the new file gets a number, for example `index 2.html`.
    - **Skip**: the old file stays, and this one isn't copied.
    - **Cancel**: nothing more is copied.
@@ -1035,6 +1125,9 @@ Open a server file in its Mac app, preview it, or edit a text file right in AirS
 - Saving is safe: the new text is written next to the file and then renamed over it, so a full disk can't leave it half
   written. The file keeps its permissions.
 - Closing an editor with unsaved changes asks first.
+- **Find** (<kbd>⌘F</kbd>) opens the find bar; click its **Replace** box to replace text too. **Go to Line…**
+  (<kbd>⌘L</kbd>) jumps to a line by its number.
+- **Revert to Server Version** reads the file from the server again (asking first when you have unsaved changes).
 - If someone saved the file on the server after you opened it, **Save** asks first. **Overwrite** replaces their
   changes with your text. **Show Server Version** opens their text in another window, so you can copy what you need;
   then save again. **Cancel** lets you keep editing.
@@ -1063,6 +1156,9 @@ Everyday file commands work on servers like in Finder. Right-click a file, or us
   go to the Trash.
 - **Get Info**: **File ▸ Get Info** (<kbd>⌘I</kbd>) shows the kind, path, size, dates, owner and group, and lets you
   change the permissions.
+- **Checksum**: in Get Info, choose **SHA-256** (or SHA-1, MD5) and click **Calculate**. Paste a published checksum
+  into the field below to see **✓ Matches** or **✗ Doesn't match**. On a file-transfer-only account AirSCP downloads
+  a temporary copy to work it out.
 - **Copy the path**: **File ▸ Copy Path** (<kbd>⌥⌘C</kbd>).
 
 (Picture: The New folder sheet with the name drafts)
@@ -1092,8 +1188,10 @@ Permissions say who may read, change and run a file on a server (`chmod`).
 1. Select the items and choose **File ▸ Permissions…**.
 2. Tick the boxes: **Read**, **Write** and **Execute**, for the **Owner**, the **Group** and **Others**.
    Or type the number in **Octal (chmod)**, for example `755` or `644`.
-3. For folders: tick **Change everything in the folders too** to change what is inside as well.
-4. Click **Apply**.
+3. To change who owns them, type a user in **Owner** or a group in **Group** (a name, or a number). Leave them as they
+   are to keep them. On a file-transfer-only account, type numbers (user and group IDs).
+4. For folders: tick **Change everything in the folders too** to change what is inside as well.
+5. Click **Apply**.
 
 (Picture: The Permissions sheet with Read, Write and Execute boxes and the octal number 755)
 
@@ -1104,6 +1202,7 @@ Permissions say who may read, change and run a file on a server (`chmod`).
 - When you change a whole folder, folders keep their Execute box where they can be read, so a mode like `640` doesn't
   lock you out of them.
 - A symbolic link has its target's permissions: change those on the target.
+- Only root can give a file to another user; you can change the group to one you belong to.
 
 
 ---
@@ -1138,6 +1237,57 @@ Make a `.zip` or `.tar.gz` archive on the server, or unpack one there. Nothing g
 
 ---
 
+Source: https://kleash.github.io/airscp/files/select-and-compare.html
+
+# Select by pattern, compare folders, move, link
+
+Commands for many files at once, and for arranging files on a server.
+
+## Select
+
+- **Edit ▸ Select by Pattern…** (<kbd>⌘+</kbd>): type names or patterns, separated by commas, for example `*.log` or
+  `report-??.pdf`. Case doesn't matter. The matching items are added to the selection.
+- **Edit ▸ Deselect by Pattern…** (<kbd>⌘-</kbd>): takes the matching items out of the selection.
+- **Edit ▸ Select Same Kind**: selects every item with the selected item's extension (all `.jpg` files, say).
+- **Edit ▸ Invert Selection** (<kbd>⇧⌘I</kbd>): selects what wasn't selected.
+- **File ▸ Copy Names**: copies the names of the selection, one per line (**Copy Path** copies full paths).
+
+## Compare two folders
+
+1. Show a folder on this Mac in one pane and a server's folder in the other.
+2. Choose **File ▸ Compare Folders**.
+3. The names that differ turn blue in both panes. Point at one to see why: **Only here**, **Newer here**, **Older
+   here** or **Another size**.
+
+Compare Folders looks at the two folders only, not inside their subfolders. The marks go when the pane lists again.
+To make the folders the same, use [Synchronize](https://kleash.github.io/airscp/synchronize.html).
+
+## Move or copy within a server
+
+- **File ▸ Move To…**: type a folder on the same server (its full path, `~/…` in your home folder, or one relative to
+  the folder shown). The other pane's folder is filled in when it shows the same server.
+- **File ▸ Copy To…**: the same, as a copy. It needs an account that runs commands (not file transfer only).
+- When a name is taken there, AirSCP asks [Replace, Keep Both or Skip](https://kleash.github.io/airscp/files/replace-or-keep-both.html).
+
+## Make a symbolic link
+
+1. Select the file or folder to link to (or nothing).
+2. Choose **File ▸ New Symbolic Link…**, type the link's name, click **Next**.
+3. Type what it points to, click **Create**. A relative path (like `../shared/config.yml`) keeps working when the
+   folder moves.
+
+## Go to the other pane's folder
+
+**Go ▸ Other Pane's Folder** (<kbd>⌥⌘O</kbd>) shows the folder the other pane shows, when both panes show this Mac or
+the same server.
+
+## Tips
+
+- Windows servers can't make symbolic links over SSH: the command is greyed out there.
+
+
+---
+
 Source: https://kleash.github.io/airscp/transfers/
 
 # Transfers and the queue
@@ -1162,6 +1312,20 @@ and the speed. A copy between two servers shows both hosts, “A → B”.
 - **Check a copy**: right-click a finished transfer and choose **Verify with Checksum**.
 - **See what went wrong**: right-click a row and choose **Show Details…**.
 - **Find a download**: right-click it and choose **Show in Finder**.
+- **Change the order**: right-click a queued transfer and choose **Move Up** or **Move Down**: it runs before or after the
+  next one waiting for the same host.
+- **When Done**: in the list's header, choose what happens once every transfer has finished: **Do Nothing**,
+  **Disconnect** (every host), **Sleep This Mac** or **Notify** (a notification, for transfers that took more than 30
+  seconds). It happens once, then goes back to Do Nothing.
+
+## Move instead of copy
+
+- Select items and choose **File ▸ Upload and Delete…** (in the This Mac pane) or **File ▸ Download and Delete…** (in a
+  server pane), or hold <kbd>⌘</kbd> while you drag between this Mac and a server, as Finder moves between disks.
+- AirSCP asks once. Each item is deleted where it was only after its copy is done (and checked, when **Settings ▸ Verify
+  transfers with SHA-256** is on): a copy that fails, has errors or doesn't match leaves the original alone. On this
+  Mac originals go to the Trash.
+- Folders with **Leave out** patterns stay where they are, since some of what is in them wasn't copied.
 
 ## Pages
 
@@ -1358,6 +1522,15 @@ what it would copy. Nothing is copied until you click **Synchronize**.
   without `tar` (such as an sftp-only account) gets the whole folder. **Delete…** deletes such a folder with
   everything in it.
 
+## Options
+
+- **Compare by**: **Size and date** (the default), **Size only**, **Date only**, or **Contents (SHA-256)**. Contents
+  works out a checksum of each pair of files of the same size, on this Mac and on the server: slower, but exact, for
+  servers whose clocks or copies don't keep times. It needs an account that runs commands.
+- **Only files on both sides**: leave alone what is only on one side; only files both sides have are updated.
+- **Also replace newer files on …** (one way only): the destination becomes a copy of the source, newer files too.
+- **Reverse**: right-click a file in the list to copy it the other way: the other side's copy replaces this side's.
+
 ## Tips
 
 - When one of the folders is a home folder or `/`, AirSCP waits for you to click **Compare**: comparing everything can
@@ -1388,6 +1561,8 @@ Search for files by name in a server folder and in every folder below it.
 3. Type a name, or part of one. Or a pattern, for example `*.log`. `*`, `?` and `[ ]` work; case doesn't matter.
 4. Click **Find**.
 5. Select a result and click **Show** (or double-click it): the pane goes to its folder and selects it.
+6. Or select several results (<kbd>⌘</kbd>-click, <kbd>⇧</kbd>-click) and click **Download…** (to a folder on
+   this Mac), **Delete…** (on the server, after asking) or **Copy Paths**. Right-click a result for the same.
 
 (Picture: Find Files in dev with *.log: three results)
 
@@ -1833,9 +2008,30 @@ A snippet is a command you run often, saved with a name. You choose the host eac
 
 (Picture: The Snippets window with four saved commands)
 
+## Run a snippet on selected files
+
+A snippet can name the files you select in a server pane:
+
+| Placeholder | Becomes |
+|---|---|
+| `{file}` | each selected item's path: the command runs once per item |
+| `{name}` | each selected item's name |
+| `{files}` | all the selected paths, in one command |
+| `{folder}` | the folder the pane shows |
+
+1. Write the snippet, for example `gzip -k {file}` or `tar czf {folder}/backup.tgz {files}`.
+2. In a server pane, select the files, right-click and choose **Run Snippet ▸** your snippet.
+3. The output appears in a Run Command sheet (or Terminal, for **Run in Terminal**). The folder is listed again after.
+
+AirSCP puts each name in quotes, so names with spaces or quotes are safe.
+
 ## Tips
 
 - The Run Command sheet has your snippets in its **Snippets** pop-up.
+- In the [Terminal tab](https://kleash.github.io/airscp/commands/terminal-tab.html), **Insert Snippet** types one at the prompt without running it.
+- Only snippets with a placeholder appear under **Run Snippet**. One with only `{folder}` runs without a selection.
+- A snippet with a placeholder runs only from **Run Snippet**: the Snippets window's **Run**, Shortcuts and Ask AirSCP
+  say so instead of running it.
 - **−** deletes the selected snippet.
 
 
@@ -1853,6 +2049,8 @@ Open an ssh session to a host in Terminal or iTerm. It rides on AirSCP's open co
 - To start in the folder you are looking at: right-click in the server pane and choose **Open Terminal Here**
   (<kbd>⌥⌘T</kbd>).
 - To use iTerm instead of Terminal: **AirSCP ▸ Settings… ▸ Open terminals in**.
+- To have **Open Terminal Here** use AirSCP's own [Terminal tab](https://kleash.github.io/airscp/commands/terminal-tab.html) instead: **AirSCP ▸ Settings… ▸
+  Open Terminal Here in the Terminal tab**.
 
 (Picture: The toolbar's Open Terminal button above the Files tab)
 
@@ -1860,7 +2058,7 @@ Open an ssh session to a host in Terminal or iTerm. It rides on AirSCP's open co
 
 - macOS asks once whether AirSCP may control iTerm. Click **Allow**.
 - **Host ▸ Copy ssh Command** (<kbd>⇧⌘C</kbd>) copies the ssh command line, to paste into any terminal. It is off for
-  a host behind an HTTP proxy that needs a password (only AirSCP gives it): use **Host ▸ Open Terminal** for it. A proxy
+  a host behind a proxy that needs a password (only AirSCP gives it): use **Host ▸ Open Terminal** for it. A proxy
   without a login is fine: the command reaches it with macOS's `nc`.
 
 
@@ -1893,15 +2091,61 @@ Source: https://kleash.github.io/airscp/commands/terminal-tab.html
 
 # The Terminal tab
 
-A shell on the server, inside AirSCP. It uses the host's connection, so there is no second login, and it knows
-files: right-click a file name in the output to show, download or edit it, and drop Finder files on it to upload them
-to the folder you are in.
+A shell on the server, inside AirSCP. It uses the host's connection, so there is no second login. It knows files:
+right-click a file name in the output to show, download or edit it, and drop Finder files on it to upload them to the
+folder you are in. With bash and zsh it also knows your commands: how each one ended, how long it took and what it
+printed.
 
 ## Steps
 
 1. Connect to the host.
 2. Click **Terminal** above the files, or choose **Host ▸ Terminal Tab** (<kbd>⌃⌘T</kbd>).
 3. Type as in any terminal. Programs such as `less`, `vim`, `top` and `nano` work full screen.
+
+## See how each command ended
+
+With bash and zsh, each command you run gets a small label at the right of its line when it ends:
+
+- **✓ 0.4 s**: it worked, and took 0.4 seconds.
+- **✗ exit 1 · 2.1 s**, in red: it failed, with exit status 1. A red bar runs down the left side of its output.
+
+(Picture: The Terminal tab: cd, ls and grep marked ✓ with their time, and cat missing.txt marked ✗ exit 1 in red)
+
+Right-click a command or its output:
+
+- **Copy Output**: copies what the command printed.
+- **Copy Command**: copies the command line. A command typed over several lines comes as you typed it, without the
+  shell's `>` prompts.
+- **Run Again**: types the command at the prompt and runs it. It waits until the prompt is empty. A command of
+  several lines isn't typed again: use **Copy Command**, check it, and paste it.
+
+Jump between commands with <kbd>⌘↑</kbd> and <kbd>⌘↓</kbd>, or with the arrow buttons at the top of the tab. The
+command you jump to is tinted. <kbd>⌘↓</kbd> after the last one goes back to the bottom.
+
+## Find text
+
+Press <kbd>⌘F</kbd> (or click the magnifying glass) and type. Every match in the output and the scrollback is
+highlighted, and the count shows how many there are. <kbd>Return</kbd> goes to the match above, <kbd>⇧Return</kbd> to
+the one below. **Done** (or <kbd>Esc</kbd>) closes the find bar.
+
+(Picture: The find bar with html: three matches highlighted in the output of ls, 3 of 3)
+
+## Keep the Files tab in the same folder
+
+Tick **Follow in Files** at the top of the tab. Each time you `cd` to another folder, the Files tab's server pane goes
+there too. It goes only where the shell itself says it is: a folder that a program prints can't move it.
+
+To go the other way, turn on **Open Terminal Here in the Terminal tab** in **AirSCP ▸ Settings…**. Then a server
+folder's **Open Terminal Here** (<kbd>⌥⌘T</kbd>) goes to this tab. If the shell is at an empty prompt, AirSCP types
+`cd` with the folder for you; if it is busy, AirSCP asks first. It doesn't type `cd` to a folder whose path has a
+control character, nor, in a shell other than bash or zsh, a `\` or `!`, which such a shell may read as more than a
+name: type it yourself.
+
+## Insert a snippet
+
+Click **Insert Snippet** at the top of the tab (or right-click ▸ **Insert Snippet**) and choose one. AirSCP types the
+command at the prompt but doesn't run it: read it, change it if you need to, then press <kbd>Return</kbd>. Placeholders
+such as `{file}` are typed as they are: replace them first. See [Save commands as snippets](https://kleash.github.io/airscp/commands/snippets.html).
 
 ## Work with files from the output
 
@@ -1920,6 +2164,20 @@ A name without a path is taken from the folder the shell is in.
 Drag files from Finder onto the terminal. AirSCP uploads them to the shell's folder through the transfer queue, and
 types their names at the prompt.
 
+## How it knows your commands
+
+When the server's shell is bash or zsh, AirSCP starts it with a few extra lines that mark each prompt, each command and
+its end. Your own startup files (`.bash_profile`, `.profile`, `.zshrc` and the others) still run as before, and nothing
+on the server is changed: the extra lines are in a temporary file that the shell deletes as soon as it starts. Other
+shells (BusyBox `sh` on small servers, `fish`, `csh`) work as before, without labels, **Run Again**, **Follow in
+Files** or the jumps.
+
+With bash older than 4.4, commands show how they ended but not how long they took, and **Run Again** is off: use
+**Copy Command** and paste it.
+
+Completing names with <kbd>Tab</kbd> and going back through earlier commands with <kbd>↑</kbd> come from the server's
+own shell, as in any terminal. AirSCP doesn't add its own.
+
 ## Tips
 
 - Select text by dragging; <kbd>⌘C</kbd> copies it and <kbd>⌘V</kbd> pastes. A double-click selects a word.
@@ -1933,6 +2191,8 @@ types their names at the prompt.
 - **“Connect to the host to open a shell here”**: the host isn't connected. Choose **Host ▸ Connect**.
 - **“AirSCP can't tell which folder the shell is in”**: the server doesn't show it (no `/proc` and no `lsof`). Use
   full paths, or drop files on the Files tab's server pane instead.
+- **No labels beside your commands**: the shell isn't bash or zsh, or your startup files replace the prompt hooks. Run
+  `echo $SHELL` to see which shell the server starts.
 
 
 ---
@@ -1942,13 +2202,15 @@ Source: https://kleash.github.io/airscp/certificates/
 # Certificates and keystores
 
 **Tools ▸ Certificate Manager…** does the everyday certificate work without `openssl` or `keytool` commands. Open a
-certificate, key or keystore, see what is in it and when it expires, and save it in the format another system wants.
-Everything happens on this Mac.
+certificate, key or keystore, see what is in it and when it expires, check its chain, save it in the format another
+system wants, or make a new certificate request. Everything happens on this Mac.
 
 ## Pages
 
-- [Open and check certificates](https://kleash.github.io/airscp/certificates/open-and-check.html): details, expiry, which key goes with which certificate.
-- [Convert and export](https://kleash.github.io/airscp/certificates/convert-and-export.html): PEM, DER, the chain, keys, PKCS#12.
+- [Open and check certificates](https://kleash.github.io/airscp/certificates/open-and-check.html): details, expiry, which key goes with which certificate, the chain.
+- [Convert and export](https://kleash.github.io/airscp/certificates/convert-and-export.html): PEM, DER, the chain, keys, PKCS#12, Java keystores, truststores.
+- [Create a certificate or request](https://kleash.github.io/airscp/certificates/create.html): a new key with a certificate request (CSR) or a self-signed
+  certificate.
 - [See a server's certificate](https://kleash.github.io/airscp/certificates/server-certificate.html): what an HTTPS, LDAPS or mail server sends.
 
 ## Tips
@@ -1978,6 +2240,8 @@ Source: https://kleash.github.io/airscp/certificates/open-and-check.html
 
 ## What the details show
 
+(Picture: The Certificate Manager: a self-signed certificate for web-01.example.com and its key, with the certificate's details)
+
 - **Subject** and **Issuer**: who the certificate is for, and who signed it.
 - **Names (SAN)**: the host names and addresses it is valid for.
 - **Valid until**: orange when it expires within 30 days, red once it has expired. The list's icons use the same
@@ -1987,6 +2251,19 @@ Source: https://kleash.github.io/airscp/certificates/open-and-check.html
 - **Issued by (open)**: the certificate that signed it, when that one is open too. The list shows each file's
   certificates in chain order, the server's own first.
 - **SHA-256** and **SHA-1**: fingerprints, to compare with what someone sent you.
+
+## Check a certificate's chain
+
+1. Open the certificate, and the certificates that issued it if you have them.
+2. Select the certificate and click **Verify…**.
+3. Choose what to trust: **Authorities this Mac trusts**, or **A CA bundle file** (click **Choose…**).
+4. Type a **Host name** to check that the certificate is for that name. Optional.
+5. Click **Verify**.
+
+(Picture: Verify web-01.example.com: against the authorities this Mac trusts, for the host name web-01.example.com)
+
+The details say **Valid**, or why not: it has expired, the issuer is unknown, or the name doesn't match. Nothing is
+fetched from the network.
 
 ## Tips
 
@@ -2002,6 +2279,8 @@ Source: https://kleash.github.io/airscp/certificates/open-and-check.html
 - **“AirSCP doesn't read RC2-40 encryption”**: the file was made with `openssl pkcs12 -legacy` or by an old Windows.
   Export it again with AES or 3DES.
 - **“AirSCP doesn't read JCEKS”**: convert the keystore to PKCS#12 with `keytool -importkeystore`.
+- **“Not valid: unknown issuer”**: the certificates between it and the authority aren't open, or you don't trust that
+  authority. Open the issuing certificates too, or choose the CA bundle that has the authority.
 
 
 ---
@@ -2018,15 +2297,17 @@ Select an item in the Certificate Manager, then use the buttons below its detail
 - **Save DER…**: binary (`.cer`, `.der`), for Windows and Java.
 - **Save Chain…**: the certificate followed by its issuers (those open in the window), in one PEM file, as web servers
   such as nginx want.
+- **Public Key…**: only its public key.
 - **PKCS#12…**: the certificate, its private key and its chain in one file protected by a password (`.p12`, `.pfx`).
   Open the certificate's private key first.
-- **Public Key…**: only its public key.
+- **JKS…**: the same in a Java keystore (`.jks`), for Java 8 and older. Newer Java reads PKCS#12 too.
+- **Truststore…**: see [Make a truststore](#make-a-truststore).
 
 ## For a private key
 
 - **Save Key…**: as PEM. Type a passphrase to encrypt it (AES-256), or leave it empty. **Traditional format** writes
   `BEGIN RSA PRIVATE KEY` (or `EC`) for older software.
-- **PKCS#12…**: the key with its certificate, when that is open.
+- **PKCS#12…** and **JKS…**: the key with its certificate, when that is open.
 
 ## PKCS#12 options
 
@@ -2034,10 +2315,83 @@ Select an item in the Certificate Manager, then use the buttons below its detail
 - **Compatible with older systems**: 3DES and SHA-1 instead of AES-256 and SHA-256. Only for Java 8 or Windows before
   2019, which can't open the modern file.
 
+A Java keystore has an **Alias** (the entry's name, in lower case) and a **Password**, which protects the file and the
+key in it.
+
+## Convert between JKS and PKCS#12
+
+1. Open the keystore and type its password.
+2. Select the private key (or its certificate).
+3. Click **PKCS#12…** to make a PKCS#12 file, or **JKS…** to make a Java keystore.
+
+## Make a truststore
+
+A truststore lists the certificate authorities an app trusts, such as a Java app's truststore.
+
+1. Open the CA certificates the app should trust. A keystore or a bundle works too.
+2. Select one of them and click **Truststore…**.
+3. Tick the certificates that go in. CA certificates are ticked already.
+4. Choose **PKCS#12 (.p12)** or **Java keystore (.jks)**, and type a password.
+5. Click **Save…**.
+
+Each entry is named after its certificate's common name. To add a certificate that isn't in the list, open its file
+first.
+
 ## Tips
 
-- Saved keys and PKCS#12 files are readable by you only.
-- The line at the bottom shows the `openssl` command that makes the same file. **Copy Command** copies it.
+- Saved keys, PKCS#12 files and keystores are readable by you only.
+- The line at the bottom shows the `openssl` or `keytool` command that makes the same file. **Copy Command** copies it.
+
+
+---
+
+Source: https://kleash.github.io/airscp/certificates/create.html
+
+# Create a certificate or request
+
+Make a new key with a certificate request (CSR) to send to a certificate authority, or with a self-signed certificate
+for a test or internal server.
+
+## Steps
+
+1. Choose **Tools ▸ Certificate Manager…**.
+2. Click **New…**.
+3. Choose **Certificate request (CSR)** or **Self-signed certificate**.
+4. Type the **Common name**: usually the server's host name, such as `web.example.com`.
+5. In **Other names**, type more host names and IP addresses, with commas between them. Optional.
+6. Fill in **Organization**, **Unit**, **City**, **State** and **Country** if your certificate authority wants them.
+   **Country** is two letters, such as `US`.
+7. Choose the **Key**. **RSA 2048** works everywhere.
+8. For a self-signed certificate, type how many days it is **Valid for**.
+9. Type a **Key passphrase** to encrypt the key file, or leave it empty.
+10. Click **Create…** and choose where to save. The key is saved beside it, as a `.key` file.
+
+The new request (or certificate) and its key appear in the list.
+
+(Picture: New: a self-signed certificate for web-01.example.com, also for www.example.com and 203.0.113.10)
+
+## What a self-signed certificate has
+
+- The common name and the other names, so browsers can check them.
+- It is not a certificate authority: it can't sign other certificates.
+- It is for a TLS server: server authentication, and the key usages for it.
+- A SHA-256 signature.
+
+## Tips
+
+- Send the request (`.csr`) to your certificate authority. Keep the `.key` file: the certificate they send back works
+  only with it. Then open both and make a PKCS#12 or JKS file: see [Convert and export](https://kleash.github.io/airscp/certificates/convert-and-export.html).
+- AirSCP never saves over a file that is already there.
+- Apple devices refuse server certificates valid for more than 825 days.
+- The line at the bottom shows the `openssl req` command that makes the same files. It asks for the passphrase itself.
+  **Copy Command** copies it.
+
+## If something goes wrong
+
+- **Create… is dimmed**: hold the pointer over it. It says what is missing, such as the common name.
+- **“… isn't a host name or an IP address”**: Other names takes host names (letters, digits, hyphens and dots, `*.` at
+  the start for a wildcard) and IP addresses only.
+- **“Nothing saved: … already exists”**: a file with that name is in the folder already. Choose another name.
 
 
 ---
@@ -2189,7 +2543,7 @@ Source: https://kleash.github.io/airscp/keys/putty-keys.html
 
 # Use your PuTTY (.ppk) keys
 
-Coming from Windows, PuTTY or WinSCP? Your keys are `.ppk` files. AirSCP turns them into keys that ssh on the Mac can
+Coming from Windows or PuTTY? Your keys are `.ppk` files. AirSCP turns them into keys that ssh on the Mac can
 use, and back. Nothing else needs to be installed.
 
 ## Import a .ppk key
@@ -2256,6 +2610,7 @@ still apply. With Increase contrast on, the dark look drops its blue tint.
 | Setting | What it does |
 |---|---|
 | **Open terminals in** | Terminal (default) or iTerm, for Open Terminal, Run in Terminal and Kill with sudo. |
+| **Open Terminal Here in the Terminal tab** | Off by default. On: a server folder's **Open Terminal Here** goes to the host's [Terminal tab](https://kleash.github.io/airscp/commands/terminal-tab.html) in AirSCP instead. |
 | **Downloads folder** | Where **Download To…** starts, and where **Download as .tar.gz** puts the archive when the other pane isn't this Mac. Drags and the Download button go to the folder shown. |
 | **Show hidden files in new panes** | Off by default. Each pane can still switch with <kbd>⇧⌘.</kbd>. |
 | **Copied files keep their original date** | Off by default: copies are dated now. On: they keep the file's own date (`scp -p`). |
@@ -2281,6 +2636,10 @@ model on this Mac. See [Shortcuts, Siri & Apple Intelligence](https://kleash.git
 ## Agents
 
 **Allow AI agents to control AirSCP (MCP)**: off by default. See [AI agents (MCP)](https://kleash.github.io/airscp/ai-agents.html).
+
+**Ask before agents change things**: on by default. Before an agent deletes, copies or runs something, a small window
+asks you: **Deny**, **Allow Once** or **Allow for 15 Minutes**. Agents can't turn it off. See
+[Allow or deny what an agent changes](https://kleash.github.io/airscp/ai-agents.html#allow-or-deny-what-an-agent-changes).
 
 ## Advanced
 
@@ -2321,12 +2680,42 @@ questions, and AirSCP's own screenshots. AirSCP is an MCP server for them. It is
 
 (Picture: Settings: Allow AI agents to control AirSCP (MCP), turned on)
 
+## Allow or deny what an agent changes
+
+Before an agent changes something, AirSCP asks you. A small window shows what the agent wants to do, over every app:
+
+- **Deny** (the default, also <kbd>Return</kbd> and <kbd>Esc</kbd>): the agent is told that you said no.
+- **Allow Once**: just this change.
+- **Allow for 15 Minutes**: this change, and every change agents ask for in the next 15 minutes, without asking again.
+
+If nobody answers within 45 seconds, nothing is done, and the agent is told so.
+
+AirSCP asks before an agent:
+
+- deletes, replaces or renames files, or copies them to or from a server (uploads, downloads, drops, Synchronize);
+- opens a file in another app;
+- changes files' permissions or owners (Make Executable too), or puts a key on a server or in the ssh agent;
+- switches a tunnel on or off;
+- runs a command, a file or a snippet, or types into a Terminal tab;
+- kills a process, cancels, retries or resumes transfers, disconnects or quits;
+- types, presses keys or clicks on a Windows desktop.
+
+It doesn't ask when an agent only looks, selects, goes to a folder, opens AirSCP's own windows or fills in their fields.
+When AirSCP asks a question of its own first (Delete asks “Delete …?”), the window comes when the agent answers it.
+
+To turn these questions off, open **AirSCP ▸ Settings…** and turn off **Ask before agents change things**. Agents
+can't turn it off.
+
+(Picture: Settings: Ask before agents change things, turned off)
+
 ## See what an agent does
 
 - The sidebar's footer shows **Agent control on**. While an agent acts, its dot pulses and the footer names the agent and
   its last action.
 - Hover over it to see who is connected and since when. Click it for the last 20 actions in plain words, with **Turn
   Off Agent Control** and **Settings…**.
+- While AirSCP asks you about a change, the footer says **Waiting for your OK**. After **Allow for 15 Minutes**, the
+  hover text says until when agents may change things without asking.
 
 (Picture: The agent's recent actions: it dropped three files on the server pane, set a speed limit and selected a file)
 
@@ -2347,6 +2736,7 @@ An agent can work in a Remote Desktop too. It works the way a careful person at 
   at every launch.
 - Agents never see saved passwords: password fields read as •••, and no tool reads the Keychain.
 - AirSCP's questions stay in the way: Delete still asks, and the agent has to answer.
+- Changes wait for your OK (see [Allow or deny what an agent changes](#allow-or-deny-what-an-agent-changes)).
 - Turning the setting off closes the connection at once.
 
 ## For agents and scripts
@@ -2374,29 +2764,51 @@ AirSCP's actions are in the **Shortcuts** app, in Spotlight and for Siri:
 - **Connect to Host**: opens AirSCP and connects to a saved host. Say “Connect to web-01 with AirSCP”.
 - **Open a Shell on Host**: connects and shows the host's [Terminal tab](https://kleash.github.io/airscp/commands/terminal-tab.html).
 - **Open Remote Desktop**: connects to a saved Windows desktop.
+- **Upload Files**: uploads files and folders from your Mac to a server folder. Say “Upload to web-01 with AirSCP”.
+- **Download Files**: downloads server files and folders to a folder on your Mac (your download folder if you leave
+  it empty).
+- **Find Files**: finds files on a server by name, like `*.log`, and gives the list to the next action.
+- **Run Snippet**: runs one of your [snippets](https://kleash.github.io/airscp/commands/snippets.html) on a host (one without placeholders such as
+  `{file}`: those run on files you select).
+- **Start Tunnel** and **Stop Tunnel**: switch one of a host's [tunnels](https://kleash.github.io/airscp/tunnels.html) on or off.
+- **Open Favourite Folder**: connects and shows one of a host's favourite folders.
 - **Disconnect All**: disconnects everything AirSCP is connected to.
 - **Get Transfer Status**: says how the transfers are going, to use in a shortcut.
 
 Open the Shortcuts app and search for AirSCP to put them in your own shortcuts, or give them a key. They do exactly what
-the menus do.
+the menus do: AirSCP still asks before it replaces a file, and asks for a password the way it always does.
+
+**Spotlight** (macOS 15 or later) finds your saved hosts and Remote Desktops by name: choose one to open it in AirSCP.
 
 ## Ask AirSCP (Apple Intelligence)
 
 On a Mac with Apple Intelligence (Apple silicon, macOS 26 or later, Apple Intelligence turned on):
 
 - **Help ▸ Ask AirSCP…** (<kbd>⌥⌘K</kbd>): ask in your own words, e.g. “Why can't I connect to web-01?” or “How do I
-  upload a folder without node_modules?”.
+  upload a folder without node_modules?”, and click **Ask**.
+- **Do It…** in the same window: say what you want done, e.g. “Upload ~/Sites/site to web-01 in /var/www, leave out
+  node_modules” or “Start the 8080 tunnel on db and find big log files in /var/log”. AirSCP shows the steps as
+  sentences first. **Nothing runs until you click Run**, and AirSCP still asks before it replaces or deletes anything.
+  A step that names a host, snippet or tunnel you don't have says so, and Run stays off.
 - A failed connection's banner has **Explain…**: it asks what the error means and what to try.
+- **Monitor** has **Explain…**: is anything wrong with the server's CPU, memory, disks or busiest processes?
+- The **Command Log** has **Summarize…**: what did AirSCP just do, and did anything fail?
+- In **Window ▸ Snippets**, **Explain…** says what a command does, and whether it is risky, before you run it.
+- **Suggest…** (the sparkles button) next to a host's **Other ssh options**, **Leave out**, Find Files' pattern and the
+  Permissions octal: describe what you want (“keep the connection alive through a firewall”, “everyone can read, only I
+  can write”) and AirSCP shows the value. It goes into the field only when you click **Use**.
 
 The answer comes from Apple's model **on this Mac**: your question and a short summary of the host in front (its name,
-address, route, state, the last error and the commands AirSCP ran) never leave it. Passwords, keys and file contents are
+address, route, state, the last error and the commands AirSCP ran) never leave it. Do It… also tells it the names of
+your saved hosts, Remote Desktops, snippets and tunnels. Passwords, keys and file contents are
 never part of it. **What AirSCP tells it**, in the Ask window, shows that summary.
 
 AI can be wrong: check what it suggests before you act on it.
 
 ## Tips
 
-- **Settings ▸ Apple Intelligence** turns Ask AirSCP and Explain off for AirSCP.
+- **Settings ▸ Apple Intelligence** turns Ask AirSCP, Do It…, Explain, Summarize and Suggest off for AirSCP. The
+  buttons only show when Apple Intelligence can answer.
 - When Help ▸ Ask AirSCP… is greyed out, point at it to see why (for example, Apple Intelligence is off in System
   Settings ▸ Apple Intelligence & Siri).
 
@@ -2462,7 +2874,7 @@ each step: which server answered, what the proxy said, and where it stopped.
 
 (Picture: With debug logging on, the sidebar says so and an error offers Show Debug Log)
 
-- Look for the line **Couldn't connect: it stopped at …**. It names the step that failed: the HTTP proxy, the jump
+- Look for the line **Couldn't connect: it stopped at …**. It names the step that failed: the proxy, the jump
   host, or the server.
 - The log never holds passwords, passphrases or file contents. It stays on your Mac: AirSCP sends it nowhere.
 - It keeps at most 10 MB, plus one older file (`AirSCP-debug.1.log`).
@@ -2511,8 +2923,9 @@ Yes: **View ▸ Show Command Log**. Every line can be copied and run in Terminal
 Yes, in two ways. The built-in [Remote Desktop](https://kleash.github.io/airscp/remote-desktop/) opens Windows desktops. And Windows' own
 OpenSSH server works for browsing and transfers. Commands, compress and the monitor need a Linux or Mac server.
 
-**Does it support FTP, telnet or SOCKS proxies?**
-No. AirSCP is for SSH (scp and sftp) and Remote Desktop. Proxies are HTTP proxies (CONNECT).
+**Does it support FTP or telnet?**
+No. AirSCP is for SSH (scp and sftp) and Remote Desktop. It can connect through HTTP and SOCKS5 proxies: see
+[Connect through a proxy](https://kleash.github.io/airscp/connecting/proxies.html).
 
 **Can I sync my hosts between Macs?**
 Not automatically. Use **File ▸ Export Hosts…** and **Import Hosts…**. See
@@ -2587,6 +3000,61 @@ Please don't open a public issue: follow the security policy (`SECURITY.md`) in
 Source: https://kleash.github.io/airscp/whats-new.html
 
 # What's new
+
+## AirSCP 1.2.0
+
+- **AI agents ask before they change things**: before an agent deletes, copies or runs something, types into a
+  Terminal tab or works on a Windows desktop, a small window asks you: **Deny**, **Allow Once** or **Allow for 15
+  Minutes**. Turn it off in **Settings ▸ Ask before agents change things**. See
+  [Allow or deny what an agent changes](https://kleash.github.io/airscp/ai-agents.html#allow-or-deny-what-an-agent-changes).
+- **More in Shortcuts, Siri and Spotlight**: **Upload Files**, **Download Files**, **Find Files**, **Run Snippet**,
+  **Start Tunnel**, **Stop Tunnel** and **Open Favourite Folder**. Spotlight (macOS 15 and later) finds your saved hosts
+  and Remote Desktops by name. See [Shortcuts, Siri & Apple Intelligence](https://kleash.github.io/airscp/shortcuts-and-ai.html).
+- **Ask AirSCP does things**: describe it (“upload ~/Sites/site to web-01, leave out node_modules”), click **Do It…**,
+  read the steps, then click **Run**. Nothing runs before that, and AirSCP still asks before it replaces anything.
+- **Explain, Summarize and Suggest**: **Explain…** in Monitor and in Snippets, **Summarize…** in the Command Log, and
+  **Suggest…** next to Other ssh options, Leave out, Find Files' pattern and permissions. All on this Mac.
+- **Select by pattern**: **Edit ▸ Select by Pattern…** (<kbd>⌘+</kbd>), Deselect by Pattern, Select Same Kind and
+  Invert Selection. **File ▸ Compare Folders** marks what differs between this Mac's folder and the server's. See
+  [Select by pattern, compare folders, move, link](https://kleash.github.io/airscp/files/select-and-compare.html).
+- **Move, copy and link on a server**: **File ▸ Move To…**, **Copy To…** and **New Symbolic Link…**; **Copy Names**;
+  **Go ▸ Other Pane's Folder**.
+- **Move between this Mac and a server**: **Upload and Delete…**, **Download and Delete…**, or hold <kbd>⌘</kbd> while
+  you drag. Originals go only after their copy is done (and its checksum matches, when transfers are verified).
+- **Replace If Newer** when a file already exists: only newer files are copied.
+- **The Transfers list**: **Move Up** and **Move Down** for waiting transfers, and **When Done**: disconnect, sleep this
+  Mac or a notification once everything has finished.
+- **Owner, group and checksums**: Permissions… changes the owner and group; Get Info works out a file's SHA-256 (or SHA-1,
+  MD5) and compares it with one you paste.
+- **Snippets on selected files**: `{file}`, `{files}`, `{name}` and `{folder}` in a snippet, then right-click ▸ **Run
+  Snippet**. See [Save commands as snippets](https://kleash.github.io/airscp/commands/snippets.html).
+- **Synchronize options**: compare by size and date, size only, date only or contents (SHA-256); only files on both
+  sides; also replace newer files; and **Reverse** one file. See [Synchronize](https://kleash.github.io/airscp/synchronize.html).
+- **Favourites remember this Mac's folder too**, when the other pane shows one.
+- **The editor** has a find bar (<kbd>⌘F</kbd>), **Go to Line…** (<kbd>⌘L</kbd>) and **Revert to Server Version**.
+- **Find Files' results**: select several, then **Download…**, **Delete…** or **Copy Paths**.
+- **The Terminal tab knows your commands** (bash and zsh): each one shows how it ended and how long it took;
+  right-click it for **Copy Output**, **Copy Command** and **Run Again**; <kbd>⌘↑</kbd> and <kbd>⌘↓</kbd> jump between
+  them. <kbd>⌘F</kbd> finds text, **Follow in Files** keeps the server pane in the shell's folder, **Insert Snippet**
+  types a snippet at the prompt, and a setting sends **Open Terminal Here** to the tab. See
+  [The Terminal tab](https://kleash.github.io/airscp/commands/terminal-tab.html).
+- **Server Info, Change Password, links**: **Host ▸ Server Info…** shows the server's key fingerprint, software,
+  encryption and free space; **Host ▸ Change Password…** runs `passwd` in the Terminal tab; `sftp://` and `ssh://` links
+  open in AirSCP, and **Host ▸ Copy Link** makes one. See [Server information](https://kleash.github.io/airscp/connecting/server-info.html).
+- **Browse and copy as root**: **Host ▸ Edit… ▸ Advanced ▸ Browse and transfer as**, with sudo that needs no password.
+  See [Browse and copy files as root](https://kleash.github.io/airscp/connecting/browse-as-root.html).
+- **Proxies**: SOCKS5 proxies; HTTP proxies that ask for a Digest login; and Import from WinSCP keeps a site's proxy
+  when you already have its bastion.
+- **Certificate Manager**: **New…** makes a key with a certificate request (CSR) or a self-signed certificate;
+  **JKS…** and **Truststore…** write Java keystores and truststores (PKCS#12 or JKS); **Verify…** checks a
+  certificate's chain against a CA bundle or the authorities this Mac trusts, for a host name too. See
+  [Create a certificate or request](https://kleash.github.io/airscp/certificates/create.html).
+- **Fixed**: on accounts that allow only sftp, a path longer than sftp takes on one line (about 2,000 bytes) is
+  refused with a message: a server with such deep folders could otherwise have had sftp run the rest of the path as a
+  command on this Mac.
+- **Fixed**: Get Transfer Status said nothing once every transfer had finished.
+- **Fixed**: PKCS#12 files made with **Compatible with older systems** had no password check (MAC), which older
+  systems expect.
 
 ## AirSCP 1.1.0
 
@@ -2720,6 +3188,10 @@ How to work with AirSCP:
   refused. Commands that hand over to another app (Terminal, Finder, the default app, the clipboard) run, unseen.
 - Agent control is off unless the user turned it on (AirSCP ▸ Settings ▸ "Allow AI agents to control AirSCP (MCP)");
   the sidebar then shows the user your name, your actions and a way to turn it off. `snapshot` → agent: client, actions.
+- Changes wait for the person at the Mac (Settings ▸ "Ask before agents change things"; `snapshot` → agent.asksFirst):
+  deleting, replacing, renaming, copying or opening files, permissions, keys for a server or the ssh agent, tunnels,
+  commands, kills, disconnecting, quitting, typing into a terminal or Windows desktop. "The person at the Mac declined"
+  or "didn't answer": nothing was done; don't try another way, tell the user (guide topic troubleshooting).
 - A first run with no hosts shows the "Welcome to AirSCP" sheet: press Start first. The Help menu's AirSCP Help items
   and a sheet's "?" button (id `help`) open the browser, outside AirSCP; Tips and Agent Guide open short texts.
 
@@ -2812,6 +3284,10 @@ AirSCP was installed with `./install.sh`).
 - `guide {topic?}` — this guide.
 
 ## hosts
+- Facts about a connected host: `menu path="Host > Server Info…"` (a sheet: key fingerprint, software, cipher, what it
+  can do, free space; Copy, Done). `menu path="Host > Copy Link"` puts an sftp:// link on the clipboard. `menu
+  path="Host > Change Password…"` runs passwd in the Terminal tab for the user to answer: never type a password there
+  unasked.
 - New host: `menu path="File > New Host…"` → a sheet. Fields: `hostEditor.name`, `hostEditor.hostname` (Address),
   `hostEditor.port`, `hostEditor.username` (User name), `hostEditor.login` (pop-up: "Keys in ~/.ssh and the ssh agent
   (default)", the keys of ~/.ssh as "id_ed25519 · ED25519 · me@mac", "Password", or a key elsewhere: `set
@@ -2821,7 +3297,7 @@ AirSCP was installed with `./install.sh`).
   Host"), `hostEditor.password` (only with Password),
   `hostEditor.jump` ("Connect through": another host's name), `hostEditor.remoteFolder` (Start in folder),
   `hostEditor.group`. Under Advanced (`press title=Advanced` shows them; an edited host that uses one shows them
-  already): `hostEditor.proxy` (HTTP proxy; its "Add Proxy…" opens the proxy editor on the host editor),
+  already): `hostEditor.proxy` (Proxy; its "Add Proxy…" opens the proxy editor on the host editor),
   `hostEditor.keepAlive`, `hostEditor.autoReconnect`, `hostEditor.forwardAgent` ("Let the server use my ssh agent"),
   `hostEditor.hostKey` (Server key: "Ask (default)", "Trust new servers automatically" (accept-new: a changed key is
   still refused), "Don't check (insecure)"; Other options can't set StrictHostKeyChecking),
@@ -2862,16 +3338,42 @@ AirSCP was installed with `./install.sh`).
   terminal: running, lines (the last `rows`, scrollback included), cursor, fullScreen, directory/title when the shell
   says them. `wait until=text text=…` waits for output while the tab is shown. After `exit`, `key
   target=terminal combo=return` starts a new shell. Prefer `go`/`open`/menus for files; the terminal is for commands.
+  With bash and zsh the shell marks its commands: the terminal section then has `atPrompt` (true: the shell waits at an
+  empty prompt, so a command typed now runs in it) and `commands`, the last 20: each one's `command` line, `status`
+  (exit status), `seconds`, `output` (its last 50 lines) and `running`. Read a command's result there, not from
+  `lines`: type it, then snapshot until its entry has a status. Other shells (BusyBox sh, fish) have neither. The tab's
+  bar: `set id=terminal.follow value=true` (Follow in Files: the server pane follows the shell's folder), `set
+  id=terminal.snippets value=<snippet name>` (typed at the prompt, not run; as any text for the terminal, it waits for
+  the person at the Mac), `press id=terminal.find` then `set id=terminal.findText value=<text>` (find;
+  `terminal.findCount` reads "2 of 5" in `snapshot include=["elements"]`), `press id=terminal.findDone`. Settings'
+  `settings.openTerminalHereInTab` sends Open Terminal Here to this tab: `cd` typed at an empty prompt, else a question
+  "Type cd into the Terminal tab?" first (its Type cd waits for the person at the Mac).
 - Certificate Manager: `menu path="Tools > Certificate Manager…"` (its controls `in="window:Certificate Manager"`);
   open files with `press id=certificates.open files=[…]` (a password sheet: `set id=certificates.password`, `press
   title=Open`); `select in="window:Certificate Manager" names=["Certificate: web.example.com"]` (rows read "Certificate: …",
   "CA certificate: …", "Private key: RSA 2048"); `snapshot include=["elements"]` reads the details; buttons "Save PEM…",
   "Save DER…", "Save Chain…", "PKCS#12…" (`certificates.p12Name`, `certificates.p12Password`, then "Save…" with
-  `file=`), "Save Key…" (`certificates.keyPassphrase`), "Public Key…", all taking `file=`. A server's chain: `menu
-  path="Tools > View Server Certificate…"`, `set id=certificates.server value=host:port`, `press title=View`.
+  `file=`), "JKS…" (the same sheet: alias and password), "Save Key…" (`certificates.keyPassphrase`), "Public Key…", all
+  taking `file=`. A server's chain: `menu path="Tools > View Server Certificate…"`, `set id=certificates.server
+  value=host:port`, `press title=View`. A new key with a request or a self-signed certificate: `press
+  id=certificates.new`, `set id=certificates.newKind value="Self-signed certificate"` (or "Certificate request (CSR)"),
+  `certificates.commonName`, `certificates.names` (more host names and IPs, commas between), `certificates.organization`,
+  `certificates.unit`, `certificates.locality`, `certificates.state`, `certificates.country`, `certificates.keyType`
+  ("RSA 2048", "RSA 3072", "RSA 4096", "EC P-256", "EC P-384", "Ed25519"), `certificates.days`,
+  `certificates.newPassphrase`, then `press title=Create… file=/path/web.crt` (a request: .csr; the key goes beside it as
+  web.key; a file that exists is never replaced, and nothing is saved). With a certificate selected: "Truststore…" (tick
+  or untick entries by their row titles with `press`, `certificates.trustFormat` "PKCS#12 (.p12)" or "Java keystore
+  (.jks)", `certificates.trustPassword`, "Save…" with `file=`) and "Verify…" (`certificates.verifyAgainst` "Authorities
+  this Mac trusts" or "A CA bundle file", then `press id=certificates.chooseBundle file=/path/ca.pem`;
+  `certificates.verifyHost`; `press title=Verify`): the result is the line under the certificate's title and the status
+  line (`snapshot include=["elements"]`).
 - The same actions are reachable three ways: the menus (a person), these tools (you), and App Intents (Shortcuts, Siri,
-  Spotlight: Connect to Host, Open a Shell on Host, Open Remote Desktop, Disconnect All, Get Transfer Status). Help >
-  Ask AirSCP… is the user's own Apple Intelligence: don't use it for them.
+  Spotlight: Connect to Host, Open a Shell on Host, Open Remote Desktop, Upload Files, Download Files, Find Files, Run
+  Snippet, Start Tunnel, Stop Tunnel, Open Favourite Folder, Disconnect All, Get Transfer Status), all running the same
+  code. Help >
+  Ask AirSCP… (with Do It…, `ask.doIt`, `ask.plan`, `ask.run`), the Explain/Summarize buttons (`monitor.explain`,
+  `log.summarize`, `snippet.explain`) and Suggest (`suggest.<field>`) are the user's own Apple Intelligence: don't use
+  them for them.
 - Terminal: `menu path="Host > Open Terminal"` opens Terminal.app, and "Copy ssh Command" fills the clipboard: their
   result is outside AirSCP. Run a command and read its output: `menu path="Host > Run Command…"` →
   `set id=runCommand.command value="uname -a"` (or a snippet: `set id=runCommand.snippet value=<its name>`) →
@@ -2887,6 +3389,9 @@ AirSCP was installed with `./install.sh`).
   the host, its exit status and error output.
 
 ## proxies
+- A proxy is HTTP or SOCKS5: `set id=proxyEditor.kind value=SOCKS5` in New Proxy… (Digest logins are answered by
+  themselves). Root's files: Host > Edit… > Advanced, `set id=hostEditor.sudoUser value=root` (needs NOPASSWD sudo on the
+  server; connecting says why when it can't).
 - Proxies: `menu path="Host > Proxies…"` → sheet → `press title="Add Proxy…"` → `proxyEditor.name`, `proxyEditor.host`,
   `proxyEditor.port`, `proxyEditor.username`, then `proxyEditor.password` (it appears once there is a user name) →
   `press title=Add` → `press title=Done` (or `key combo=escape`).
@@ -2899,6 +3404,12 @@ AirSCP was installed with `./install.sh`).
 - A proxy that refuses the password: the connect fails with "The proxy rejected the user name or password".
 
 ## transfers
+- Move instead of copy: select items, then `menu path="File > Upload and Delete…"` (this Mac's pane) or `"File >
+  Download and Delete…"` (a server's), `press title=Move`; originals go once each copy is done. Queued jobs: `menu
+  path="context > Move Up" pane=transfers` / "Move Down". `set id=transfers.whenDone value="Notify"` (Do Nothing,
+  Disconnect, Sleep This Mac, Notify) acts once when every transfer has finished: never choose Sleep This Mac unasked.
+- Get Info: `set id=info.checksumAlgorithm value=SHA-256`, `press id=info.calculateChecksum`, read `info.checksum`; Permissions…
+  also has `permissions.owner` and `permissions.group`.
 - Upload: `drop files=["/path/a.txt", "/path/folder"] pane=right` (into the folder the right pane shows, or `into`).
   A folder (or 200+ items) asks first: "Upload … to “dev”?" with the checkbox "Compress during transfer — faster on
   slow links and for many small files" and the field
@@ -2951,6 +3462,18 @@ AirSCP was installed with `./install.sh`).
   up) → `select pane=right names=["index.html"]` → its command: `menu path="File > Download To…" file=/Users/me/Downloads`,
   `menu path="File > Upload…" files=["/Users/me/a.txt"]`, `menu path="File > Rename…"`, `menu path="context > Delete…"`.
 - Also `menu path="Go > Back"`, `"Go > Enclosing Folder"`, `"Go > Home"`; this Mac's side: `go pane=left path=~/Downloads`.
+- Find Files' results: `select in=sheet names=["a.log", "deep/b.log"]` (several, or `all: true`), then `press
+  id=find.download file=<Mac folder>`, `press id=find.delete` (then Delete), or `press id=find.copyPaths`.
+- Synchronize's options: `set id=sync.criterion value="Contents (SHA-256)"` (Size and date, Size only, Date only),
+  `set id=sync.onlyBoth value=true`, `set id=sync.mirror value=true`. Editor: `press title="Go to Line…"` (`editor.line`),
+  `press title="Revert to Server Version"`.
+- Snippets with {file}, {files}, {name} or {folder} run on the selection: `select pane=right names=[…]`, then `menu
+  path="context > Run Snippet > <snippet>" pane=right` (a Run Command sheet shows the output).
+- Many at once: `menu path="Edit > Select by Pattern…"`, `set id=select.pattern value="*.log"`, `press title=Select`
+  (Deselect by Pattern, Select Same Kind, Invert Selection likewise). `menu path="File > Move To…"` / `"File > Copy To…"`
+  ask for a server folder (`set id=transfer.folder`, then Move or Copy); `menu path="File > New Symbolic Link…"` asks its
+  name (`link.name`, Next) then its target (`link.target`, Create). `menu path="File > Compare Folders"` marks the rows
+  that differ (snapshot rows carry `mark`, e.g. "Newer here").
 - Favourites (a server's folders, kept per host): `focus pane=right` → `menu path="Go > Add to Favourites"` keeps the
   folder shown; `menu path='Go > Favourites > /var/log'` goes back to it, `menu path='Go > Favourites > Remove >
   /var/log'` drops it. `snapshot` → the pane's favourites (and `include=["menus"]` lists them).
@@ -2972,7 +3495,8 @@ AirSCP was installed with `./install.sh`).
   it with `snapshot include=["elements"] in="window:<file name>"`; close it with `menu path="File > Close"
   in="window:<file name>"`, which asks first when it has unsaved changes).
 - Handed to other apps, so their result isn't visible here: Open (the default app), Show in Finder, Open Terminal
-  Here, Run in Terminal, Copy Path (the clipboard). Quick Look is refused: download the file and read it instead.
+  Here (unless `settings.openTerminalHereInTab` is on: then the Terminal tab), Run in Terminal, Copy Path (the
+  clipboard). Quick Look is refused: download the file and read it instead.
 - Copy / cut / paste within a server: select → `menu path="Edit > Copy"` (or Cut) → select the target folder's pane
   → `menu path="Edit > Paste"`. Move by dropping: `drop from=right to=right into=/home/dev/dir move=true`. Replace
   keeps the old item until the copy is complete.
@@ -3078,7 +3602,9 @@ AirSCP was installed with `./install.sh`).
   the folder for new keys (`press id=settings.keyFolder in="window:Settings" file=/folder`; "Use ~/.ssh" goes back),
   `settings.agentControl` (turning it off ends
   agent control at once; `settings.mcpCommand` is the `claude mcp add` command it shows, `settings.copyMCPCommand`
-  copies it), `settings.debugLogging` (Advanced: the debug log, see troubleshooting). Downloads folder: `press
+  copies it), `settings.askBeforeAgentChanges` (changes wait for the person at the Mac, see overview: only they can
+  change it, an agent's `set` or `press` of it is refused), `settings.debugLogging` (Advanced: the debug log, see
+  troubleshooting). Downloads folder: `press
   title=Choose… in="window:Settings" file=/Users/me/Downloads`. It is where Download To… opens (its reply's
   `panelFolder`) and where Download as .tar.gz puts the archive when the other pane shows a server too.
 - `snapshot include=["settings"]` reads them all. The window opens 600 points tall and its form scrolls; the controls
@@ -3153,7 +3679,7 @@ AirSCP was installed with `./install.sh`).
   in="window:Settings"` (or, in the "Can't connect" sheet or a Disconnected banner,
   `press title="Turn On Debug Logging and Try Again"`, which connects again), make it happen again, then read the
   plain-text file at `snapshot` → debugLog.path. Each line has the time and the host.
-  "Couldn't connect: it stopped at …" names the hop that failed (the HTTP proxy, the jump host or the server) in plain
+  "Couldn't connect: it stopped at …" names the hop that failed (the proxy, the jump host or the server) in plain
   words; the lines before it are ssh's own (-vv: "Authenticated to bastion", "channel 0: open failed"), the proxy's
   answer ("proxy-connect: the proxy 127.0.0.1:3128 answered CONNECT bastion:22 with “HTTP/1.1 407 …”") and the
   questions ssh asked (never the answers: no password is ever in the file). `menu path="Help > Copy Diagnostics"`
@@ -3161,6 +3687,21 @@ AirSCP was installed with `./install.sh`).
   log off when done: `value=false`, `press id=debugLog.turnOff` (the sidebar's Turn Off) or
   `menu path='Help > Turn Off Debug Logging'`. AIRSCP_DEBUG=1 in AirSCP's environment turns it on from the start (and
   keeps it on).
+- Questions to the person at the Mac (Settings ▸ "Ask before agents change things", on unless they turned it off).
+  These wait up to 45 s for their Allow Once, Allow for 15 Minutes (no more questions until then) or Deny: a request
+  that deletes, replaces or renames files (Rename's button), copies them (`drop`, Upload…, Download…, Paste,
+  Synchronize), opens a file in its app, changes permissions or owners (Permissions' Apply, Make Executable), puts a
+  key on a server (Keys' Install) or in the ssh agent (Add to Agent), switches a tunnel on or off, runs a command, a
+  file or a snippet, kills a process, disconnects, quits, cancels, retries or resumes transfers, types text (a snippet
+  too) or presses keys in a Terminal tab, types, presses keys or clicks on a Windows desktop, or presses a button that
+  a question marks as destructive (Delete, Replace, Kill, Type cd…). A question AirSCP asks itself (Delete's) comes
+  first, as always: its Delete button is what waits. Looking, selecting, going to folders, opening AirSCP's own sheets
+  and typing into its fields never wait, and only the person can turn the setting off.
+  "The person at the Mac declined: <what>": they said no; nothing was done. Don't try it another way (another tool or
+  menu): tell the user what you wanted to do and why. "The person at the Mac didn't answer within 45 s: <what>":
+  nothing was done; ask the user to look at the Mac, then try once more. "What … acts on changed while the person at
+  the Mac decided": the selection or the question changed meanwhile; nothing was done: `snapshot`, then try again.
+  "Agent control was turned off: nothing was done.": the user ended agent control while a question waited.
 - "… is disabled now: <reason>": the reason says what is missing (no selection, not connected, sftp only, the Files
   tab not shown…).
   "Nothing to press called …" / "No field …": `snapshot include=["sheets","elements"]` shows what is there (add

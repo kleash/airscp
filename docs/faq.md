@@ -28,8 +28,9 @@ Yes: **View ▸ Show Command Log**. Every line can be copied and run in Terminal
 Yes, in two ways. The built-in [Remote Desktop](remote-desktop/index.md) opens Windows desktops. And Windows' own
 OpenSSH server works for browsing and transfers. Commands, compress and the monitor need a Linux or Mac server.
 
-**Does it support FTP, telnet or SOCKS proxies?**
-No. AirSCP is for SSH (scp and sftp) and Remote Desktop. Proxies are HTTP proxies (CONNECT).
+**Does it support FTP or telnet?**
+No. AirSCP is for SSH (scp and sftp) and Remote Desktop. It can connect through HTTP and SOCKS5 proxies: see
+[Connect through a proxy](connecting/proxies.md).
 
 **Can I sync my hosts between Macs?**
 Not automatically. Use **File ▸ Export Hosts…** and **Import Hosts…**. See

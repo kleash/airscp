@@ -26,6 +26,20 @@ and the speed. A copy between two servers shows both hosts, “A → B”.
 - **Check a copy**: right-click a finished transfer and choose **Verify with Checksum**.
 - **See what went wrong**: right-click a row and choose **Show Details…**.
 - **Find a download**: right-click it and choose **Show in Finder**.
+- **Change the order**: right-click a queued transfer and choose **Move Up** or **Move Down**: it runs before or after the
+  next one waiting for the same host.
+- **When Done**: in the list's header, choose what happens once every transfer has finished: **Do Nothing**,
+  **Disconnect** (every host), **Sleep This Mac** or **Notify** (a notification, for transfers that took more than 30
+  seconds). It happens once, then goes back to Do Nothing.
+
+## Move instead of copy
+
+- Select items and choose **File ▸ Upload and Delete…** (in the This Mac pane) or **File ▸ Download and Delete…** (in a
+  server pane), or hold <kbd>⌘</kbd> while you drag between this Mac and a server, as Finder moves between disks.
+- AirSCP asks once. Each item is deleted where it was only after its copy is done (and checked, when **Settings ▸ Verify
+  transfers with SHA-256** is on): a copy that fails, has errors or doesn't match leaves the original alone. On this
+  Mac originals go to the Trash.
+- Folders with **Leave out** patterns stay where they are, since some of what is in them wasn't copied.
 
 ## Pages
 

@@ -4,7 +4,7 @@ import CryptoKit
 import Foundation
 
 /// PuTTY's private key files (.ppk, versions 2 and 3) and OpenSSH's own private key format, which ssh and ssh-keygen
-/// read. ssh-keygen can't read or write .ppk files, so AirSCP converts between the two itself (PLAN.md K.2): RSA, ECDSA
+/// read. ssh-keygen can't read or write .ppk files, so AirSCP converts between the two itself: RSA, ECDSA
 /// (256, 384 and 521 bits) and Ed25519 keys. The formats: PuTTY's manual (appendix "PPK file format") and OpenSSH's
 /// PROTOCOL.key; the tests check PuTTY's own test vectors and its puttygen. Only the unencrypted OpenSSH form is read
 /// and written here: `Keys.importPPK` and `Keys.exportPPK` keep it in a private temporary folder, and ssh-keygen adds
@@ -293,9 +293,9 @@ public enum PuTTYKey {
 
     /// The cipher key, IV and MAC key for a file version: version 3 from Argon2 (no MAC key when unencrypted), version
     /// 2 from SHA-1 (a zero IV), as that format prescribes (only read). CodeQL's swift/weak-password-hashing flags the
-    /// two SHA-1 lines below; they stay, as the only way to read a legacy .ppk version 2 file (PuTTY before 0.75 and
-    /// WinSCP's older exports), which AirSCP never writes: keys it exports are version 3, Argon2id. The alerts are
-    /// dismissed as "won't fix" with this reason (docs/dev/release.md, launch step 3).
+    /// two SHA-1 lines below; they stay, as the only way to read a legacy .ppk version 2 file (PuTTY before 0.75),
+    /// which AirSCP never writes: keys it exports are version 3, Argon2id. The alerts are dismissed as "won't fix"
+    /// with this reason (docs/dev/release.md, CodeQL's alerts).
     private static func deriveKeys(version: Int, passphrase: String, encrypted: Bool,
                                    argon2: (flavour: Int32, memory: UInt32, passes: UInt32, lanes: UInt32, salt: Data)?)
         throws -> (cipher: Data, iv: Data, mac: Data) {

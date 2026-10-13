@@ -1,7 +1,7 @@
 ---
 title: See a server's certificate
 parent: Certificates and keystores
-nav_order: 3
+nav_order: 4
 ---
 
 # See a server's certificate

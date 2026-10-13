@@ -6,8 +6,8 @@ import Testing
 @testable import AirSCP
 @testable import AirSCPCore
 
-// The feature cycle's round 1 (fix step): the app's windows and agent control. One regression test per behaviour the
-// area testers found broken, or per feature they couldn't reach (see /tmp/airscp-handoffs/feature-matrix.md).
+// Tests through the app's windows and agent control: one per behaviour that was found broken, or per feature an agent
+// couldn't reach.
 // One at a time: each makes windows on the main thread, which everything else in the test process waits for too.
 
 @MainActor @Suite(.serialized) struct FeatureRoundAppTests {
@@ -680,7 +680,7 @@ extension FeatureRoundAppTests {
             #expect(right.rows.isEmpty && right.dir == server.path("logs"))
             #expect(await call(agent, "wait", ["until": "listed", "pane": "right", "timeout": 1]).error?.hasPrefix("Timed out") == true)
             // The pane's Reconnect, as its click sends it: pressed by an agent in this process beside other tests, an AppKit
-            // button's click ended the test run (PLAN.md's backlog, "Test infrastructure"); agent-session.sh presses it.
+            // button's click ended the test run; agent-session.sh presses it.
             let reconnect = try #require(AgentServer.views(NSButton.self, in: right.view).first {
                 $0.accessibilityIdentifier() == "right.reconnect"
             })

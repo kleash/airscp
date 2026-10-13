@@ -100,7 +100,7 @@ public struct MonitorProcess: Equatable, Identifiable {
     public var command: String
 }
 
-/// A host's system monitor (PLAN.md I, as cut in Q): Linux only, over the host's connection. One per Monitor tab; it
+/// A host's system monitor: Linux only, over the host's connection. One per Monitor tab; it
 /// keeps the previous CPU sample and which ps the server has (GNU, else BusyBox), decided on the first refresh.
 public final class Monitor {
     public let session: Session

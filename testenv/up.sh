@@ -20,12 +20,19 @@ echo "Starting AirSCP's test lab (the first build takes a minute or two)..."
 answers() {
     local reply=""
     exec 3<>"/dev/tcp/127.0.0.1/$1" || return 1
-    if [[ $1 == 4228[01] ]]; then printf 'CONNECT target:22 HTTP/1.0\r\n\r\n' >&3; fi
+    if [[ $1 == 42283 ]]; then  # SOCKS5 speaks only when greeted: its answer starts with version 5
+        printf '\005\001\002' >&3
+        IFS= read -r -t 3 -n 1 reply <&3 || true
+        exec 3<&-
+        [[ $reply == $'\005' ]]
+        return
+    fi
+    if [[ $1 == 4228[012] ]]; then printf 'CONNECT target:22 HTTP/1.0\r\n\r\n' >&3; fi
     IFS= read -r -t 3 reply <&3 || true
     exec 3<&-
     [[ $reply == SSH-* || $reply == HTTP/* ]]
 }
-for port in 42201 42202 42203 42204 42280 42281; do
+for port in 42201 42202 42203 42204 42205 42206 42280 42281 42282 42283; do
     tries=0
     until answers "$port" 2>/dev/null; do
         if (( ++tries == 60 )); then
@@ -42,8 +49,12 @@ AirSCP's test lab is up, on 127.0.0.1 only. Key: testenv/.keys/id_lab (every use
   minimal  port 42202  dev / porter-min (Alpine, BusyBox; no zip, unzip or python3)
   bastion  port 42203  jump / porter-jump (TCP forwarding on; reaches target, port 22, inside the lab)
   twofactor port 42204 dev: the key, then a verification code (TOTP secret GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ)
+  sudo     port 42205  dev / porter-sudo (Alpine; sudo to root without a password, sftp-server: Browse and transfer as)
+  passwd   port 42206  changer / Lab-Pass-Alpha-7 (Alpine with shadow's passwd: Change Password; tests set it back)
   proxy    port 42280  HTTP proxy, porter / porter-proxy (CONNECT to port 22 only: bastion, target)
   openproxy port 42281 the same HTTP proxy with no password
+  digestproxy port 42282 squid, porter / porter-proxy with Digest login only
+  socksproxy port 42283 SOCKS5 (Dante), porter / porter-proxy
   private  (no port)    dev / porter-private (Alpine; only inside the lab: via bastion, or a proxy, as host "private")
 Lab tests: AIRSCP_DOCKER=1 ./test.sh    Remove the lab: testenv/down.sh
 EOF

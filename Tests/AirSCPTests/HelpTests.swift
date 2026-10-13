@@ -5,9 +5,9 @@ import Testing
 @testable import AirSCP
 @testable import AirSCPCore
 
-// PLAN.md U: AirSCP explains itself. Every menu item and every interactive control (in every window, sheet and
-// state, walked in-process through agent control's accessibility tree) has a tooltip or help text; the sidebar shows
-// each host's route (U.1); the agent indicator says who acts and what (U.2); Other ssh options are checked (U.3).
+// AirSCP explains itself. Every menu item and every interactive control (in every window, sheet and state, walked
+// in-process through agent control's accessibility tree) has a tooltip or help text; the sidebar shows each host's
+// route; the agent indicator says who acts and what; Other ssh options are checked.
 
 /// The controls the walk looked at, once each (window, role, id, title), for its report.
 @MainActor var distinctControls = Set<String>()
@@ -61,7 +61,7 @@ func unexplained(_ menu: NSMenu, path: [String] = []) -> [String] {
     func count(_ menu: NSMenu) -> Int {
         menu.items.filter { !$0.isSeparatorItem && !$0.title.isEmpty }.reduce(0) { $0 + 1 + ($1.submenu.map(count) ?? 0) }
     }
-    print("section U: \(count(bar)) menu items, all with a tooltip")
+    print("help: \(count(bar)) menu items, all with a tooltip")
     // Help has AirSCP's own pages; Edit's ⌘F says what it filters.
     let help = bar.item(withTitle: "Help")?.submenu?.items.map(\.title) ?? []
     #expect(help == ["AirSCP Help", "Getting Started", "What's New", "", "Welcome to AirSCP…", "AirSCP Tips", "Agent Guide", "Ask AirSCP…", "",
@@ -80,10 +80,10 @@ func unexplained(_ menu: NSMenu, path: [String] = []) -> [String] {
     #expect(["Show Details…", "Show in Finder"].allSatisfy { TransfersPanel.actionTips[$0] != nil })
 }
 
-/// The section U walk runs with the other heavy window tests, one at a time: their sheets and keys go to whichever
+/// The help walk runs with the other heavy window tests, one at a time: their sheets and keys go to whichever
 /// window is key, and this walk makes its own window key many times (Edit…, New Host…).
 extension FeatureRoundAppTests {
-    /// The section U walk: the main window in each state, every sheet, AirSCP's other windows, and the agent popover.
+    /// The help walk: the main window in each state, every sheet, AirSCP's other windows, and the agent popover.
     @MainActor @Test func everyControlSaysWhatItDoes() async throws {
         _ = NSApplication.shared
         try await withServer { @MainActor server in
@@ -104,7 +104,7 @@ extension FeatureRoundAppTests {
             model.save(entry)
             model.data.snippets = [Snippet(name: "uptime", command: "uptime")]
             model.agentControlOn = true
-            model.debugLoggingOn = true  // the sidebar's "Debug logging on" (PLAN.md AE)
+            model.debugLoggingOn = true  // the sidebar's "Debug logging on"
             let askpass = try AskpassServer(helperPath: TestEnvironment.airscpBinary)
             defer { askpass.close() }
             let (main, agent, _) = try agentWindow(model, askpass)
@@ -141,6 +141,16 @@ extension FeatureRoundAppTests {
                 try await Task.sleep(nanoseconds: 300_000_000)
                 check(tab + " tab", window)
             }
+            // The Terminal tab, with its find bar too.
+            _ = await call(agent, "menu", ["path": "Host > Terminal Tab"])
+            #expect(await eventually(timeout: 20) { main.selectedWorkspace?.terminal.session?.screen.shellPID != nil })
+            check("Terminal tab", window)
+            #expect(await call(agent, "press", ["id": "terminal.find"]).error == nil)
+            check("Terminal tab, find", window)
+            #expect(AXNode.flatten(window).contains { $0.id == "terminal.findText" })
+            _ = await call(agent, "press", ["id": "terminal.findDone"])
+            main.selectedWorkspace?.terminal.session?.close()
+            _ = await call(agent, "press", ["title": "Files"])
             // The Monitor's processes and ports with figures (this Mac's sshd isn't Linux: they are set here), a port picked.
             _ = await call(agent, "press", ["title": "Monitor"])
             let monitor = try #require(main.selectedWorkspace?.monitor.model)
@@ -173,7 +183,7 @@ extension FeatureRoundAppTests {
                 _ = await call(agent, "press", ["title": "Advanced"])
                 try? await Task.sleep(nanoseconds: 300_000_000)
                 check("new Remote Desktop, Advanced", window, sheetsOnly: true)
-                // A company certificate authority: its file and Choose… (PLAN.md U.4).
+                // A company certificate authority: its file and Choose…
                 _ = await call(agent, "set", ["id": "rdpEditor.certificate", "value": "Trust my company's certificate authority"])
                 try? await Task.sleep(nanoseconds: 300_000_000)
                 check("new Remote Desktop, company certificate authority", window, sheetsOnly: true)
@@ -252,6 +262,14 @@ extension FeatureRoundAppTests {
             #expect(AXNode.flatten(popover).contains { $0.title == "Turn Off Agent Control" })
             popover.close()
 
+            // The question an agent's change waits on.
+            let question = AgentQuestionPanel(AgentQuestion(change: "press “Delete”", detail: "Delete “a.txt” on “lab”?",
+                                                            code: false, client: "claude-code", timeout: 45))
+            question.setFrameOrigin(NSPoint(x: -21000, y: -21000))
+            question.orderFront(nil)
+            check("agent question", question)
+            question.close()
+
             // AirSCP's other windows.
             @MainActor func other<V: View>(_ title: String, _ view: V) -> NSWindow {
                 let window = NSWindow(contentViewController: NSHostingController(rootView: view))
@@ -298,7 +316,7 @@ extension FeatureRoundAppTests {
             try await Task.sleep(nanoseconds: 300_000_000)
             check("Keys, install", install)
             install.orderOut(nil)
-            // The key sheet in each of its steps (PLAN.md K.1, K.2), on the main window.
+            // The key sheet in each of its steps, on the main window.
             let pair = try #require(keys.pairs.first)
             let ppk = keyFolder + "/help.ppk"
             try write(try PuTTYKey.write(try PuTTYKey.fromOpenSSH(try #require(read(pair.privateKey))), passphrase: "help",
@@ -361,14 +379,14 @@ extension FeatureRoundAppTests {
 
             #expect(missing.isEmpty, "Without a tooltip or help:\n\(missing.joined(separator: "\n"))")
             #expect(checked > 400, "only \(checked) controls were looked at")
-            print("section U: \(distinctControls.count) controls (\(checked) looks in all states), \(missing.count) without help")
+            print("help: \(distinctControls.count) controls (\(checked) looks in all states), \(missing.count) without help")
             await main.selectedWorkspace?.connection.disconnect()
         }
     }
 }
 
 extension FeatureRoundAppTests {
-    /// PLAN.md U: a disabled menu item says why, in each state of the main window (the reason is its tooltip while it is
+    /// A disabled menu item says why, in each state of the main window (the reason is its tooltip while it is
     /// off, and what agents are told). Duplicate, Compress…, Run…, Go ▸ Back and others said nothing.
     @MainActor @Test func everyDisabledMenuItemSaysWhy() async throws {
         _ = NSApplication.shared
@@ -421,7 +439,7 @@ extension FeatureRoundAppTests {
     }
 }
 
-// MARK: U.1 routes
+// MARK: Routes
 
 @MainActor @Test func theSidebarShowsEachHostsRoute() {
     let proxy = Proxy(name: "corp-proxy", host: "proxy.example.com", port: 8080, username: "me")
@@ -445,7 +463,7 @@ extension FeatureRoundAppTests {
     // The proxy first, as the connection goes; every hop's user@host:port in the tooltip.
     let route = data.route(for: target)
     #expect(route?.short == "via corp-proxy → bastion" && route?.missing == false)
-    #expect(route?.full == "Connects to dev@10.0.0.5 through the HTTP proxy corp-proxy (me@proxy.example.com:8080), then the "
+    #expect(route?.full == "Connects to dev@10.0.0.5 through the proxy corp-proxy (me@proxy.example.com:8080), then the "
             + "jump host bastion (jump@bastion.example.com:22).")
     #expect(data.route(for: lost)?.short == "via a missing jump host" && data.route(for: lost)?.missing == true)
     #expect(data.route(for: entry)?.short == "via corp-proxy → bastion → target")
@@ -456,7 +474,7 @@ extension FeatureRoundAppTests {
     #expect(copyCommandProblem(direct, in: data) == nil)
     #expect(copyCommandProblem(lost, in: data)?.hasPrefix("Its jump host no longer exists") == true)
     for host in [proxied, bastion, target] {
-        #expect(copyCommandProblem(host, in: data)?.hasPrefix("Its HTTP proxy's password is given through AirSCP") == true)
+        #expect(copyCommandProblem(host, in: data)?.hasPrefix("Its proxy's password is given through AirSCP") == true)
     }
     // A proxy without a login: the command reaches it with macOS's nc, also nested in a jump host's ProxyCommand.
     data.proxies[0].username = ""
@@ -478,7 +496,7 @@ extension FeatureRoundAppTests {
     #expect(data.route(for: command) == nil)
 }
 
-// MARK: U.2 the agent indicator
+// MARK: The agent indicator
 
 @MainActor @Test func theAgentIndicatorSaysWhoActsAndWhat() async throws {
     _ = NSApplication.shared
@@ -564,7 +582,7 @@ extension FeatureRoundAppTests {
     #expect(words(shown) == words(AgentBridge.guideText))
 }
 
-// MARK: U.3 Other ssh options
+// MARK: Other ssh options
 
 @MainActor @Test func otherSSHOptionsAreCheckedAsTyped() async {
     _ = TestEnvironment.isolated

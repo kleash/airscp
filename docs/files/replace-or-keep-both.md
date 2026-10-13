@@ -15,6 +15,9 @@ and date of both, so you can decide.
    `New: 75 bytes, 2 Oct 2026 at 4:30 PM · Existing: 75 bytes, 28 Sep 2026 at 10:15 AM`.
 2. Choose:
    - **Replace**: the new file takes the old one's place.
+   - **Replace If Newer**: the new file takes its place only if it is newer; otherwise it is skipped. With **Do the
+     same for the other … conflicts** ticked, every newer file is copied and every older one skipped. Shown for two
+     files whose dates AirSCP knows.
    - **Keep Both**: the new file gets a number, for example `index 2.html`.
    - **Skip**: the old file stays, and this one isn't copied.
    - **Cancel**: nothing more is copied.

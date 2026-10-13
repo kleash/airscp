@@ -37,7 +37,7 @@ Click **Advanced** for settings most people never change.
 
 | Setting | What it does |
 |---|---|
-| **HTTP proxy** | Only when your network reaches servers through an HTTP proxy. See [Connect through an HTTP proxy](proxies.md). |
+| **Proxy** | Only when your network reaches servers through a proxy. See [Connect through a proxy](proxies.md). |
 | **Keep-alive every** | How often AirSCP checks that the connection still works: 15 seconds by default. The connection counts as lost after 3 unanswered checks. |
 | **Reconnect automatically** | On by default. When the connection drops, AirSCP connects again by itself. See [Stay connected](stay-connected.md). |
 | **Let the server use my ssh agent** | Off by default. Turn it on only if you use your keys from that server to reach others (agent forwarding). |

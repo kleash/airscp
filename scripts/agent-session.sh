@@ -80,7 +80,7 @@ cat > "$T/support/airscp.json" <<EOF
      "username": "$(id -un)", "auth": "keyFile", "keyFile": "$T/ssh/id_ed25519", "autoReconnect": false,
      "lastLocalDir": "$T/mac"}
   ],
-  "settings": {"appearance": "light", "welcomeShown": true, "agentControl": true}
+  "settings": {"appearance": "light", "welcomeShown": true, "agentControl": true, "askBeforeAgentChanges": false}
 }
 EOF
 

@@ -21,9 +21,19 @@ fi
 clt=$(xcode-select -p)
 fw=$clt/Library/Developer/Frameworks
 il=$clt/Library/Developer/usr/lib
-exec swift test \
+# The run must reach Swift Testing's last line ("✔/✘ Test run with N tests …"): an AppKit call that stops the main
+# run loop once ended the test process early with status 0, so tests after it never ran.
+log=$(mktemp -t airscp-test)
+trap 'rm -f "$log"' EXIT
+status=0
+swift test \
     -Xswiftc -F -Xswiftc "$fw" \
     -Xlinker -F -Xlinker "$fw" \
     -Xlinker -rpath -Xlinker "$fw" \
     -Xlinker -rpath -Xlinker "$il" \
-    "$@"
+    "$@" 2>&1 | tee "$log" || status=$?
+if [[ $status == 0 && " $* " != *" list "* && " $* " != *" --list-tests "* ]] && ! grep -qE '^. Test run with [0-9]+ tests? ' "$log"; then
+    echo "The test process ended before Swift Testing's summary: a test stopped it (see the last test that started above)." >&2
+    status=1
+fi
+exit $status

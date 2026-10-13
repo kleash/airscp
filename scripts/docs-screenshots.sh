@@ -1,5 +1,5 @@
 #!/bin/bash
-# Makes the pictures of AirSCP Help (PLAN.md Y): docs/assets/shots/<name>-light.png and <name>-dark.png, always under
+# Makes the pictures of AirSCP Help: docs/assets/shots/<name>-light.png and <name>-dark.png, always under
 # the same names, so the docs never show an old AirSCP. A throwaway AirSCP (its own settings, ssh folder and demo
 # data, nothing of yours) is driven through agent control, and its screenshot tool draws each window in light and in
 # dark mode. The server is a demo container made from the Docker lab's target image (user dev in /home/dev), so the
@@ -192,7 +192,7 @@ cat > "$T/support/airscp.json" <<EOF
     {"id": "D0C56004-0000-4000-8000-000000000000", "name": "Restart the web server", "command": "sudo systemctl restart nginx",
      "runInTerminal": true}
   ],
-  "settings": {"appearance": "light", "welcomeShown": true, "agentControl": true}
+  "settings": {"appearance": "light", "welcomeShown": true, "agentControl": true, "askBeforeAgentChanges": false}
 }
 EOF
 
@@ -235,19 +235,19 @@ import json, sys
 found = [e["frame"] for e in json.load(sys.stdin).get("elements", []) if e.get("id") == sys.argv[1]]
 print(*found[0])' "$2"
 }
-crop() {  # crop <name> <x> <y> <width> <height>, in points from the top left
-    python3 - "$T/raw/$1" "$2" "$3" "$4" "$5" <<'PY'
+crop() {  # crop <name> <x> <y> <width> <height> [light|dark], in points from the top left; both pictures by default
+    python3 - "$T/raw/$1" "$2" "$3" "$4" "$5" "${6:-light dark}" <<'PY'
 import sys
 from PIL import Image
-base, x, y, w, h = sys.argv[1], *(float(v) * 2 for v in sys.argv[2:])
-for mode in ("light", "dark"):
+base, (x, y, w, h), modes = sys.argv[1], (float(v) * 2 for v in sys.argv[2:6]), sys.argv[6].split()
+for mode in modes:
     path = f"{base}-{mode}.png"
     image = Image.open(path)
     image.crop((int(x), int(y), int(min(x + w, image.width)), int(min(y + h, image.height)))).save(path)
 PY
 }
 
-# A throwaway AirSCP leaves your window sizes alone: its windows open at their own sizes (the main window 1100 × 700,
+# A throwaway AirSCP leaves your window sizes alone: its windows open at their own sizes (the main window 1180 × 700,
 # the sidebar 218 points wide), whatever yours are.
 open -n -g build/AirSCP.app --env AIRSCP_SUPPORT_DIR="$T/support" --env AIRSCP_SSH_DIR="$T/ssh" --env AIRSCP_AGENT=1
 for _ in $(seq 1 60); do "$bin" --agent snapshot include='["windows"]' >/dev/null 2>&1 && break; sleep 0.5; done
@@ -477,7 +477,7 @@ a select pane=transfers none=true
 # The README's first picture, and its Transfers panel (the same moment: one upload running, one paused, one verified).
 shot main-window
 for mode in light dark; do cp "$T/raw/main-window-$mode.png" "$T/raw/transfers-$mode.png"; done
-crop transfers 218 "$(frame main transfers.speedLimit | awk '{ print $2 - 10 }')" 882 700
+crop transfers 218 "$(frame main transfers.speedLimit | awk '{ print $2 - 10 }')" 962 700
 a set id=transfers.speedLimit value=Unlimited
 a press id=transfers.resumeAll
 a wait until=transfers_done timeout=120
@@ -511,6 +511,32 @@ sleep 0.4
 shot snippets target=window:Snippets
 a menu path='File > Close' in=window:Snippets
 main
+# The Terminal tab: bash marks each command with how it ended (one that fails, last), then the find bar.
+a menu path='Host > Terminal Tab'
+a wait until=text text='dev@web-01:~$' timeout=30
+a type target=terminal text=$'cd www\n'
+a wait until=text text='dev@web-01:~/www$' timeout=20
+a type target=terminal text=$'ls\n'
+a wait until=text text=contact.html timeout=20
+a type target=terminal text=$'grep -c GET ~/logs/access.log\n'
+a wait until=text text=18 timeout=20
+a type target=terminal text=$'cat missing.txt\n'
+a wait until=text text='No such file' timeout=20
+shot terminal
+a press id=terminal.find
+a set id=terminal.findText value=html
+shot terminal-find
+# The tab alone, from its bar down to the Transfers panel, so that the shell's lines stay legible; each appearance has
+# a header of its own height.
+for mode in light dark; do
+    appearance "$(tr '[:lower:]' '[:upper:]' <<<"${mode:0:1}")${mode:1}"
+    top=$(frame main terminal.find | awk '{ print $2 - 5 }')
+    height=$(frame main transfers.speedLimit | awk -v top="$top" '{ print $2 - 14 - top }')
+    crop terminal 218 "$top" 962 "$height" "$mode"
+    crop terminal-find 218 "$top" 962 "$height" "$mode"
+done
+appearance Light
+a press id=terminal.findDone
 a press title=Tunnels
 sleep 0.5
 shot tunnels
@@ -594,27 +620,59 @@ a press title=Cancel in=window:Keys
 a menu path='File > Close' in=window:Keys
 main
 
+# MARK: Certificates
+
+# A self-signed certificate for the demo server, made in the Certificate Manager; then its details, and the check of
+# its chain.
+mkdir -p "$T/Certificates"
+a menu path='Tools > Certificate Manager…'
+a wait until=text text='No certificates open' timeout=10
+a press id=certificates.new 'in=window:Certificate Manager'
+sheet
+a set id=certificates.newKind value='Self-signed certificate'
+a set id=certificates.commonName value=web-01.example.com
+a set id=certificates.names value='www.example.com, 203.0.113.10'
+a set id=certificates.organization value='Example Shop'
+a set id=certificates.country value=US
+shot certificate-new target=sheet
+a press 'title=Create…' in=sheet file="$T/Certificates/web-01.crt"
+a wait until=text text='Certificate: web-01.example.com' timeout=30
+shot certificates 'target=window:Certificate Manager'
+a press 'title=Verify…' 'in=window:Certificate Manager'
+sheet
+a set id=certificates.verifyHost value=web-01.example.com
+shot certificate-verify target=sheet
+a press title=Cancel in=sheet
+a menu path='File > Close' 'in=window:Certificate Manager'
+main
+
 # MARK: Settings
 
 shot settings target=window:Settings
-# Without this throwaway AirSCP's own paths (its key folder, the command with its settings folder): two parts.
-for mode in light dark; do cp "$T/raw/settings-$mode.png" "$T/raw/settings-agents-$mode.png"; done
+# Without this throwaway AirSCP's own paths (its key folder, the command with its settings folder): in parts.
 keys=$(frame Settings settings.keyFolder)
-agents=$(frame Settings settings.agentControl)
-command=$(frame Settings settings.mcpCommand)
 crop settings 0 0 540 "$(echo "$keys" | awk '{ print $2 - 64 }')"
-crop settings-agents 0 "$(echo "$agents" | awk '{ print $2 - 58 }')" 540 \
-    "$(echo "$agents $command" | awk '{ print $6 - $2 + 50 }')"
-# Advanced (Debug logging), at the end of the form: set scrolls it into view (switching the appearance scrolls back up).
+# The end of the form (Agents and Advanced): set scrolls Debug logging into view (switching the appearance scrolls back
+# up).
 for mode in light dark; do
     appearance "$(tr '[:lower:]' '[:upper:]' <<<"${mode:0:1}")${mode:1}"
     a set id=settings.debugLogging value=false in=window:Settings
     sleep 0.4
     a screenshot scale=2 target=window:Settings --out "$T/raw/settings-advanced-$mode.png"
+    cp "$T/raw/settings-advanced-$mode.png" "$T/raw/settings-agents-$mode.png"
+    cp "$T/raw/settings-advanced-$mode.png" "$T/raw/settings-ask-$mode.png"
 done
 debug=$(frame Settings settings.debugLogging)
+agents=$(frame Settings settings.agentControl)
+command=$(frame Settings settings.mcpCommand)
+ask=$(frame Settings settings.askBeforeAgentChanges)
 appearance Light
+crop settings-agents 0 "$(echo "$agents" | awk '{ print $2 - 58 }')" 540 \
+    "$(echo "$agents $command" | awk '{ print $6 - $2 + 50 }')"
+crop settings-ask 0 "$(echo "$ask" | awk '{ print $2 - 12 }')" 540 "$(echo "$ask $debug" | awk '{ print $6 - $2 - 40 }')"
 crop settings-advanced 0 "$(echo "$debug" | awk '{ print $2 - 52 }')" 540 1000
+echo "  settings-agents"
+echo "  settings-ask"
 echo "  settings-advanced"
 
 # MARK: Remote Desktop

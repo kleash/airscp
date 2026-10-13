@@ -6,7 +6,7 @@ import Testing
 @testable import AirSCP
 @testable import AirSCPCore
 
-// PLAN.md S.2 and the rest of the feature cycle's round-1 verdict, through the app's windows and agent control: the
+// Transfer settings, favourites and sheets through the app's windows and agent control: the
 // Transfers panel's speed limit, favourites, the conflict sheet's line about both items, the folder sheet's Leave out,
 // the download folder, Keys ▸ Install on Host on an sftp-only account, a verification code, Escape on an alert with one
 // button and the Window menu. One at a time, as FeatureRoundAppTests.
@@ -275,7 +275,15 @@ import Testing
             #expect(await call(agent, "press", ["title": "Install on Host…", "in": "window:Keys"]).error == nil)
             var reply = await call(agent, "set", ["title": "Host", "value": "files only", "in": "window:Keys"])
             #expect(reply.error == nil, "\(reply.error ?? "")")
-            #expect(await call(agent, "press", ["title": "Install", "in": "window:Keys"]).error == nil)
+            // Putting a key on a server waits for the person at the Mac, when Settings say so.
+            model.data.settings.askBeforeAgentChanges = true
+            agent.showQuestion = offScreen
+            let installing = Task { await call(agent, "press", ["title": "Install", "in": "window:Keys"]) }
+            let install = try #require(await waitForQuestion(agent))
+            #expect(install.change == "press “Install”")
+            install.answer = .once
+            #expect(await installing.value.error == nil)
+            model.data.settings.askBeforeAgentChanges = false
             reply = await call(agent, "wait", ["until": "sheet", "text": "The key was installed", "timeout": 30])
             #expect(reply.error == nil, "\(reply.json) \(reply.error ?? "")")
             #expect(await call(agent, "key", ["combo": "escape"]).error == nil)  // its one button, OK

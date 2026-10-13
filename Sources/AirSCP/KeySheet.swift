@@ -3,7 +3,7 @@ import AppKit
 import SwiftUI
 import UniformTypeIdentifiers
 
-/// New Key Pair, Import Key (a PuTTY .ppk) and Export as PuTTY Key, in one sheet (PLAN.md K.1, K.2): a form, the
+/// New Key Pair, Import Key (a PuTTY .ppk) and Export as PuTTY Key, in one sheet: a form, the
 /// work, then what came of it. The Keys window opens it, and the host editor (Generate New Key…, a .ppk chosen as the
 /// key file). ssh-keygen and ssh-add run through `keys`: their passphrase questions get what was typed here, and any
 /// other question (a security key's PIN, the passphrase of a key being exported) is a sheet on this one.
@@ -98,7 +98,7 @@ final class KeyFlow: ObservableObject, Identifiable {
         samePassphrase = encrypted == true
         name = KeysModel.freeName(Self.fileName(url), in: folder)
         if encrypted == nil {
-            notPPK = "“\(url.lastPathComponent)” isn't a PuTTY private key file (.ppk). Choose one saved by PuTTYgen or WinSCP."
+            notPPK = "“\(url.lastPathComponent)” isn't a PuTTY private key file (.ppk). Choose one saved by PuTTYgen."
         }
     }
 
@@ -382,7 +382,7 @@ struct KeyFlowView: View {
     private var importKey: some View {
         VStack(alignment: .leading, spacing: 14) {
             header("Import “\(flow.ppk?.url.lastPathComponent ?? "")”",
-                   "A PuTTY key (from PuTTYgen or WinSCP) becomes an OpenSSH key that ssh and AirSCP use. The .ppk file "
+                   "A PuTTY key (from PuTTYgen) becomes an OpenSSH key that ssh and AirSCP use. The .ppk file "
                     + "stays as it is.")
             Form {
                 if flow.ppk?.encrypted == true {
@@ -451,7 +451,7 @@ struct KeyFlowView: View {
                         .help("Show the key files in Finder")
                     Button("Export .ppk…", action: flow.startExport)
                         .disabled(!KeysModel.canExportToPuTTY(pair))
-                        .help(KeysModel.canExportToPuTTY(pair) ? "Save a copy as a PuTTY key (.ppk), for PuTTY or WinSCP on Windows"
+                        .help(KeysModel.canExportToPuTTY(pair) ? "Save a copy as a PuTTY key (.ppk), for PuTTY on Windows"
                               : "PuTTY keys can be RSA, ECDSA or Ed25519 only")
                 }
                 HStack {
@@ -482,7 +482,7 @@ struct KeyFlowView: View {
     private var export: some View {
         VStack(alignment: .leading, spacing: 14) {
             header("Export “\(flow.pair.map { RemotePath.name($0.privateKey) } ?? "")” as a PuTTY key",
-                   "A copy for PuTTY 0.75 or later, WinSCP and other Windows tools (.ppk, version 3). The key itself "
+                   "A copy for PuTTY 0.75 or later and other Windows tools (.ppk, version 3). The key itself "
                     + "stays as it is.")
             Form {
                 passphraseFields(("exportKey.passphrase", "exportKey.confirm"), label: "Passphrase:")

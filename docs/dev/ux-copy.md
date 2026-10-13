@@ -1,8 +1,8 @@
 # UX copy: how AirSCP explains itself
 
-People don't read manuals, and an app that needs one doesn't spread. AirSCP explains itself where it is used
-(PLAN.md section U, binding for every change). These are the rules the v1 copy pass followed (about 390 controls,
-14 empty states, a welcome sheet, the Tips page and 27 error messages were written to them).
+People don't read manuals, and an app that needs one doesn't spread. AirSCP explains itself where it is used, and
+every change keeps it so. These are the rules the v1 copy pass followed (about 390 controls, 14 empty states, a
+welcome sheet, the Tips page and 27 error messages were written to them).
 
 ## Tooltips
 

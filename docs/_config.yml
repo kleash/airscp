@@ -1,4 +1,4 @@
-# AirSCP Help, the documentation site (PLAN.md Y). GitHub Pages builds it from this folder (main branch, /docs) with
+# AirSCP Help, the documentation site. GitHub Pages builds it from this folder (main branch, /docs) with
 # the Just the Docs theme as a remote theme: no Gemfile and no workflow to keep up, and it gives the side navigation and
 # the search box. Preview and checks: scripts/docs-site.sh. Pictures: scripts/docs-screenshots.sh.
 title: AirSCP Help

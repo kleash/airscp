@@ -3,12 +3,17 @@
 FROM alpine:latest@sha256:294b683cb724975bec92580e1e685676bd4b50bda910ddb8c51d4cabeaec77e6
 ARG LAB_USER
 ARG LAB_PASSWORD
+# More packages for one service (the "passwd" one: shadow's setuid passwd; BusyBox's isn't setuid), and for the "sudo"
+# one a rule that lets the user be root without a password (NOPASSWD).
+ARG EXTRA_PACKAGES=""
+ARG SUDO_NOPASSWD=""
 
-RUN apk add --no-cache openssh-server \
+RUN apk add --no-cache openssh-server $EXTRA_PACKAGES \
  && ssh-keygen -A \
  && rm -f /usr/bin/unzip \
  && adduser -D -s /bin/sh "$LAB_USER" \
- && echo "$LAB_USER:$LAB_PASSWORD" | chpasswd
+ && echo "$LAB_USER:$LAB_PASSWORD" | chpasswd \
+ && if [ -n "$SUDO_NOPASSWD" ]; then echo "$LAB_USER ALL=(ALL) NOPASSWD: ALL" > /etc/sudoers.d/lab; fi
 
 COPY <<'EOF' /etc/ssh/sshd_config
 PasswordAuthentication yes

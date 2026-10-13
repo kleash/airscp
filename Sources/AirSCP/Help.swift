@@ -2,7 +2,7 @@ import AirSCPCore
 import AppKit
 import SwiftUI
 
-/// What each menu command does, in one line (PLAN.md U): the menu items' tooltips. By action, so a command says the
+/// What each menu command does, in one line: the menu items' tooltips. By action, so a command says the
 /// same in the menu bar and in a context menu. While an item is off, its validation puts the reason there instead
 /// (`NSMenuItem.explain`).
 enum MenuHelp {
@@ -49,7 +49,19 @@ enum MenuHelp {
         (#selector(FilePane.makeExecutable(_:)), "Let the selected server files run as programs (chmod +x)"),
         (#selector(FilePane.runItem(_:)), "Run the selected server file as a program and show its output"),
         (#selector(FilePane.copyPath(_:)), "Copy the full path of the selection (or of the folder shown)"),
-        (#selector(FilePane.openTerminalHere(_:)), "Open Terminal on this server in the folder shown"),
+        (#selector(FilePane.copyNames(_:)), "Copy the names of the selection, one per line"),
+        (#selector(FilePane.uploadAndDelete(_:)), "Upload the selection to the other pane's server folder, then move it to the Trash here"),
+        (#selector(FilePane.downloadAndDelete(_:)), "Download the selection to the other pane's folder, then delete it on the server"),
+        (#selector(FilePane.selectByPattern(_:)), "Add the items whose names match a pattern (*.log) to the selection"),
+        (#selector(FilePane.deselectByPattern(_:)), "Take the items whose names match a pattern out of the selection"),
+        (#selector(FilePane.selectSameKind(_:)), "Select every item with the selected item's extension"),
+        (#selector(FilePane.invertSelection(_:)), "Select what isn't selected, and the other way round"),
+        (#selector(FilePane.compareFolders(_:)), "Mark what differs between this Mac's folder and the server's (one level)"),
+        (#selector(FilePane.moveTo(_:)), "Move the selected server items to another folder on the server"),
+        (#selector(FilePane.copyTo(_:)), "Copy the selected server items to another folder on the server"),
+        (#selector(FilePane.newSymbolicLink(_:)), "Make a symbolic link on the server, to the selected item or a path you type"),
+        (#selector(FilePane.goToOtherPanesFolder(_:)), "Show the folder the other pane shows (this Mac or the same server)"),
+        (#selector(FilePane.openTerminalHere(_:)), "Open a terminal on this server in the folder shown (Terminal, or the Terminal tab: Settings)"),
         (#selector(FilePane.revealInFinder(_:)), "Show the selected Mac items in Finder"),
         (#selector(FilePane.deleteItems(_:)), "Delete the selected server items (asks first); items on this Mac go to the Trash"),
         (#selector(NSWindow.performClose(_:)), "Close the window; connections stay open (⌘0 brings AirSCP's window back)"),
@@ -60,7 +72,7 @@ enum MenuHelp {
         (#selector(NSText.copy(_:)), "Copy the selection: text, or items to paste into another folder or server"),
         (#selector(NSText.paste(_:)), "Paste text, or the copied items into the folder shown (files copied in Finder are uploaded)"),
         (#selector(NSText.selectAll(_:)), "Select everything in the list or field that has the focus"),
-        (#selector(MainWindowController.find(_:)), "Type to narrow the list that has the focus: a pane's files, or the sidebar's hosts"),
+        (#selector(MainWindowController.find(_:)), "Narrow the focused list (a pane's files, the sidebar's hosts), or find text in the terminal"),
         // View
         (#selector(NSSplitViewController.toggleSidebar(_:)), "Hide or show the list of hosts"),
         (#selector(MainWindowController.toggleCommandLog(_:)), "Show or hide every command AirSCP ran on this host, with its result, below the tabs"),
@@ -88,6 +100,9 @@ enum MenuHelp {
         (#selector(MainWindowController.showTunnels(_:)), "Show the host's port forwards (its Tunnels tab)"),
         (#selector(MainWindowController.showTerminal(_:)), "Show a shell on the host inside AirSCP (its Terminal tab), through this connection"),
         (#selector(MainWindowController.copySSHCommand(_:)), "Copy the ssh command line for this host, to paste into any terminal"),
+        (#selector(MainWindowController.copyLink(_:)), "Copy an sftp:// link to this host and the folder shown (never a password)"),
+        (#selector(MainWindowController.showServerInfo(_:)), "Show the server's key fingerprint, software, encryption and free space"),
+        (#selector(MainWindowController.changePassword(_:)), "Change your password on the server: passwd runs in the Terminal tab"),
         (#selector(MainWindowController.editHost(_:)), "Change the selected host's or desktop's settings"),
         (#selector(MainWindowController.duplicateHost(_:)), "Make a copy of the selected host or desktop, with its tunnels and saved password"),
         (#selector(MainWindowController.setColorTag(_:)), "Colour this host's icon in the sidebar"),
@@ -141,7 +156,7 @@ extension NSMenuItem {
     }
 }
 
-// MARK: The debug log (PLAN.md AE)
+// MARK: The debug log
 
 /// Shows the debug log in Finder (Help ▸ Show Debug Log in Finder, the failure banners' Show Debug Log); its folder
 /// when there is no file (yet).
@@ -187,7 +202,7 @@ struct DebugLogButton: View {
     }
 }
 
-/// A form's grey caption under a field (PLAN.md U): it wraps within the field's column rather than widening the form.
+/// A form's grey caption under a field: it wraps within the field's column rather than widening the form.
 struct FormCaption: View {
     let text: String
 
@@ -200,7 +215,7 @@ struct FormCaption: View {
     }
 }
 
-// MARK: The documentation site (PLAN.md Y)
+// MARK: The documentation site
 
 /// AirSCP Help on the web: the pages the Help menu and the sheets' "?" buttons open, one per topic, all in this table
 /// (the path of each page on the site). Each is a page of docs/ in AirSCP's repository; DocsTests checks that it is.
@@ -226,6 +241,7 @@ enum HelpPage: String, CaseIterable {
     case newKeyPair = "keys/new-key-pair.html"
     case installKey = "keys/install-a-key.html"
     case puttyKeys = "keys/putty-keys.html"
+    case newCertificate = "certificates/create.html"
     case settings = "settings.html"
 
     /// The site: GitHub Pages, built from docs/.
@@ -259,7 +275,7 @@ enum HelpPage: String, CaseIterable {
     }
 }
 
-/// The small "?" button of a sheet with several options (PLAN.md Y): it opens the sheet's page of AirSCP Help.
+/// The small "?" button of a sheet with several options: it opens the sheet's page of AirSCP Help.
 struct HelpButton: NSViewRepresentable {
     let page: HelpPage
 
@@ -299,7 +315,7 @@ extension NSAlert {
 
 // MARK: First run
 
-/// The welcome sheet (PLAN.md U): once on a first run with no hosts, and from Help ▸ Welcome to AirSCP…. Its three
+/// The welcome sheet: once on a first run with no hosts, and from Help ▸ Welcome to AirSCP…. Its three
 /// buttons close it and run their command; Start just closes it.
 struct WelcomeView: View {
     enum Choice { case importConfig, newHost, newDesktop }

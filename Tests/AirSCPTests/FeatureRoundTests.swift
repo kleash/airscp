@@ -5,9 +5,9 @@ import Testing
 @testable import AirSCP
 @testable import AirSCPCore
 
-// The feature cycle's round 1 (fix step): one regression test per behaviour the area testers found broken, here those
-// that run without the app's windows: unit tests, and the core against a throwaway sshd. The app and agent-control
-// ones are in FeatureRoundAppTests.swift, the Docker lab ones in FeatureRoundLabTests.swift.
+// Regression tests, one per behaviour that was found broken, here those that run without the app's windows: unit
+// tests, and the core against a throwaway sshd. The app and agent-control ones are in FeatureRoundAppTests.swift, the
+// Docker lab ones in FeatureRoundLabTests.swift.
 
 // MARK: Units
 

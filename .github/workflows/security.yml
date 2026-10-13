@@ -8,8 +8,8 @@
 # A CVE in FreeRDP or OpenSSL is fixed by a newer pin in scripts/build-freerdp.sh, then scripts/sbom.sh.
 name: Vulnerability scan
 
-# Pull requests, merges into main, by hand, and as a gate in release.yml (no daily schedule: owner's rule,
-# 2026-10-05), so no release ships with a known vulnerability in FreeRDP or OpenSSL.
+# Pull requests, merges into main, by hand, and as a gate in release.yml, so no release ships with a known
+# vulnerability in FreeRDP or OpenSSL.
 on:
   push:
     branches: [main]

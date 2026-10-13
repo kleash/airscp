@@ -1,7 +1,7 @@
 import AppKit
 import SwiftUI
 
-// Night Harbor (dark) and Paper (light), PLAN.md O.1: both are AppKit's own colours as the appearance resolves them
+// Night Harbor (dark) and Paper (light): both are AppKit's own colours as the appearance resolves them
 // (light or dark, Increase Contrast, the accent colour), so there is no theme object and no setting. What differs
 // between the two reads the appearance where it is drawn: the colours below, and the chips, dots, pills and bars.
 

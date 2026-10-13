@@ -19,6 +19,16 @@ import Testing
     #expect(Quote.sftp("/x/*?[]{}'") == #""/x/*?[]{}'""#)
 }
 
+/// A batch line holds one command: a line break in a path (a server's name, a link's path) can't start another one,
+/// and a line longer than sftp reads at once isn't sent (sftp would take its end as a command of its own).
+@Test func sftpBatchLinesStayOneCommandEach() {
+    #expect(Quote.sftp("/srv/a\nb") == #""/srv/a?b""#)
+    #expect(Quote.sftp("/srv/a\r\nb") == "\"/srv/a\r?b\"")
+    let line = "-chmod 644 " + Quote.sftp("/srv/" + String(repeating: "d/", count: 1100))
+    #expect(Session.tooLongForSFTP(["-chmod 644 \"/srv/short\"", line])?.details == line)
+    #expect(Session.tooLongForSFTP(["-chmod 644 " + Quote.sftp("/srv/" + String(repeating: "d", count: 2020))]) == nil)
+}
+
 @Test func scpSourceEscapesGlobCharacters() {
     #expect(Quote.scpSource(#"/a\*b [1]?.txt"#) == #"/a\\\*b \[1\]\?.txt"#)
     #expect(Quote.scpSource("/plain name's \"x\"") == "/plain name's \"x\"")
@@ -150,6 +160,24 @@ private func optionValues(_ argv: [String]) -> [String] {
     // TerminalLauncher.script, in ShellTests.)
     #expect(argv.suffix(3) == ["-t", "h", OpenSSH.viaSh(#"cd '/srv/it'\''s here' && exec "$SHELL" -l"#)])
     #expect(!OpenSSH.terminal(host, jump: nil, socket: "/s").contains("-t"))
+}
+
+/// The Terminal tab's shell: the pid line, the folder, then bash and zsh started with their marks (signed with the
+/// tab's token), else the login shell as before; sh (dash too) reads it all. TerminalScreenTests run it on servers.
+@Test func terminalShellStartsBashAndZshWithMarks() async {
+    let line = OpenSSH.terminalShell(in: "/srv/it's here", token: "c0ffee")
+    // viaSh's printf escapes, back to the script sh runs.
+    let escapes = line.components(separatedBy: "printf \"").last?.components(separatedBy: "\")\"'").first ?? ""
+    let script = String(decoding: escapes.split(separator: "\\").compactMap { UInt8($0, radix: 8) }, as: UTF8.self)
+    #expect(script.hasPrefix(#"printf '\033]1337;AirSCPPid=%s\007' "$$"; cd '/srv/it'\''s here' 2>/dev/null"#), "\(script)")
+    #expect(script.hasSuffix(#"exec "$SHELL" -l"#) && script.contains(#"exec "$SHELL" --rcfile "$AIRSCP_RC/rc" -i"#)
+            && script.contains("ZDOTDIR=$AIRSCP_RC; export ZDOTDIR"))
+    // Signed marks in both; the token before zsh's command line, which may hold ";".
+    #expect(script.contains(#"PS1=$__airscp_a$PS1$__airscp_b"#) && script.contains(#"'\[\e]133;A;airscp=c0ffee\a\]'"#)
+            && script.contains(#"'\e]133;C;airscp=c0ffee;cmdline=%s\a' "$1""#), "\(script)")
+    for sh in ["/bin/sh", "/bin/dash", "/bin/bash"] where FileManager.default.isExecutableFile(atPath: sh) {
+        #expect(await Runner.run([sh, "-n", "-c", script]).status == 0, "\(sh)")
+    }
 }
 
 @Test func keyCommands() {
@@ -294,7 +322,7 @@ private func optionValues(_ argv: [String]) -> [String] {
         -rw-r--r--    ? 1000     1000        16441 Oct  2 11:39 index.html
         -rw-r--r--    ? 1000     1000            7 Sep 30 08:01  leading space.txt
         lrwxrwxrwx    ? 1000     1000           11 Mar  5  2025 current -> ignored?
-        -rwsr-x--T    ? sa       Domain Users    0 Dec 31 23:59 setuid
+        -rwsr-x--T    ? me       Domain Users    0 Dec 31 23:59 setuid
         drwxrwxrwt+   ? 0        0               0 Oct  3 10:00 future
         -rw-r--r--    ? 0        0               5 Oct  1 10:00 a name with
         a newline in it
@@ -314,7 +342,7 @@ private func optionValues(_ argv: [String]) -> [String] {
     // A day only ("Mar  5  2025"): that day's midnight in UTC, whatever the time zone sftp printed it in.
     #expect(entries[2].dateOnly && entries[2].modified == Date(timeIntervalSince1970: 1_741_132_800) && !index.dateOnly)
     #expect(entries[3].mode == 0o4750 | 0o1000)
-    #expect(entries[3].owner == "sa" && entries[3].group == "Domain Users")
+    #expect(entries[3].owner == "me" && entries[3].group == "Domain Users")
     // Dec 31 23:59 "in the future" is last year's.
     #expect(Calendar.current.component(.year, from: entries[3].modified!) == 2025)
     #expect(entries[4].kind == .directory && entries[4].mode == 0o1777)
@@ -392,7 +420,7 @@ private func optionValues(_ argv: [String]) -> [String] {
     #expect(kind("ssh: Could not resolve hostname nope: nodename nor servname provided, or not known") == .unknownHost)
     #expect(kind("ssh: connect to host 10.255.255.1 port 22: Operation timed out") == .timeout)
     #expect(kind("ssh: connect to host 10.0.0.1 port 22: No route to host") == .noRoute)
-    #expect(kind("sa@127.0.0.1: Permission denied (publickey,password).") == .authFailed(methods: "publickey,password"))
+    #expect(kind("me@127.0.0.1: Permission denied (publickey,password).") == .authFailed(methods: "publickey,password"))
     #expect(kind("Received disconnect from 1.2.3.4 port 22:2: Too many authentication failures") == .tooManyAuthFailures)
     // Wrong passwords, or a key file that isn't there, may end in "Too many authentication failures" too: the
     // message says what really went wrong, not "too many keys".
@@ -470,7 +498,7 @@ private func optionValues(_ argv: [String]) -> [String] {
         Are you sure you want to continue connecting (yes/no/[fingerprint])?\u{20}
         """
     #expect(Askpass.classify(hostKey) == .hostKey(host: "[127.0.0.1]:58701", fingerprint: "SHA256:wq/DEkLPz5TGMXMO5RO8e5z0ieCRuNN+NIDXdnCkqZ4"))
-    #expect(Askpass.classify("sa@127.0.0.1's password: ") == .password(user: "sa", host: "127.0.0.1"))
+    #expect(Askpass.classify("me@127.0.0.1's password: ") == .password(user: "me", host: "127.0.0.1"))
     #expect(Askpass.classify("(deploy@web.example.com) Password: ") == .password(user: "deploy", host: "web.example.com"))
     #expect(Askpass.classify("Password:") == .password(user: nil, host: nil))
     #expect(Askpass.classify("Enter passphrase for key '/Users/me/.ssh/id_ed25519': ") == .passphrase)
@@ -580,7 +608,7 @@ private func optionValues(_ argv: [String]) -> [String] {
     #expect(other.rdpEntries == data.rdpEntries && other.snippets.map(\.name) == ["mine"] && !other.settings.showHidden)
 }
 
-/// AirSCP was called Porter (PLAN.md X). Its environment variables still answer to their PORTER_ names; AIRSCP_ wins.
+/// AirSCP was called Porter. Its environment variables still answer to their PORTER_ names; AIRSCP_ wins.
 @Test func environmentVariablesStillTakeTheirPorterNames() {
     #expect(Env.value("SUPPORT_DIR", in: ["AIRSCP_SUPPORT_DIR": "/a"]) == "/a")
     #expect(Env.value("SUPPORT_DIR", in: ["PORTER_SUPPORT_DIR": "/p"]) == "/p")
@@ -609,7 +637,7 @@ private func optionValues(_ argv: [String]) -> [String] {
     let defaults = try #require(MemoryDefaults(suiteName: nil))
     let frame = "NSWindow Frame Main", columns = "NSTableView Columns v3 Porter.RightPane"
     let sidebar = "NSSplitView Subview Frames Sidebar"
-    // Porter saved its window taller than the screen, which opened AirSCP full height (user report, 2026-10-05).
+    // Porter saved its window taller than the screen, which opened AirSCP full height.
     defaults.domains["com.sa.porter"] = [frame: "338 -966 1113 2050 0 0 1728 1084 ", columns: Data([1, 2, 3]),
                                          "NSWindow Frame GoToSheet": "634 547 460 215 0 0 1728 1084 ",
                                          sidebar: ["0.000000, 0.000000, 218.000000, 2050.000000, NO, NO"]]
@@ -660,6 +688,7 @@ final class MemoryDefaults: UserDefaults {
     #expect(host.proxyID == nil && host.serverAliveInterval == 15 && host.autoReconnect)
     #expect(data.settings.terminalApp == .iTerm && data.settings.preserveTimes)
     #expect(data.settings.appearance == .system && !data.settings.alwaysCalculateFolderSizes && !data.settings.verifyTransfers)
+    #expect(data.settings.askBeforeAgentChanges)  // an agent's changes wait for the person at the Mac
     #expect(data.proxies.isEmpty && data.rdpEntries.isEmpty)
 
     // What this version writes reads back the same.
@@ -673,5 +702,6 @@ final class MemoryDefaults: UserDefaults {
     new.rdpEntries = [desktop]
     new.settings.appearance = .dark
     new.settings.verifyTransfers = true
+    new.settings.askBeforeAgentChanges = false
     #expect(try JSONDecoder().decode(AirSCPData.self, from: JSONEncoder().encode(new)) == new)
 }

@@ -315,11 +315,12 @@ extension Session {
                 // entry ls may not look at).
             }
         }
-        let batch = "cd \(Quote.sftp(dir))\nls -la\n"
-        let argv = OpenSSH.sftpBatch(host, jump: jump, socket: socketPath)
+        let batch = "cd \(Quote.sftp(dir))\n"
+        if let tooLong = Session.tooLongForSFTP([batch]) { throw tooLong }
+        let argv = sftpArgv()
         let result = try await cancellable { cancellation in
-            slot == .control ? try await runControl(argv, input: batch, cancellation: cancellation)
-                : try await runMuxed(argv, input: batch, cancellation: cancellation)
+            slot == .control ? try await runControl(argv, input: batch + "ls -la\n", cancellation: cancellation)
+                : try await runMuxed(argv, input: batch + "ls -la\n", cancellation: cancellation)
         }
         // sftp exits 0 when it can go into a folder but not read it ("remote readdir(…): Permission denied").
         guard result.status == 0, !result.stderr.contains("remote readdir(") else {
@@ -402,9 +403,10 @@ extension Session {
         var result: [[RemoteEntry]?] = []
         while result.count < dirs.count {
             let chunk = Array(dirs[result.count...].prefix(200))
+            if let tooLong = Session.tooLongForSFTP(chunk.map { "cd \(Quote.sftp($0))" }) { throw tooLong }
             let batch = chunk.map { "cd \(Quote.sftp($0))\nls -la\n" }.joined()
             let run = try await cancellable { cancellation in
-                try await runControl(OpenSSH.sftpBatch(host, jump: jump, socket: socketPath), input: batch, cancellation: cancellation)
+                try await runControl(sftpArgv(), input: batch, cancellation: cancellation)
             }
             // sftp echoes each command: a folder's part starts at the line echoing its cd. (It exits 0 when it can go
             // into a folder but not read it: then none of these is used.)
@@ -550,6 +552,33 @@ extension Session {
             }
         }
         guard !commands.isEmpty else { return }
+        try await shell("s=0; " + commands.map { $0 + " || s=1; " }.joined() + "[ $s = 0 ]")
+    }
+
+    /// Changes the owner and/or group (empty: unchanged) of the items, and with `recursive` of everything in the folders:
+    /// `chown [-R] owner:group` with a shell; sftp's chown and chgrp without one, which take numbers
+    /// only and don't descend. Only root may give a file to another user: the server's refusal comes back in words.
+    public func setOwner(_ entries: [RemoteEntry], owner: String, group: String, recursive: Bool = false) async throws {
+        let owner = owner.trimmingCharacters(in: .whitespaces), group = group.trimmingCharacters(in: .whitespaces)
+        guard !owner.isEmpty || !group.isEmpty, !entries.isEmpty else { return }
+        guard capabilities.shell else {
+            guard owner.allSatisfy(\.isNumber), group.allSatisfy(\.isNumber) else {
+                throw AirSCPError(.other, "This server allows file transfers only: owner and group must be numbers (user and "
+                                  + "group IDs), as sftp takes them.")
+            }
+            var lines: [String] = []
+            for entry in entries {
+                if !owner.isEmpty { lines.append("-chown \(owner) \(Quote.sftp(entry.path))") }
+                if !group.isEmpty { lines.append("-chgrp \(group) \(Quote.sftp(entry.path))") }
+            }
+            let refused = try await sftp(lines).stderr
+            if !refused.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { throw ErrorMapping.map(refused, status: 1) }
+            return
+        }
+        let who = owner.isEmpty ? ":" + group : group.isEmpty ? owner : owner + ":" + group
+        // "--": an owner typed with a leading "-" is a name, never one of chown's options (GNU, BSD and BusyBox).
+        let commands = Session.chunks(entries.map { Quote.shell($0.path) })
+            .map { "chown \(recursive ? "-R " : "")-- \(Quote.shell(who)) \($0)" }
         try await shell("s=0; " + commands.map { $0 + " || s=1; " }.joined() + "[ $s = 0 ]")
     }
 

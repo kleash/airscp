@@ -3,7 +3,7 @@ import AppKit
 import SwiftUI
 
 /// Settings: light or dark, which terminal app opens ssh sessions, where downloads go, the browser's defaults, how new
-/// hosts and desktops check their servers (PLAN.md U.4), where new keys go (K.1), agent control and the debug log (AE).
+/// hosts and desktops check their servers, where new keys go, agent control and the debug log.
 struct SettingsView: View {
     @ObservedObject var model: AppModel
     private let iTermInstalled = NSWorkspace.shared.urlForApplication(withBundleIdentifier: TerminalLauncher.iTermID) != nil
@@ -47,6 +47,9 @@ struct SettingsView: View {
                 .accessibilityLabel("Open terminals in")
                 .help("The app that Open Terminal, Run in Terminal and Kill with sudo use (Terminal by default)")
                 caption("iTerm can be chosen when it is installed.")
+                Toggle("Open Terminal Here in the Terminal tab", isOn: $model.data.settings.openTerminalHereInTab)
+                    .accessibilityIdentifier("settings.openTerminalHereInTab")
+                    .help("Off by default. On, a server folder's Open Terminal Here goes to the host's Terminal tab in AirSCP")
                 LabeledContent("Downloads folder") {
                     HStack {
                         Text((model.data.settings.downloadFolder as NSString).abbreviatingWithTildeInPath)
@@ -141,6 +144,14 @@ struct SettingsView: View {
                     .help("Copy the command, to paste into Terminal")
                     .accessibilityIdentifier("settings.copyMCPCommand")
                 }
+                Toggle("Ask before agents change things", isOn: $model.data.settings.askBeforeAgentChanges)
+                    .help("On by default: agents wait for your OK before they delete, run commands, copy files or type into "
+                          + "a terminal. Off lets them do it at once")
+                    .accessibilityIdentifier(AgentServer.askSetting)
+                caption("A small window asks you first: Allow Once, Allow for 15 Minutes or Deny. It asks before an agent "
+                        + "deletes, replaces or renames files, copies them, changes their permissions, runs a command, "
+                        + "puts a key on a server or in the ssh agent, switches a tunnel, kills a process, disconnects, "
+                        + "quits, or types into a Terminal tab or a Windows desktop. Agents can't change this setting.")
             }
             Section("Advanced") {
                 Toggle("Debug logging", isOn: $model.data.settings.debugLogging)

@@ -3,7 +3,7 @@ import os
 
 let log = Logger(subsystem: "com.kleash.airscp", category: "core")
 
-/// How an SSH server's host key is checked (PLAN.md U.4; `OpenSSH.options`).
+/// How an SSH server's host key is checked (`OpenSSH.options`).
 public enum HostKeyCheck: String, Codable, CaseIterable {
     /// A new server's key is asked about (Trust); a changed one is refused. ssh's own default.
     case ask
@@ -13,7 +13,7 @@ public enum HostKeyCheck: String, Codable, CaseIterable {
     case off
 }
 
-/// How a Remote Desktop's server certificate is checked (PLAN.md U.4; `RDPSession.Options`).
+/// How a Remote Desktop's server certificate is checked (`RDPSession.Options`).
 public enum CertificateCheck: String, Codable, CaseIterable {
     /// A certificate not trusted yet, or changed, is asked about.
     case ask
@@ -54,7 +54,7 @@ public struct SSHHost: Codable, Identifiable, Hashable {
     public var tunnels: [Tunnel] = []
     /// The local pane's last folder for this host.
     public var lastLocalDir: String?
-    /// The HTTP proxy for the connection from this Mac (`Proxy.id`). With a jump host, the jump host's own proxy is
+    /// The proxy for the connection from this Mac (`Proxy.id`). With a jump host, the jump host's own proxy is
     /// the one used (it is the first hop) and this one is ignored.
     public var proxyID: UUID?
     /// Keep-alive: the master's ServerAliveInterval, in seconds.
@@ -63,11 +63,17 @@ public struct SSHHost: Codable, Identifiable, Hashable {
     public var autoReconnect = true
     /// Server folders kept with Go ▸ Add to Favourites, in the order added.
     public var favourites: [String] = []
+    /// The folder on this Mac the other pane showed when a favourite was added, by its server folder: choosing the
+    /// favourite shows both.
+    public var favouriteLocalFolders: [String: String] = [:]
     /// The folder-transfer and Synchronize sheets' "Leave out" as last typed: names or patterns separated by commas
     /// (`TransferQueue.patterns`).
     public var leaveOut = ""
     /// How the server's host key is checked.
     public var hostKeyCheck = HostKeyCheck.ask
+    /// Browse and transfer as this user with sudo (no password: NOPASSWD), e.g. root; empty: as the
+    /// login user. Typed commands and the Terminal tab stay the login user's.
+    public var sudoUser = ""
 
     public init(id: UUID = UUID(), label: String = "", hostname: String = "", port: Int? = nil, username: String = "",
                 auth: Auth = .agent, keyFile: String = "") {
@@ -106,8 +112,10 @@ public struct SSHHost: Codable, Identifiable, Hashable {
         serverAliveInterval = try value(.serverAliveInterval, defaults.serverAliveInterval)
         autoReconnect = try value(.autoReconnect, defaults.autoReconnect)
         favourites = try value(.favourites, defaults.favourites)
+        favouriteLocalFolders = try value(.favouriteLocalFolders, defaults.favouriteLocalFolders)
         leaveOut = try value(.leaveOut, defaults.leaveOut)
         hostKeyCheck = try value(.hostKeyCheck, defaults.hostKeyCheck)
+        sudoUser = try value(.sudoUser, defaults.sudoUser)
     }
 
     /// The label, else user@host:port.
@@ -140,6 +148,43 @@ public struct Snippet: Codable, Identifiable, Hashable {
         self.name = name
         self.command = command
         self.runInTerminal = runInTerminal
+    }
+
+    /// The placeholders a snippet can hold for the files selected in a server pane: {file} (each item's path; the
+    /// command runs once per item), {name} (each item's name), {files} (every path, once) and {folder} (the folder
+    /// shown).
+    public static let placeholders = ["{file}", "{name}", "{files}", "{folder}"]
+
+    /// Whether it holds a placeholder: it is offered in the server pane's Run Snippet menu.
+    public var usesPlaceholders: Bool { Self.placeholders.contains { command.contains($0) } }
+
+    /// Whether it needs a selection: {file}, {name} or {files}.
+    public var needsFiles: Bool { ["{file}", "{name}", "{files}"].contains { command.contains($0) } }
+
+    /// The command line for `paths` in `folder`, every value shell-quoted: once per path when it holds {file} or {name},
+    /// else once. Nothing typed is put in unquoted. The command is read once, left to right: a server's name that holds
+    /// a placeholder's text is never filled in again, which would put the rest of it outside its quotes.
+    public func expanded(paths: [String], folder: String) -> String {
+        func fill(_ path: String?) -> String {
+            var values = ["{files}": paths.map(Quote.shell).joined(separator: " "), "{folder}": Quote.shell(folder)]
+            if let path {
+                values["{file}"] = Quote.shell(path)
+                values["{name}"] = Quote.shell(RemotePath.name(path))
+            }
+            var text = "", rest = Substring(command)
+            while let next = rest.first {
+                if let (placeholder, value) = values.first(where: { rest.hasPrefix($0.key) }) {
+                    text += value
+                    rest = rest.dropFirst(placeholder.count)
+                } else {
+                    text.append(next)
+                    rest = rest.dropFirst()
+                }
+            }
+            return text
+        }
+        guard command.contains("{file}") || command.contains("{name}") else { return fill(nil) }
+        return paths.map(fill).joined(separator: "\n")
     }
 }
 
@@ -175,15 +220,22 @@ public struct Tunnel: Codable, Identifiable, Hashable {
     }
 }
 
-/// An HTTP proxy (CONNECT) that a host's first hop goes through. Its password, if any, is in the Keychain under
+/// An HTTP (CONNECT) or SOCKS5 proxy that a host's first hop goes through. Its password, if any, is in the Keychain under
 /// `keychainKey`.
 public struct Proxy: Codable, Identifiable, Hashable {
+    /// HTTP CONNECT (the default), or SOCKS5.
+    public enum Kind: String, Codable, CaseIterable { case http, socks5 }
+
     public var id = UUID()
     public var name = ""
     public var host = ""
     public var port = 8080
     /// Empty: the proxy needs no authentication.
     public var username = ""
+    /// nil: HTTP (proxies saved before SOCKS5 have none).
+    public var kind: Kind?
+
+    public var isSOCKS: Bool { kind == .socks5 }
 
     public init(id: UUID = UUID(), name: String = "", host: String = "", port: Int = 8080, username: String = "") {
         self.id = id
@@ -287,25 +339,30 @@ public struct AppSettings: Codable, Equatable {
     public var appearance = Appearance.system
     /// Calculate folder sizes whenever a remote folder is listed (else only on request).
     public var alwaysCalculateFolderSizes = false
-    /// AI agents and scripts may control AirSCP (`AirSCP --mcp`, `AirSCP --agent`; PLAN.md T). Off by default.
+    /// AI agents and scripts may control AirSCP (`AirSCP --mcp`, `AirSCP --agent`). Off by default.
     public var agentControl = false
-    /// The Transfers panel's speed limit for every host's transfers, in MB/s; 0: none (PLAN.md S.2).
+    /// The Transfers panel's speed limit for every host's transfers, in MB/s; 0: none.
     public var transferSpeedLimit = 0
     /// Each single file's copy is checked against the original (SHA-256) once it has arrived. Off by default.
     public var verifyTransfers = false
     /// The welcome sheet has been shown (it comes once, on a first run with no hosts; Help ▸ Welcome to AirSCP… again).
     public var welcomeShown = false
     /// How new hosts check their server's key, and new desktops their server's certificate (with `caFile` for
-    /// `.companyCA`): Settings ▸ Security (PLAN.md U.4).
+    /// `.companyCA`): Settings ▸ Security.
     public var hostKeyCheck = HostKeyCheck.ask
     public var certificateCheck = CertificateCheck.ask
     public var caFile = ""
-    /// Where New Key Pair and Import Key save keys; empty: ~/.ssh (PLAN.md K.1).
+    /// Where New Key Pair and Import Key save keys; empty: ~/.ssh.
     public var keyFolder = ""
-    /// Settings ▸ Debug logging (`DebugLog`, PLAN.md AE). Off by default.
+    /// Settings ▸ Debug logging (`DebugLog`). Off by default.
     public var debugLogging = false
-    /// Ask AirSCP and Explain use Apple Intelligence (on this Mac only) when the Mac has it (PLAN.md AD).
+    /// Ask AirSCP and Explain use Apple Intelligence (on this Mac only) when the Mac has it.
     public var appleIntelligence = true
+    /// An agent's request that would change something outside AirSCP's own windows (delete, run a command, copy
+    /// files…) waits until the person at the Mac allows it. On by default.
+    public var askBeforeAgentChanges = true
+    /// Open Terminal Here goes to the host's Terminal tab, not to `terminalApp`. Off by default.
+    public var openTerminalHereInTab = false
 
     public init() {}
 
@@ -332,6 +389,10 @@ public struct AppSettings: Codable, Equatable {
         keyFolder = try container.decodeIfPresent(String.self, forKey: .keyFolder) ?? defaults.keyFolder
         debugLogging = try container.decodeIfPresent(Bool.self, forKey: .debugLogging) ?? defaults.debugLogging
         appleIntelligence = try container.decodeIfPresent(Bool.self, forKey: .appleIntelligence) ?? defaults.appleIntelligence
+        askBeforeAgentChanges = try container.decodeIfPresent(Bool.self, forKey: .askBeforeAgentChanges)
+            ?? defaults.askBeforeAgentChanges
+        openTerminalHereInTab = try container.decodeIfPresent(Bool.self, forKey: .openTerminalHereInTab)
+            ?? defaults.openTerminalHereInTab
     }
 }
 
@@ -394,8 +455,8 @@ public struct AirSCPData: Codable, Equatable {
     }
 }
 
-/// AirSCP's environment variables: AIRSCP_<name>, else PORTER_<name>, the name from before the app was renamed
-/// (PLAN.md X), which this release still accepts.
+/// AirSCP's environment variables: AIRSCP_<name>, else PORTER_<name>, the name from before the app was renamed,
+/// which this release still accepts.
 public enum Env {
     public static func value(_ name: String, in environment: [String: String] = ProcessInfo.processInfo.environment) -> String? {
         environment["AIRSCP_" + name] ?? environment["PORTER_" + name]
@@ -420,7 +481,7 @@ public enum Store {
 
     public static var fileURL: URL { directory.appendingPathComponent("airscp.json") }
 
-    /// AirSCP was called Porter (PLAN.md X). Its first start (no settings folder yet) takes over Porter's settings: the
+    /// AirSCP was called Porter. Its first start (no settings folder yet) takes over Porter's settings: the
     /// folder's contents (porter.json as airscp.json, the trusted Remote Desktop certificates) and the sidebar width
     /// and column layouts in Porter's defaults (com.sa.porter). Porter's own are left as they were (`Keychain` does the
     /// same with the saved passwords). An instance with a settings folder of its own (AIRSCP_SUPPORT_DIR) takes

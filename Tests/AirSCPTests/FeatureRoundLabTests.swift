@@ -5,8 +5,8 @@ import Testing
 @testable import AirSCP
 @testable import AirSCPCore
 
-// The feature cycle's round 1 (fix step) against the Docker lab (AIRSCP_DOCKER=1): what needs a Linux server (names
-// that differ only in case or in their Unicode form are different files there).
+// Regression tests against the Docker lab (AIRSCP_DOCKER=1): what needs a Linux server (names that differ only in
+// case or in their Unicode form are different files there).
 
 @Suite(.enabled(if: Lab.enabled, "Docker lab: AIRSCP_DOCKER=1 ./test.sh"))
 struct FeatureRoundLabTests {
@@ -35,7 +35,7 @@ struct FeatureRoundLabTests {
         }
     }
 
-    /// Round 1's files and transfers testers, on GNU and BusyBox servers: a link to a file downloads as the file (it was
+    /// Files and transfers on GNU and BusyBox servers: a link to a file downloads as the file (it was
     /// taken for a folder, and its cd failed); a pipe says it can't be copied; a file over six months old lists as its
     /// day (it showed midnight UTC as a local time of day); a selection's permissions change in one command.
     @Test func linksOldDatesAndPermissionsOnLinux() async throws {

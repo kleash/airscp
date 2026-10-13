@@ -347,7 +347,7 @@ struct WindowsRunner {
     #expect(changed.oldFingerprint?.isEmpty == false && changed.oldFingerprint != changed.fingerprint)
 }
 
-/// Trust automatically (PLAN.md U.4): the server's first certificate is trusted and remembered without a question;
+/// Trust automatically: the server's first certificate is trusted and remembered without a question;
 /// a changed one is still asked about, as a change, and No refuses it. Don't check asks nothing, even then.
 @Test func rdpTrustAutomaticallyStillWarnsWhenTheCertificateChanges() async throws {
     let (host, password) = try #require(windows(), "AIRSCP_WINDOWS=1 needs the VM's address and credentials")

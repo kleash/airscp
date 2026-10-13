@@ -130,7 +130,7 @@ private func askpassHelper(_ prompt: String, environment: [String: String]) asyn
             case .passphrase:
                 Task {
                     for _ in 0..<2 {
-                        let (output, status) = await askpassHelper("sa@127.0.0.1's password: ", environment: environment)
+                        let (output, status) = await askpassHelper("me@127.0.0.1's password: ", environment: environment)
                         helperOutput.append(status == 0 ? output : "failed")
                     }
                     #expect(saved.all.isEmpty)
@@ -145,7 +145,7 @@ private func askpassHelper(_ prompt: String, environment: [String: String]) asyn
         }
         try await session.connect()
         #expect(helperOutput.all == ["saved-pw-7Q\n", "typed password\n"])
-        #expect(shown.all.map(\.kind) == [.passphrase, .password(user: "sa", host: "127.0.0.1")])
+        #expect(shown.all.map(\.kind) == [.passphrase, .password(user: "me", host: "127.0.0.1")])
         #expect(saved.all == ["typed password"])
 
         // Prompts for an id without a handler, or a cancelled one, make the helper fail (ssh then gives up).
@@ -277,7 +277,7 @@ private func askpassHelper(_ prompt: String, environment: [String: String]) asyn
     #expect(OpenSSH.addToAgent("/t/k") == ["/usr/bin/ssh-add", "/t/k"])
 }
 
-/// AirSCP was called Porter (PLAN.md X): until AirSCP has a Keychain item of its own, the passwords Porter saved (its
+/// AirSCP was called Porter: until AirSCP has a Keychain item of its own, the passwords Porter saved (its
 /// item, com.sa.porter) answer, and go into AirSCP's item at once. Porter's item is only read, never written or
 /// removed.
 @MainActor @Test func portersSavedPasswordsMoveIntoAirSCPsItem() throws {

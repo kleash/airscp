@@ -3,7 +3,7 @@ import Foundation
 import Testing
 @testable import AirSCPCore
 
-// PLAN.md U.4: how a host checks its server's key (ssh's StrictHostKeyChecking, scoped to the host) and a Remote
+// How a host checks its server's key (ssh's StrictHostKeyChecking, scoped to the host) and a Remote
 // Desktop its server's certificate (ask, trust the first one, don't check, or a company certificate authority).
 
 @Test func serverKeyChecksBecomeTheHostsOwnSSHOptions() throws {

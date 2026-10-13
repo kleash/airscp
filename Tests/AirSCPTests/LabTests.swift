@@ -4,8 +4,8 @@ import Testing
 @testable import AirSCPCore
 
 // What the throwaway user-mode sshd can't play, against the Docker lab (testenv/): PAM and password logins with
-// Remember, a jump host into a private network, a chroot sftp-only account, login noise, BusyBox, and the performance
-// targets of PLAN.md S (a 50 000-entry folder; multi-GB files at plain scp speed).
+// Remember, a jump host into a private network, a chroot sftp-only account, login noise, BusyBox, and the speed
+// targets (a 50 000-entry folder; multi-GB files at plain scp speed).
 
 @Suite(.enabled(if: Lab.enabled, "Docker lab: AIRSCP_DOCKER=1 ./test.sh"))
 struct LabTests {
@@ -149,7 +149,7 @@ struct LabTests {
                   + "(plain sftp: \(String(format: "%.2f", plainTime)) s)")
             #expect(entries.count == 50_000)
             #expect(entries.first { $0.name == "file-50000.txt" }?.size == 17)  // "small file 50000\n"
-            // PLAN.md S: such a folder shows within about 2 s (on a quiet Mac; the other tests run alongside).
+            // Such a folder shows within about 2 s (on a quiet Mac; the other tests run alongside).
             #expect(time < plainTime * 2 + 1 && time < 10)
         }
     }

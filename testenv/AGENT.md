@@ -15,6 +15,10 @@ For tests (not in the guide, which ships with the app):
   or `AIRSCP_SUPPORT_DIR=$T/support build/AirSCP.app/Contents/MacOS/AirSCP --agent snapshot`. One AirSCP per folder;
   instances with different folders keep their connections apart even with the same hosts (the ssh control sockets
   are named per folder).
+- Nobody answers a throwaway instance's questions to the person at the Mac: a request that changes something (a
+  delete, a drop, typing into the Terminal tab…) would wait 45 s and fail. Scripts and tests put
+  `"settings": {"askBeforeAgentChanges": false}` in its airscp.json (with the other settings they need); the
+  in-process tests' `testModel` and `agentWindow` turn it off, and the tests of the questions turn it on again.
 - A throwaway instance (AIRSCP_SUPPORT_DIR set) never reads or writes the login Keychain: "Remember in Keychain" and
   saved passwords stay in its memory until it quits, so password hosts and Remote Desktop logins are fine there (no
   macOS question about the "AirSCP" item). Keys ▸ "Add to Agent" still adds the key to the user's ssh agent (without
@@ -22,11 +26,11 @@ For tests (not in the guide, which ships with the app):
   IdentityAgent none and IdentityFile none itself when it is missing; the recipe above makes it first anyway.
 - A throwaway instance shares AirSCP's defaults (com.kleash.airscp) with the user's AirSCP but leaves them alone: it
   neither reads nor saves window sizes, the sidebar's width or the panes' columns, so its windows open at their own
-  sizes (main window 1100 × 700, Settings 600 points of its form, in the middle of the screen) and there is nothing to
+  sizes (main window 1180 × 700, Settings 600 points of its form, in the middle of the screen) and there is nothing to
   put back afterwards. Only a real Open or Save panel (the `ui` tool's checks) saves its folder and size there.
 - An empty throwaway instance greets with the "Welcome to AirSCP" sheet: `press title=Start` first (one with hosts in
   its airscp.json doesn't).
-- `--env AIRSCP_DEBUG=1` turns on the debug log from the start (PLAN.md AE): the instance writes it in its own settings
+- `--env AIRSCP_DEBUG=1` turns on the debug log from the start: the instance writes it in its own settings
   folder, `$T/support/AirSCP-debug.log` (`snapshot` → debugLog.path), never in ~/Library/Logs.
 - AirSCP was called Porter: every AIRSCP_* variable (AIRSCP_SUPPORT_DIR, AIRSCP_SSH_DIR, AIRSCP_AGENT, the tests'
   AIRSCP_DOCKER, AIRSCP_WINDOWS, …) still works under its PORTER_* name in this release; AIRSCP_ wins when both are

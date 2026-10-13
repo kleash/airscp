@@ -4,7 +4,7 @@ import CoreImage
 import Darwin
 import SwiftUI
 
-/// Agent control (PLAN.md T): AI agents and scripts drive AirSCP as the user would, through `AirSCP --mcp` (MCP) or
+/// Agent control: AI agents and scripts drive AirSCP as the user would, through `AirSCP --mcp` (MCP) or
 /// `AirSCP --agent` (one tool from a shell), with no Accessibility or Screen Recording permission. Those talk to this
 /// server: a unix socket in `<support dir>/agent` (0700) that takes one JSON request per connection, `{tool, arguments,
 /// token}`, from processes of the same user carrying the token in `agent/token` (0600, new each time it starts), and
@@ -29,6 +29,14 @@ final class AgentServer {
     /// The request before the latest (the snapshot's agent.lastRequest: the latest is the snapshot itself).
     private(set) var previousRequest: Date?
     private var closed = false
+    /// The change that waits for the person at the Mac now (one question at a time), and until when they let agents
+    /// change things without asking (Allow for 15 Minutes).
+    private(set) var question: AgentQuestion?
+    private(set) var allowedUntil: Date?
+    /// The time, how long a question waits for its answer, and how it is put on the screen: tests change them.
+    var now: () -> Date = Date.init
+    var questionTimeout = AgentBridge.approvalWait
+    var showQuestion: (AgentQuestionPanel) -> Void = { $0.show() }
 
     struct Failure: Error {
         let message: String
@@ -99,6 +107,7 @@ final class AgentServer {
         unlink(tokenPath)
         rmdir((socketPath as NSString).deletingLastPathComponent)
         Self.setEnhancedUserInterface(false)
+        model.agentAllowedUntil = nil  // a question on screen goes too (`approve`)
         log.log("agent control off")
     }
 
@@ -212,12 +221,14 @@ final class AgentServer {
             Panels.agentChoice = choice.map { URL(fileURLWithPath: ($0 as NSString).expandingTildeInPath).standardizedFileURL }
             Panels.agentProblem = nil
             Panels.agentPanelFolder = nil
+            Panels.agentReplacing = nil
         }
         defer {
             if choice != nil {
                 Panels.agentChoice = nil
                 Panels.agentProblem = nil
                 Panels.agentPanelFolder = nil
+                Panels.agentReplacing = nil
             }
         }
         do {
@@ -251,6 +262,12 @@ final class AgentServer {
                 if let problem = Panels.agentProblem { throw Failure(problem) }
                 if Panels.agentChoice != nil { result["note"] = "No Open or Save panel opened: file wasn't used." }
                 if let folder = Panels.agentPanelFolder { result["panelFolder"] = folder }  // where it would have opened
+                // A Save panel asks before it replaces a file: the person at the Mac does instead.
+                if let (file, save) = Panels.agentReplacing {
+                    Panels.agentReplacing = nil
+                    try await ask(Change(what: "replace “\((file.path as NSString).abbreviatingWithTildeInPath)” on this Mac"))
+                    save()
+                }
             }
             if let png = result.removeValue(forKey: "picture") as? Data { return Self.imageReply(png, result) }  // a click's
             return Self.text(result)
@@ -431,16 +448,17 @@ final class AgentServer {
             throw Failure("“\(path)” is disabled now" + (check.reason.map { ": " + $0 } ?? "."))
         }
         let action = item.action!
+        if action == #selector(NSApplication.terminate(_:)), let sheet = openSheets().last {  // AppKit doesn't quit then (it beeps)
+            throw Failure("AirSCP doesn't quit while a sheet is open: answer or cancel “\(sheetJSON(sheet)["title"] as? String ?? sheet.title)” first.")
+        }
+        if try await ask(change("choose " + parts.joined(separator: " ▸ "), sending: action, to: target)),
+           !validate(item, in: window).enabled {  // while the person decided
+            throw Failure("“\(path)” is disabled now.")
+        }
         if action == #selector(NSApplication.terminate(_:)) {
-            if let sheet = openSheets().last {  // AppKit doesn't quit then (it beeps)
-                throw Failure("AirSCP doesn't quit while a sheet is open: answer or cancel “\(sheetJSON(sheet)["title"] as? String ?? sheet.title)” first.")
-            }
             // AirSCP asks first while transfers run or an editor has unsaved changes (AppDelegate): that question is
             // the answer. Otherwise quitting ends this server: answer first, then quit.
-            let asks = NSApp.windows.contains { $0.isDocumentEdited && ($0.isVisible || $0.isMiniaturized) }
-                || main?.workspaces.values.contains { $0.runningTransferCount > 0 } == true
-                || main?.desktops.values.contains { !$0.filesBeingCopied().isEmpty } == true
-            if asks { return await perform { NSApp.sendAction(action, to: target, from: item) } }
+            if quitAsksFirst { return await perform { NSApp.sendAction(action, to: target, from: item) } }
             (target as? NSObject)?.perform(action, with: item, afterDelay: 0.3, inModes: [.common])
             return ["ok": true, "quitting": true]
         }
@@ -536,9 +554,25 @@ final class AgentServer {
                 throw Failure("The Transfers context menu has no “\(title)”. There: " + actions.map(\.title).joined(separator: ", "))
             }
             guard action.enabled else { throw Failure("“\(action.title)” is disabled now for the selected jobs.") }
+            // Cancelling stops copies; Retry and Resume copy again what was stopped.
+            let verb = normalized(action.title)
+            if ["cancel", "retry", "resume"].contains(verb) {
+                try await ask(Change(what: verb + (jobs.count == 1 ? " a transfer" : " \(jobs.count) transfers"),
+                                     detail: self.jobs(jobs)))
+            }
             return await perform(action.run)
         }
         let pane = try self.pane(name)
+        // Run Snippet ▸ <snippet>: the submenu of the snippets with placeholders.
+        let parts = title.components(separatedBy: " > ")
+        if parts.count == 2, normalized(parts[0]) == normalized("Run Snippet") {
+            let items = pane.runSnippetMenu()?.submenu?.items ?? []
+            guard let item = items.first(where: { $0.title == parts[1] }) ?? items.first(where: { normalized($0.title) == normalized(parts[1]) })
+            else { throw Failure("Run Snippet has no “\(parts[1])”. There: " + items.map(\.title).joined(separator: ", ")) }
+            guard pane.validateMenuItem(item) else { throw Failure("“\(item.title)” is disabled now" + (Self.reason(item).map { ": " + $0 } ?? ".")) }
+            try await ask(Change(what: "run the snippet “\(item.title)”", detail: (item.toolTip ?? "") + "\n" + selection(in: pane)))
+            return await perform { pane.runSnippetOnItems(item) }
+        }
         let entries = pane.contextMenu(for: pane.selectedItems).compactMap { $0 }
         guard let (label, action) = entries.first(where: { $0.0 == title }) ?? entries.first(where: { normalized($0.0) == normalized(title) })
         else { throw Failure("The context menu has no “\(title)”. There: " + entries.map(\.0).joined(separator: ", ")) }
@@ -546,6 +580,9 @@ final class AgentServer {
         item.target = pane
         guard action != #selector(FilePane.quickLook(_:)) else { throw Failure(Self.noQuickLook) }
         guard pane.validateMenuItem(item) else { throw Failure("“\(label)” is disabled now" + (Self.reason(item).map { ": " + $0 } ?? ".")) }
+        if try await ask(change("choose “\(label)” in the context menu", sending: action, to: pane)), !pane.validateMenuItem(item) {
+            throw Failure("“\(label)” is disabled now.")  // while the person decided
+        }
         return await perform { NSApp.sendAction(action, to: pane, from: item) }
     }
 
@@ -625,6 +662,9 @@ final class AgentServer {
             guard node.role != "popupbutton" && node.role != "menubutton" else {
                 throw Failure("“\(id ?? title ?? "")” opens a menu: choose its option with set (value: the option's title).")
             }
+            if try await ask(change(pressing: node, in: window)), !window.isVisible {
+                throw Failure("“\(id ?? title ?? "")” isn't there any more: its window or question was closed meanwhile.")
+            }
             Self.reveal(node, in: window)
             return await perform { _ = node.press() }
         }
@@ -684,6 +724,7 @@ final class AgentServer {
         for window in windows where !(window is NSSavePanel) {
             guard let node = field(query, in: AXNode.flatten(window)) else { continue }
             guard node.enabled else { throw Failure("“\(query)” is disabled now" + (node.help.map { ": " + $0 } ?? ".")) }
+            try await ask(change(setting: node, to: value))
             Self.reveal(node, in: window)
             // SwiftUI's Menu fills its pop-up only as it opens (a moment later), with its buttons as they are then
             // (enabled or not): as if it were opened, then closed.
@@ -736,18 +777,7 @@ final class AgentServer {
         let on = ["true", "on", "yes", "1"].contains(text.lowercased())
         switch node.view {
         case let popup as NSPopUpButton:
-            if let menu = popup.menu { menu.delegate?.menuNeedsUpdate?(menu) }  // menus filled as they open
-            let titles = popup.itemArray.filter { !$0.isSeparatorItem }
-            // The title, else one with these words in it ("zip": "ZIP archive (.zip)", not "Gzipped tar…"), else a part.
-            let words = "(?<![\\p{L}\\p{N}])" + NSRegularExpression.escapedPattern(for: text) + "(?![\\p{L}\\p{N}])"
-            let matches = titles.filter { $0.title == text }.first.map { [$0] }
-                ?? titles.filter { normalized($0.title) == normalized(text) }.nilIfEmpty
-                ?? titles.filter { $0.title.range(of: words, options: [.regularExpression, .caseInsensitive]) != nil }.nilIfEmpty
-                ?? titles.filter { $0.title.localizedCaseInsensitiveContains(text) }
-            guard matches.count == 1, let item = matches.first else {
-                throw Failure("“\(text)” \(matches.isEmpty ? "isn't one" : "matches more than one") of the choices: "
-                              + titles.map(\.title).filter { !$0.isEmpty }.joined(separator: ", "))
-            }
+            let item = try choice(text, in: popup)
             guard item.isEnabled else { throw Failure("“\(item.title)” can't be chosen now" + (item.toolTip.map { ": " + $0 } ?? ".")) }
             // As choosing it in the open menu does: the item's action (SwiftUI's pickers listen there), else the pop-up's.
             if let menu = popup.menu, let index = menu.items.firstIndex(of: item), item.action != nil {
@@ -782,9 +812,12 @@ final class AgentServer {
             storage.replaceCharacters(in: all, with: NSAttributedString(string: text, attributes: textView.typingAttributes))
             textView.didChangeText()
         case let button as NSButton where node.role == "checkbox":
-            if (button.state == .on) != on { button.performClick(nil) }
+            if (button.state == .on) != on { AXNode.click(button) }
         case let toggle as NSSwitch:
-            if (toggle.state == .on) != on { toggle.performClick(nil) }
+            if (toggle.state == .on) != on {
+                toggle.state = on ? .on : .off
+                if let action = toggle.action { toggle.sendAction(action, to: toggle.target) }
+            }
         default:
             if node.role == "checkbox" || node.role == "disclosuretriangle" {
                 if ((node.value as? NSNumber)?.boolValue ?? false) != on { _ = node.press() }
@@ -794,6 +827,23 @@ final class AgentServer {
                 throw Failure("“\(node.title.isEmpty ? node.id : node.title)” (\(node.role)) can't be set; press it instead.")
             }
         }
+    }
+
+    /// The pop-up's item that `text` chooses: the one with that title, else one with these words in it ("zip": "ZIP
+    /// archive (.zip)", not "Gzipped tar…"), else one with it as a part.
+    private func choice(_ text: String, in popup: NSPopUpButton) throws -> NSMenuItem {
+        if let menu = popup.menu { menu.delegate?.menuNeedsUpdate?(menu) }  // menus filled as they open
+        let titles = popup.itemArray.filter { !$0.isSeparatorItem }
+        let words = "(?<![\\p{L}\\p{N}])" + NSRegularExpression.escapedPattern(for: text) + "(?![\\p{L}\\p{N}])"
+        let matches = titles.filter { $0.title == text }.first.map { [$0] }
+            ?? titles.filter { normalized($0.title) == normalized(text) }.nilIfEmpty
+            ?? titles.filter { $0.title.range(of: words, options: [.regularExpression, .caseInsensitive]) != nil }.nilIfEmpty
+            ?? titles.filter { $0.title.localizedCaseInsensitiveContains(text) }
+        guard matches.count == 1, let item = matches.first else {
+            throw Failure("“\(text)” \(matches.isEmpty ? "isn't one" : "matches more than one") of the choices: "
+                          + titles.map(\.title).filter { !$0.isEmpty }.joined(separator: ", "))
+        }
+        return item
     }
 
     // MARK: Keys, text and clicks
@@ -854,10 +904,11 @@ final class AgentServer {
             let workspace = main?.selectedWorkspace
             if workspace?.terminal.session?.running != true, [36, 76].contains(keys.keyCode), let workspace, workspace.session.state == .connected {
                 workspace.showTerminal()
-                _ = workspace.terminal.restartIfEnded()
+                _ = workspace.terminal.restartIfEnded()  // a new shell: nothing is typed into it
                 return await acted()
             }
             let view = try terminalView()
+            try await ask(terminalChange("press \(combo) in"))
             let (down, _) = keys.events(window: try view.window ?? mainWindow)
             view.keyDown(with: down)
             return await acted()
@@ -867,6 +918,7 @@ final class AgentServer {
             let (rest, windowsKey) = KeyCombo.windowsKey(in: combo)
             let keys = try rest.map { try KeyCombo($0) }
             let desktop = try desktopView()
+            try await ask(desktopChange("press \(combo) on"))
             return try await Self.lendingFocus(to: desktop) {
                 bringToFront(desktop.window!)
                 if windowsKey { desktop.session?.scancode(0x15B, down: true) }
@@ -878,6 +930,7 @@ final class AgentServer {
         let keys = try KeyCombo(combo)
         let window = try keyWindow(arguments["in"] as? String)
         if keys.base == " ", keys.modifiers.isEmpty, window.firstResponder is FileTableView { throw Failure(Self.noQuickLook) }
+        try await ask(change(pressing: keys, combo, in: window))
         bringToFront(window)
         return await perform { self.sendKey(keys, to: window) }
     }
@@ -901,15 +954,15 @@ final class AgentServer {
             }
             // Return and Enter press the default button (AppKit's keyDown does, but only in the key window).
             if !handled, keys.modifiers.isEmpty, ["\r", "\u{3}"].contains(keys.base),
-               let button = window.defaultButtonCell, button.isEnabled {
-                button.performClick(nil)
+               let button = window.defaultButtonCell, button.isEnabled, let control = button.controlView as? NSButton {
+                AXNode.click(control)
                 handled = true
             }
             // Escape closes an alert with one button (OK), as AppKit does for a person: that button has only Return.
             if !handled, keys.modifiers.isEmpty, keys.base == "\u{1b}" {
                 let buttons = Self.views(NSButton.self, in: window.contentView).filter { $0.target is NSAlert }
                 if buttons.count == 1, let button = buttons.first, button.isEnabled {
-                    button.performClick(nil)
+                    AXNode.click(button)
                     handled = true
                 }
             }
@@ -931,16 +984,21 @@ final class AgentServer {
         func walk(_ menu: NSMenu) -> NSMenuItem? {
             for item in menu.items {
                 if let submenu = item.submenu, let found = walk(submenu) { return found }
-                guard !item.keyEquivalent.isEmpty else { continue }
-                var modifiers = item.keyEquivalentModifierMask.intersection([.command, .control, .option, .shift])
-                if item.keyEquivalent.lowercased() != item.keyEquivalent { modifiers.insert(.shift) }
-                // Menus write ⌫ as backspace (8), the Delete key types DEL (127).
-                let key = item.keyEquivalent == "\u{8}" ? "\u{7f}" : item.keyEquivalent.lowercased()
-                if key == keys.base && modifiers == keys.modifiers { return item }
+                if Self.matches(item.keyEquivalent, item.keyEquivalentModifierMask, keys) { return item }
             }
             return nil
         }
         return NSApp.mainMenu.flatMap(walk)
+    }
+
+    /// Whether a menu item's or a button's key equivalent is `keys`.
+    static func matches(_ equivalent: String, _ mask: NSEvent.ModifierFlags, _ keys: KeyCombo) -> Bool {
+        guard !equivalent.isEmpty else { return false }
+        var modifiers = mask.intersection([.command, .control, .option, .shift])
+        if equivalent.lowercased() != equivalent { modifiers.insert(.shift) }
+        // Menus write ⌫ as backspace (8), the Delete key types DEL (127).
+        let key = equivalent == "\u{8}" ? "\u{7f}" : equivalent.lowercased()
+        return key == keys.base && modifiers == keys.modifiers
     }
 
     /// The pause after each key typed on the Windows desktop (twice that after a Unicode character).
@@ -952,6 +1010,7 @@ final class AgentServer {
         if target == "terminal" {
             // As typed: a line break is Return. A long text goes as a paste.
             let view = try terminalView()
+            try await ask(terminalChange("type into", text: text))
             if text.count > 1000 { view.session?.paste(text) } else { view.session?.send(text.replacingOccurrences(of: "\n", with: "\r")) }
             return await acted()
         }
@@ -960,6 +1019,7 @@ final class AgentServer {
                 throw Failure("That's long to type key by key (\(text.count) characters): copy it as a file and send it with drop.")
             }
             let desktop = try desktopView()
+            try await ask(desktopChange("type on", text: text))
             // With a US keyboard on both sides, characters on its keys go as key presses: Windows loses some of a quick
             // run of Unicode characters (and repeats others); the rest go as Unicode, more slowly. At a person's pace:
             // Windows 11's Notepad, typed into faster, stopped moving its caret (the text came out backwards), lost Shift
@@ -989,6 +1049,7 @@ final class AgentServer {
             }
         }
         let window = try keyWindow(arguments["in"] as? String)
+        try await ask(change(typing: text, in: window))
         if let editor = window.firstResponder as? NSTextView {
             editor.insertText(text, replacementRange: editor.selectedRange())
             return await acted()
@@ -1019,7 +1080,7 @@ final class AgentServer {
                 throw Failure("No Remote Desktop is connected and shown: select it in the sidebar.")
             }
             let point = try Self.desktopPixel(x: x, y: y, size: size)
-            return await clickDesktop(session, at: point, of: size, right: right, count: count, wheel: wheel)
+            return try await clickDesktop(session, at: point, of: size, right: right, count: count, wheel: wheel)
         }
         let base = try (arguments["in"] as? String).map { try scopes($0).last! } ?? mainWindow
         let point = NSPoint(x: base.frame.minX + x, y: base.frame.maxY - y)
@@ -1032,8 +1093,8 @@ final class AgentServer {
                           + "a row: open name=… (a folder, ..) or select pane=right names=[\"a.txt\"], then menu path=\"File > …\".")
         }
         if let desktop = hit as? RDPDesktopView, let session = desktop.session, let size = Self.desktopSize(session) {
-            return await clickDesktop(session, at: desktop.desktopPoint(atWindowPoint: location), of: size, right: right,
-                                      count: count, wheel: wheel)
+            return try await clickDesktop(session, at: desktop.desktopPoint(atWindowPoint: location), of: size, right: right,
+                                          count: count, wheel: wheel)
         }
         // Window points that miss the desktop shown: the agent may have meant the desktop's own pixels.
         let note = selectedDesktop?.session == nil ? nil : "x, y are points of the window here, not on the Windows "
@@ -1047,6 +1108,7 @@ final class AgentServer {
                           + (note.map { " (\($0))" } ?? ""))
         }
         let modifiers = try KeyCombo.modifiers(arguments["modifiers"] as? String ?? "")
+        try await ask(change(clicking: location, in: window))
         bringToFront(window)
         var reply = await perform { Self.click(at: location, in: window, right: right, modifiers: modifiers, count: count) }
         reply["note"] = note
@@ -1056,7 +1118,10 @@ final class AgentServer {
     /// A click, or the wheel turned, at a pixel of the Windows desktop, straight to Windows. The reply says where in
     /// words, with a picture of what was under the pointer as it clicked.
     private func clickDesktop(_ session: RDPSession, at point: CGPoint, of size: CGSize, right: Bool, count: Int,
-                              wheel: Int?) async -> [String: Any] {
+                              wheel: Int?) async throws -> [String: Any] {
+        let verb = wheel != nil ? "turn the mouse wheel at" : right ? "right-click at" : count == 2 ? "double-click at"
+            : count == 3 ? "triple-click at" : "click at"
+        try await ask(desktopChange("\(verb) \(Int(point.x)), \(Int(point.y)) on"))
         let at = "\(Int(point.x)), \(Int(point.y)) of the \(Int(size.width)) × \(Int(size.height)) desktop picture"
         if let wheel {  // notches, as a mouse wheel turns: up when positive
             session.wheel(horizontal: false, delta: wheel * 120, at: point)
@@ -1219,6 +1284,7 @@ final class AgentServer {
         }
         // A server's link may lead to a folder: listed if it does, as Return lists it; else it opens as a file.
         if item.kind == .symlink, pane.isRemote, let listed = try? await go(pane, to: item.path) { return listed }
+        try await ask(Change(what: "open “\(item.name)” in its app on this Mac", detail: "In " + place(of: pane)))
         pane.view.window?.makeFirstResponder(pane.table)
         pane.table.selectRowIndexes([row], byExtendingSelection: false)
         pane.table.scrollRowToVisible(row)
@@ -1284,13 +1350,17 @@ final class AgentServer {
             // Find Files' results: by their paths in its model (its list follows), however many there are.
             if let find = findModel, let sheet = try scopes(spec).first,
                (sheet.contentViewController as? NSHostingController<FindView>) != nil {
-                guard !all else { throw Failure("Find Files' list takes one result at a time.") }
-                guard let name = names.first else { find.selection = nil; return await acted(["selected": 0]) }
                 let paths = find.results.map(\.path)
-                guard let path = paths.first(where: { find.relative($0) == name }) ?? paths.first(where: { find.relative($0).contains(name) })
-                else { throw Failure("No result shows \(name).") }
-                find.selection = path
-                return await acted(["selected": 1])
+                if all { find.selection = Set(paths); return await acted(["selected": paths.count]) }
+                guard !names.isEmpty else { find.selection = []; return await acted(["selected": 0]) }
+                var chosen = Set<String>()
+                for name in names {
+                    guard let path = paths.first(where: { find.relative($0) == name }) ?? paths.first(where: { find.relative($0).contains(name) })
+                    else { throw Failure("No result shows \(name).") }
+                    chosen.insert(path)
+                }
+                find.selection = chosen
+                return await acted(["selected": chosen.count])
             }
             // Import from ~/.ssh/config: the aliases chosen, by name (its list makes rows only where it shows them).
             if let importer = configImport, let sheet = try scopes(spec).first,
@@ -1504,6 +1574,9 @@ final class AgentServer {
                                   ? "Windows' policy blocks the shared folder on this computer: copy and paste the files instead."
                                   : "This Remote Desktop shares no Mac folder (its settings).")
                 }
+                var copy = desktopChange("copy \(Self.files(urls)) into the shared folder of")
+                copy.detail = Self.paths(urls)
+                try await ask(copy)
                 return await perform { desktop.upload(urls) }
             }
             if target == "keys" {  // the Keys window's list, as a .ppk dragged there: Import Key opens for the first file
@@ -1515,6 +1588,8 @@ final class AgentServer {
             guard pane.isRemote, pane.isConnected, let dir = (arguments["into"] as? String) ?? pane.dir, let browser = pane.browser else {
                 throw Failure("Finder files can be dropped on a connected server's pane only.")
             }
+            try await ask(Change(what: "upload \(Self.files(urls)) into \(dir) on “\(pane.session?.host.displayName ?? "")”",
+                                 detail: Self.paths(urls)))
             return await dropped(browser) { browser.upload(urls, to: pane, into: dir) }
         }
         guard let fromName = arguments["from"] as? String, let toName = arguments["to"] as? String else {
@@ -1530,6 +1605,8 @@ final class AgentServer {
             guard from.isRemote, FileList.isLocalFolder(dir) else {
                 throw Failure("finder:<folder> takes a server pane's rows into an existing folder on this Mac.")
             }
+            try await ask(Change(what: "download into \((dir as NSString).abbreviatingWithTildeInPath) on this Mac",
+                                 detail: selection(in: from)))
             var taken = FileList.localNames(dir), jobs: [UUID] = []
             for row in from.table.selectedRowIndexes {
                 // What the promise writer does with what Finder gives it (`FilePane.filePromiseProvider(_:writePromiseTo:)`).
@@ -1547,6 +1624,8 @@ final class AgentServer {
             guard from.isRemote, FileList.isLocalFolder(dir) else {
                 throw Failure("local:<folder> takes a server pane's rows into an existing folder on this Mac.")
             }
+            try await ask(Change(what: "download into \((dir as NSString).abbreviatingWithTildeInPath) on this Mac",
+                                 detail: selection(in: from)))
             return await dropped(browser) { browser.transfer(items, from: from.source, to: .local, into: dir, move: false) }
         }
         let to = try pane(toName)
@@ -1555,6 +1634,8 @@ final class AgentServer {
         let operation = BrowserContentController.dropOperation(items, from: from.source, to: to.source, into: dir,
                                                                mask: move ? .move : .copy)
         guard !operation.isEmpty else { throw Failure("That drop does nothing (the same place, or into itself).") }
+        try await ask(Change(what: (operation == .move ? "move" : "copy") + " into \(dir)"
+                             + (to.session.map { " on “\($0.host.displayName)”" } ?? " on this Mac"), detail: selection(in: from)))
         return await dropped(browser) { browser.transfer(items, from: from.source, to: to.source, into: dir, move: operation == .move) }
     }
 
@@ -1749,6 +1830,312 @@ final class AgentServer {
         }
     }
 
+    // MARK: Asking the person at the Mac
+
+    /// A change an agent's request would make outside AirSCP's own windows: in plain words after "An AI agent wants to",
+    /// and what it acts on (`code`: text it types or a command it runs).
+    struct Change {
+        var what: String
+        var detail = ""
+        var code = false
+    }
+
+    /// The Settings switch that only the person at the Mac may change.
+    static let askSetting = "settings.askBeforeAgentChanges"
+    static let onlyThePerson = "Only the person at the Mac can change “Ask before agents change things”."
+    static let controlOff = "Agent control was turned off: nothing was done."
+
+    /// Controls that change something outside AirSCP without a question of their own: run a command, a file, a snippet
+    /// or Ask AirSCP's steps; copy, write or rename files; change files' permissions or owners (everything in folders
+    /// too, with no way back); put a key on a server (a way in that lasts) or in the ssh agent; switch a tunnel (a port
+    /// opened on this Mac or on the server); cancel, retry or resume transfers; end a Windows desktop or send it keys;
+    /// keep a hosts file's options that run programs on this Mac. (A button that a question marks as destructive asks
+    /// too.)
+    static let changingControls: Set<String> = [
+        "runCommand.run", "runCommand.runInTerminal", "run.run", "run.runInTerminal", "snippet.run", "ask.run",
+        "sync.synchronize", "find.download", "rdp.sendFiles", "rdp.pasteItems", "openWith.upload", "editor.saveAndClose",
+        "conflict.replaceIfNewer", "prompt.rename", "permissions.apply", "keys.install", "keys.addToAgent", "tunnels.switch",
+        "transfers.cancel", "transfers.retry", "transfers.resumeAll", "rdp.disconnect", "rdp.ctrlAltDel", "import.keepOptions",
+    ]
+
+    /// Menu commands (and buttons with their action) that change something outside AirSCP at once: delete, copy, move or
+    /// open files in their apps, make them executable, run a snippet on them, paste files or text into a terminal, save
+    /// an editor's text to its server, disconnect, quit.
+    static let changingCommands: Set<Selector> = [
+        #selector(FilePane.deleteItems(_:)), #selector(FilePane.uploadAndDelete(_:)), #selector(FilePane.downloadAndDelete(_:)),
+        #selector(FilePane.copyToOtherPane(_:)), #selector(FilePane.chooseUpload(_:)), #selector(FilePane.downloadTo(_:)),
+        #selector(FilePane.downloadArchive(_:)), #selector(FilePane.uploadCompressed(_:)), #selector(FilePane.duplicateItems(_:)),
+        #selector(FilePane.moveTo(_:)), #selector(FilePane.copyTo(_:)), #selector(FilePane.openItems(_:)),
+        #selector(FilePane.makeExecutable(_:)), #selector(FilePane.runSnippetOnItems(_:)), #selector(NSText.paste(_:)),
+        #selector(RemoteEditor.save(_:)), #selector(MainWindowController.disconnectHost(_:)), #selector(NSApplication.terminate(_:)),
+    ]
+
+    /// The person at the Mac decides about `change` first while Settings ▸ Ask before agents change things is on
+    /// (`change` is worked out only then): returns whether they were asked, throws when they don't allow it.
+    @discardableResult
+    func ask(_ change: @autoclosure () throws -> Change?) async throws -> Bool {
+        guard model.data.settings.askBeforeAgentChanges, let asked = try change() else { return false }
+        try await approve(asked)
+        // The selection or the question may have changed while the person decided: what was allowed must be what happens.
+        if let current = try change(), current.what != asked.what || current.detail != asked.detail {
+            throw Failure("What “\(asked.what)” acts on changed while the person at the Mac decided: nothing was done. "
+                          + "Look again (snapshot), then try again.")
+        }
+        return true
+    }
+
+    /// Shows the question and waits up to `questionTimeout` seconds for Allow Once, Allow for 15 Minutes or Deny;
+    /// returns at once while changes are allowed. One question at a time: another one waits for its answer first.
+    func approve(_ change: Change) async throws {
+        while question != nil && !closed { try? await Task.sleep(nanoseconds: 100_000_000) }
+        guard !closed else { throw Failure(Self.controlOff) }
+        if !model.data.settings.askBeforeAgentChanges { return }
+        if let until = allowedUntil, now() < until { return }
+        let asked = AgentQuestion(change: change.what, detail: change.detail, code: change.code, client: model.agentClient?.name,
+                                  timeout: questionTimeout)
+        let panel = AgentQuestionPanel(asked)
+        question = asked
+        model.agentQuestion = change.what
+        showQuestion(panel)
+        defer {
+            panel.close()
+            question = nil
+            model.agentQuestion = nil
+        }
+        let deadline = now().addingTimeInterval(questionTimeout)
+        while asked.answer == nil && !closed && now() < deadline { try? await Task.sleep(nanoseconds: 100_000_000) }
+        switch asked.answer {
+        case .once?: return
+        case .fifteenMinutes?:
+            allowedUntil = now().addingTimeInterval(15 * 60)
+            model.agentAllowedUntil = allowedUntil
+        case .deny?: throw Failure(AgentBridge.declined + change.what + ".")
+        case nil:
+            throw Failure(closed ? Self.controlOff : AgentBridge.noAnswer + " within \(Int(questionTimeout)) s: " + change.what
+                          + ". Nothing was done: ask them to look at the Mac, then try again.")
+        }
+    }
+
+    /// `action` sent to `target` as a change: what it acts on, after `what`. nil when it changes nothing outside AirSCP
+    /// (Paste into a field, Open on folders) or asks its own question first (Delete of server items, Disconnect and Quit
+    /// while something is being copied): that question's destructive button asks the person then.
+    private func change(_ what: String, sending action: Selector, to target: AnyObject?) -> Change? {
+        guard Self.changingCommands.contains(action) else { return nil }
+        let pane = target as? FilePane
+        switch action {
+        case #selector(NSText.paste(_:)):
+            if target is TerminalView {
+                return terminalChange(what + " into", text: NSPasteboard.general.string(forType: .string) ?? "")
+            }
+            guard let pane else { return nil }  // text into a field
+            return Change(what: what, detail: "The items copied, into " + place(of: pane))
+        case #selector(MainWindowController.disconnectHost(_:)):
+            guard let main, let id = main.sidebar.selection?.id,
+                  (main.workspaces[id]?.runningTransferCount ?? 0) == 0, main.desktops[id]?.filesBeingCopied().isEmpty ?? true
+            else { return nil }
+            return Change(what: what, detail: "“" + (model.host(id)?.displayName ?? model.rdpEntry(id)?.displayName ?? "") + "”")
+        case #selector(NSApplication.terminate(_:)):
+            return quitAsksFirst ? nil : Change(what: what, detail: "AirSCP disconnects every host and desktop, then quits.")
+        case #selector(RemoteEditor.save(_:)):
+            let window = (target as? RemoteEditor)?.window
+            return Change(what: what, detail: "The editor's text in place of " + (window?.subtitle ?? "the file")
+                          + " (" + (window?.title ?? "") + ")")
+        case #selector(FilePane.deleteItems(_:)) where pane?.session != nil && pane?.browser?.settings.confirmDelete ?? true:
+            return nil
+        case #selector(FilePane.openItems(_:)) where pane?.selectedItems.allSatisfy({ $0.kind == .directory }) ?? true:
+            return nil
+        default:
+            return Change(what: what, detail: [MenuHelp.tips[action], pane.map(selection(in:))].compactMap { $0 }
+                .joined(separator: "\n"))
+        }
+    }
+
+    /// Quit asks first while transfers run, Windows copies into a shared folder, or an editor has unsaved changes.
+    private var quitAsksFirst: Bool {
+        NSApp.windows.contains { $0.isDocumentEdited && ($0.isVisible || $0.isMiniaturized) }
+            || main?.workspaces.values.contains { $0.runningTransferCount > 0 } == true
+            || main?.desktops.values.contains { !$0.filesBeingCopied().isEmpty } == true
+    }
+
+    /// "“a.txt”, “logs” in /var/www on “web”": a pane's selected items, or its folder.
+    private func selection(in pane: FilePane) -> String {
+        let items = pane.selectedItems
+        let names = items.prefix(5).map { "“\($0.name)”" }.joined(separator: ", ") + (items.count > 5 ? " and \(items.count - 5) more" : "")
+        return (items.isEmpty ? "In " : names + " in ") + place(of: pane)
+    }
+
+    /// "“a.txt”, “site”": transfers by name.
+    private func jobs(_ jobs: [TransferJob]) -> String {
+        jobs.prefix(5).map { "“\(TransferText.name($0))”" }.joined(separator: ", ") + (jobs.count > 5 ? " and \(jobs.count - 5) more" : "")
+    }
+
+    /// "/var/www on “web”": the folder a pane shows.
+    private func place(of pane: FilePane) -> String {
+        (pane.dir ?? "") + (pane.session.map { " on “\($0.host.displayName)”" } ?? " on this Mac")
+    }
+
+    /// What pressing `node` in `window` changes: a button its question marks as destructive, one of `changingControls`,
+    /// a host's Save or Test Connection while its ssh options run a program on this Mac, or a button with a changing
+    /// command's action. The Settings switch only the person may change is refused.
+    private func change(pressing node: AXNode, in window: NSWindow) throws -> Change? {
+        if node.id == Self.askSetting { throw Failure(Self.onlyThePerson) }
+        if Self.changingControls.contains(node.id), node.role == "checkbox" {  // a tunnel's switch: which way it turns
+            return try change(setting: node, to: !((node.value as? NSNumber)?.boolValue ?? false))
+        }
+        let what = "press “\(node.title.isEmpty ? node.id : node.title)”"
+        let button = node.view as? NSButton
+        if button?.hasDestructiveAction == true || Self.changingControls.contains(node.id) {
+            let selected = TransferCenter.shared.jobs.filter { model.transferSelection.ids.contains($0.id) }
+            return Change(what: what, detail: node.id == "transfers.resumeAll" ? "Every paused transfer"
+                          : node.id.hasPrefix("transfers.") ? jobs(selected) : context(of: window))
+        }
+        if ["hostEditor.save", "hostEditor.test"].contains(node.id),
+           let options = AXNode.flatten(window).first(where: { $0.id == "hostEditor.options" })?.value as? String,
+           let line = options.components(separatedBy: .newlines).first(where: SSHConfig.runsCommandHere) {
+            return Change(what: what, detail: "Its ssh options run a program on this Mac each time it connects: " + line)
+        }
+        // A toolbar item's button: the item's command.
+        if let item = window.toolbar?.items.first(where: { $0.action != nil && $0.label == node.title }), let action = item.action {
+            return change(what, sending: action, to: item.target ?? target(for: action, explicit: nil, in: window))
+        }
+        guard let button, let action = button.action else { return nil }
+        return change(what, sending: action, to: button.target ?? target(for: action, explicit: nil, in: window))
+    }
+
+    /// What setting `node` to `value` changes: a switch of `changingControls` that would turn (a tunnel's), a snippet
+    /// typed at the Terminal tab's prompt (Insert Snippet), and When Done's Disconnect and Sleep This Mac, once the
+    /// transfers have finished. The Settings switch only the person may change is refused.
+    private func change(setting node: AXNode, to value: Any) throws -> Change? {
+        if node.id == Self.askSetting { throw Failure(Self.onlyThePerson) }
+        if Self.changingControls.contains(node.id), node.role == "checkbox" {
+            let on = ["true", "on", "yes", "1"].contains("\(value)".lowercased())
+            let isOn = (node.value as? NSNumber)?.boolValue ?? false
+            return isOn == on ? nil : Change(what: "switch “\(node.title)” \(on ? "on" : "off")")
+        }
+        if node.id == "terminal.snippets", let popup = node.view as? NSPopUpButton, let item = try? choice("\(value)", in: popup),
+           item.action == #selector(TerminalController.insertSnippet(_:)) {  // not Edit Snippets…
+            return terminalChange("type the snippet “\(item.title)” into", text: item.representedObject as? String ?? "")
+        }
+        guard node.id == "transfers.whenDone",
+              let choice = WhenDone.allCases.first(where: { $0.rawValue.localizedCaseInsensitiveContains("\(value)") }),
+              choice == .disconnect || choice == .sleep else { return nil }
+        return Change(what: "set When Done to “\(choice.rawValue)”", detail: choice.help)
+    }
+
+    /// What a control acts on, for the person at the Mac: a sheet's or alert's title and text, or another window's title;
+    /// and what its fields hold (a snippet's command, Ask AirSCP's request; passwords as •••). The main window's title
+    /// names its host or desktop.
+    private func context(of window: NSWindow) -> String {
+        let question = window.sheetParent != nil || window === NSApp.modalWindow
+        guard question || window !== main?.window else { return "In “\(window.title)”" }
+        let sheet = sheetJSON(window)
+        var lines = question ? [sheet["title"], sheet["text"]].compactMap { $0 as? String } : ["In “\(window.title)”"]
+        for field in sheet["fields"] as? [[String: Any]] ?? [] {
+            guard let value = field["value"] as? String else { continue }
+            let label = ["label", "title", "placeholder", "id"].lazy.compactMap { field[$0] as? String }.first { !$0.isEmpty }
+            lines.append((label.map { $0 + ": " } ?? "") + (value.count > 200 ? value.prefix(200) + "…" : value))
+        }
+        let text = lines.joined(separator: "\n")
+        return text.count > 600 ? text.prefix(600) + "…" : text
+    }
+
+    /// What `keys` set off in `window` that changes something: typing into a terminal or a Windows desktop that has the
+    /// keyboard; a button with that key (Return: the default button, and in a question a changing one, as SwiftUI's
+    /// default and ⌘↩ buttons have no AppKit key equivalent); Space on a focused button or switch; a file list's Return
+    /// and Delete; a menu command's shortcut.
+    private func change(pressing keys: KeyCombo, _ combo: String, in window: NSWindow) throws -> Change? {
+        let responder = window.firstResponder
+        if responder is TerminalView { return terminalChange("press \(combo) in") }
+        if responder is RDPDesktopView { return desktopChange("press \(combo) on") }
+        let isReturn = ["\r", "\n", "\u{3}"].contains(keys.base)
+        if isReturn, keys.modifiers.isEmpty, let text = responder as? NSTextView, !text.isFieldEditor { return nil }  // a new line
+        let pressable = AXNode.flatten(window).filter { $0.isPressable && $0.enabled }
+        for node in pressable {
+            guard let button = node.view as? NSButton else { continue }
+            if Self.matches(button.keyEquivalent, button.keyEquivalentModifierMask, keys)
+                || isReturn && keys.modifiers.isEmpty && (button.keyEquivalent == "\r" || window.defaultButtonCell === button.cell) {
+                return try change(pressing: node, in: window)
+            }
+        }
+        if isReturn, window.sheetParent != nil || window === NSApp.modalWindow {
+            for node in pressable { if let change = try change(pressing: node, in: window) { return change } }
+        }
+        if keys.base == " ", keys.modifiers.isEmpty, let control = responder as? NSControl, control is NSButton || control is NSSwitch {
+            return try change(pressing: AXNode(object: control), in: window)
+        }
+        if let table = responder as? FileTableView, keys.modifiers.isEmpty, let pane = table.delegate as? FilePane {
+            if [36, 76].contains(keys.keyCode) { return change("press \(combo) (Open)", sending: #selector(FilePane.openItems(_:)), to: pane) }
+            if [51, 117].contains(keys.keyCode), pane.isRemote {
+                return change("press \(combo) (Delete)", sending: #selector(FilePane.deleteItems(_:)), to: pane)
+            }
+        }
+        if !keys.modifiers.isDisjoint(with: [.command, .control]), let item = menuItem(for: keys), let action = item.action {
+            let check = validate(item, in: window)
+            return check.enabled ? change("press \(combo) (\(item.title))", sending: action, to: check.target) : nil
+        }
+        return nil
+    }
+
+    /// What typing `text` sets off in `window`: typing into a terminal or a Windows desktop that has the keyboard, or
+    /// what a line break (Return) or a space on a focused button or switch presses. Into a text field or editor it is
+    /// text.
+    private func change(typing text: String, in window: NSWindow) throws -> Change? {
+        let responder = window.firstResponder
+        if responder is TerminalView { return terminalChange("type into", text: text) }
+        if responder is RDPDesktopView { return desktopChange("type on", text: text) }
+        if responder is NSTextView { return nil }
+        if text.contains(where: { $0 == "\r" || $0 == "\n" }), let change = try change(pressing: try KeyCombo("return"), "return", in: window) {
+            return change
+        }
+        return text.contains(" ") ? try change(pressing: KeyCombo(character: " "), "space", in: window) : nil
+    }
+
+    /// What a click at `location` (window points from its bottom left) presses in `window`, if that changes something.
+    private func change(clicking location: NSPoint, in window: NSWindow) throws -> Change? {
+        var element = window.accessibilityHitTest(window.convertPoint(toScreen: location)) as? NSObject
+        for _ in 0..<12 {
+            guard let object = element else { return nil }
+            let node = AXNode(object: object)
+            if node.isPressable { return try change(pressing: node, in: window) }
+            element = node.parent?.object
+        }
+        return nil
+    }
+
+    /// Keys or text for the Terminal tab of the host shown.
+    private func terminalChange(_ verb: String, text: String = "") -> Change {
+        Change(what: verb + " the Terminal tab of “\(main?.selectedWorkspace?.host.displayName ?? "")”", detail: Self.shown(text),
+               code: true)
+    }
+
+    /// Keys, text or clicks for the Windows desktop shown.
+    private func desktopChange(_ verb: String, text: String = "") -> Change {
+        let name = selectedDesktop.flatMap { model.rdpEntry($0.entryID)?.displayName } ?? ""
+        return Change(what: verb + " the Windows desktop “\(name)”", detail: Self.shown(text), code: !text.isEmpty)
+    }
+
+    /// “a.txt”, or “3 items”: Mac files a question is about; and their paths, one per line.
+    static func files(_ urls: [URL]) -> String { urls.count == 1 ? "“\(urls[0].lastPathComponent)”" : "\(urls.count) items" }
+    static func paths(_ urls: [URL]) -> String {
+        urls.prefix(8).map { ($0.path as NSString).abbreviatingWithTildeInPath }.joined(separator: "\n") + (urls.count > 8 ? "\n…" : "")
+    }
+
+    /// `text` for the question: line breaks marked ⏎, other control characters as ^C, at most 600 characters.
+    static func shown(_ text: String) -> String {
+        var shown = ""
+        for scalar in text.replacingOccurrences(of: "\r\n", with: "\n").unicodeScalars {
+            switch scalar.value {
+            case 0x0A, 0x0D: shown += "⏎\n"
+            case 0x09: shown += "\t"
+            case 0..<0x20: shown += "^" + String(UnicodeScalar(scalar.value + 0x40)!)
+            case 0x7F: shown += "^?"
+            default: shown.unicodeScalars.append(scalar)
+            }
+        }
+        if shown.hasSuffix("\n") { shown.removeLast() }
+        return shown.count > 600 ? shown.prefix(600) + "…" : shown
+    }
+
     /// A host or Remote Desktop by name, else the one selected in the sidebar.
     private func target(_ name: String?) throws -> UUID {
         if let name {
@@ -1835,7 +2222,7 @@ final class AgentServer {
         // Windows over it, back to front: its child windows, an app-modal alert and panels (alerts are panels, which
         // NSApp.orderedWindows leaves out).
         overlays += NSApp.windows.filter(\.isVisible).sorted { $0.orderedIndex > $1.orderedIndex }.filter { other in
-            other !== window && other.sheetParent == nil && !overlays.contains(other)
+            other !== window && other.sheetParent == nil && !overlays.contains(other) && !(other is AgentQuestionPanel)
                 && otherWindows().contains(other) && !(other.windowController is MainWindowController)
                 && (other.parent === window || other === NSApp.modalWindow || (other is NSPanel && other.level.rawValue >= window.level.rawValue))
                 && other.frame.intersects(window.frame)

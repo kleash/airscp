@@ -3,9 +3,9 @@ import Foundation
 import Testing
 @testable import AirSCPCore
 
-// PLAN.md S.2 (the feature cycle's gap review): leave-out patterns and the speed limit in the transfer queue, and what
-// was fixed on the way (Run Command's marker line in the command log, a verification code asked again). The app's
-// side (sheets, menus, the Transfers panel) is in S2AppTests.swift; the lab's (GNU and BusyBox tar, two-factor) below.
+// Leave-out patterns and the speed limit in the transfer queue, and what was fixed on the way (Run Command's marker
+// line in the command log, a verification code asked again). The app's side (sheets, menus, the Transfers panel)
+// is in S2AppTests.swift; the lab's (GNU and BusyBox tar, two-factor) below.
 
 /// The files below a local folder, as paths relative to it, sorted (folders themselves left out).
 func files(below folder: String) -> [String] {
