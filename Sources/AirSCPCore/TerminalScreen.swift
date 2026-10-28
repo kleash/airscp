@@ -88,7 +88,7 @@ public final class TerminalScreen {
         public var output: Position?
         /// Where it ended (the next prompt comes after); nil while it runs.
         public var end: Position?
-        /// The command line.
+        /// The command line, as typed (`commandLine`).
         public var text = ""
         public var status: Int32?
         public var started: Date?, ended: Date?
@@ -130,6 +130,8 @@ public final class TerminalScreen {
     public private(set) var marksOutput = false
     /// Answers to the program's questions (cursor position, device attributes), to write back to it.
     public var respond: (Data) -> Void = { _ in }
+    /// Each command the shell marked, once it has ended: its line as typed (`Block.text`), for the host's history.
+    public var onCommand: (String) -> Void = { _ in }
     /// Increments on every change, for a view to know when to draw again.
     public private(set) var generation = 0
 
@@ -675,12 +677,24 @@ public final class TerminalScreen {
         case .output:
             // What was typed, as the screen shows it now, when the shell didn't say (bash).
             if command?.isEmpty ?? true { command = typedStart().map { typed(from: $0, to: cursorPosition) } }
-            mark.command = command?.trimmingCharacters(in: .whitespacesAndNewlines)
+            mark.command = command.map(Self.commandLine)
             marksOutput = true
         case .end: break
         }
         lines[cursorY].marks.append(mark)
         marksCommands = true
+        // The command this ends, if one ran (a prompt left with an empty line or ⌃C ends none).
+        if markKind == .end, let block = blocks.last, block.end == Position(line: scrollback.count + cursorY, column: mark.column) {
+            onCommand(block.text)
+        }
+    }
+
+    /// A command line as typed, without the line breaks around it and the blanks after it. The blanks before it stay: the
+    /// shells keep a command typed after a space out of their history, and AirSCP's history does too.
+    static func commandLine(_ typed: String) -> String {
+        var line = typed.trimmingCharacters(in: .newlines)
+        while line.last?.isWhitespace == true { line.removeLast() }
+        return line
     }
 
     // MARK: Cursor and reset
@@ -835,6 +849,21 @@ public final class TerminalScreen {
         return text(from: start, to: cursorPosition).trimmingCharacters(in: .whitespaces).isEmpty
     }
 
+    /// What is typed before the cursor: at a prompt the shell marks, from where typing starts; else the cursor's line
+    /// (with the lines it wraps on from), prompt and all. A blank just before the cursor is kept: the word there is empty.
+    public var typedBeforeCursor: String {
+        let all = allLines, cursor = cursorPosition
+        var start = Position(line: cursor.line, column: 0)
+        if let typed = typedStart() {
+            start = typed
+        } else {
+            while start.line > 0 && all[start.line - 1].wrapped { start.line -= 1 }
+        }
+        let cells = all[cursor.line].cells
+        let blank = cursor.column > 0 && cursor.column <= cells.count && cells[cursor.column - 1].character == " "
+        return text(from: start, to: cursor) + (blank ? " " : "")
+    }
+
     /// The commands the shell marked, oldest first, with the one running. A prompt where nothing ran (an empty line, a
     /// line given up) is left out, as are marks left without their prompt (the screen was cleared).
     public var blocks: [Block] {
@@ -849,8 +878,7 @@ public final class TerminalScreen {
                 guard !marksOutput, let end = block.end else { return }
                 let last = (command.line...max(command.line, end.line)).last { all[$0].marks.contains { $0.kind == .continuation } }
                     ?? command.line
-                block.text = typed(from: command, to: Position(line: lineEnd(last, in: all), column: Int.max))
-                    .trimmingCharacters(in: .whitespacesAndNewlines)
+                block.text = Self.commandLine(typed(from: command, to: Position(line: lineEnd(last, in: all), column: Int.max)))
             }
             guard block.output != nil || block.command != nil, !block.text.isEmpty else { return }
             if let end = block.end {

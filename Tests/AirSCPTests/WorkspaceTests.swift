@@ -653,7 +653,7 @@ private func window(for browser: BrowserContentController) -> NSWindow {
 
 /// Runs `body` on a thread of its own, as Finder's promise queue would call the pane (whose promise method is
 /// nonisolated and thread-safe).
-private final class OffMainThread: @unchecked Sendable {
+final class OffMainThread: @unchecked Sendable {
     private let body: () -> Void
 
     init(_ body: @escaping () -> Void) {

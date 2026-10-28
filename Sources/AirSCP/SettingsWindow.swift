@@ -39,6 +39,7 @@ struct SettingsView: View {
                 .help("Follow the Mac's light or dark mode (System, the default), or always use one")
             }
             Section("Files") {
+                #if !APPSTORE  // the App Store version opens terminals in the Terminal tab only
                 Picker("Open terminals in", selection: $model.data.settings.terminalApp) {
                     Text("Terminal").tag(AppSettings.TerminalApp.terminal)
                     Text(iTermInstalled ? "iTerm" : "iTerm (not installed)").tag(AppSettings.TerminalApp.iTerm)
@@ -47,9 +48,11 @@ struct SettingsView: View {
                 .accessibilityLabel("Open terminals in")
                 .help("The app that Open Terminal, Run in Terminal and Kill with sudo use (Terminal by default)")
                 caption("iTerm can be chosen when it is installed.")
-                Toggle("Open Terminal Here in the Terminal tab", isOn: $model.data.settings.openTerminalHereInTab)
+                Toggle("Open Terminal Here and Run in Terminal in the Terminal tab", isOn: $model.data.settings.openTerminalHereInTab)
                     .accessibilityIdentifier("settings.openTerminalHereInTab")
-                    .help("Off by default. On, a server folder's Open Terminal Here goes to the host's Terminal tab in AirSCP")
+                    .help("Off by default. On, Open Terminal Here and Run in Terminal go to the host's Terminal tab in AirSCP")
+                caption("At an empty prompt AirSCP types the cd or the command there; while the shell is busy it opens a new tab.")
+                #endif
                 LabeledContent("Downloads folder") {
                     HStack {
                         Text((model.data.settings.downloadFolder as NSString).abbreviatingWithTildeInPath)
@@ -99,6 +102,19 @@ struct SettingsView: View {
                                        window: { Self.window }, label: "New desktops' certificate")
             }
             Section("Keys") {
+                #if APPSTORE
+                LabeledContent("SSH folder") {
+                    HStack {
+                        Text(sshFolderName).lineLimit(1).truncationMode(.middle)
+                        Button("Choose…") { (NSApp.delegate as? AppDelegate)?.chooseSSHFolder(on: Self.window) }
+                            .accessibilityIdentifier("settings.sshFolder")
+                            .help("Choose the folder ssh uses for keys, known hosts and its config, usually ~/.ssh")
+                    }
+                }
+                .help("The folder ssh uses for keys, known hosts and its config")
+                caption("The App Store version opens only the folders you choose. Give it ~/.ssh to use your keys, known "
+                        + "hosts and config; until then AirSCP keeps its own, in its container.")
+                #endif
                 LabeledContent("New keys go in") {
                     HStack {
                         Text(keyFolder).lineLimit(1).truncationMode(.middle)
@@ -179,6 +195,14 @@ struct SettingsView: View {
     private func caption(_ text: String) -> some View { FormCaption(text) }
 
     private static var window: NSWindow? { NSApp.windows.first { $0.isVisible && $0.title == "Settings" } }
+
+    #if APPSTORE
+    private var sshFolderName: String {
+        if sshDirectory == NSHomeDirectory() + "/.ssh" { return "AirSCP's own (none chosen)" }
+        let home = FolderAccess.home + "/"
+        return sshDirectory.hasPrefix(home) ? "~/" + sshDirectory.dropFirst(home.count) : sshDirectory
+    }
+    #endif
 
     private var keyFolder: String {
         model.data.settings.keyFolder.isEmpty ? (sshDirectory as NSString).abbreviatingWithTildeInPath : model.data.settings.keyFolder

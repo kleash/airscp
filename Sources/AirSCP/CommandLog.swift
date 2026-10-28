@@ -102,7 +102,14 @@ struct CommandLogView: View {
                 .disabled(log.entries.isEmpty)
                 .help("Forget the listed commands (new ones keep coming)")
                 if AppleIntelligence.ready {
-                    Button("Summarize…") { AppleIntelligence.ask(AssistantContext.summarizeLog(log.entries.map(\.command))) }
+                    Button("Summarize…") {
+                        // How each ended first ("whether anything failed" needs it), then its command line.
+                        AppleIntelligence.ask(AssistantContext.summarizeLog(log.entries.map { entry in
+                            (entry.status.map { "exit \($0)" } ?? "running")
+                                + (entry.stderr.split(whereSeparator: \.isNewline).first.map { " (\($0))" } ?? "")
+                                + ": " + entry.command
+                        }))
+                    }
                         .disabled(log.entries.isEmpty)
                         .help(log.entries.isEmpty ? "Nothing to summarize yet"
                               : "Ask Apple Intelligence (on this Mac) what these commands did and whether any failed")

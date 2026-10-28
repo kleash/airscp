@@ -28,6 +28,17 @@ public final class TerminalSession {
         environment["LANG"] = environment["LANG"] ?? "en_US.UTF-8"
         (pid, master) = try Runner.spawnOnTerminal(argv, environment: environment, columns: screen.columns, rows: screen.rows)
         _ = fcntl(master, F_SETFL, fcntl(master, F_GETFL) | O_NONBLOCK)
+        #if APPSTORE
+        // The sandbox refuses ssh's own switch of its terminal to raw mode (an ioctl on the terminal's side): ssh's
+        // settings, made from the master's side, which it allows. Else every key would be echoed here as well.
+        var tio = termios()
+        if tcgetattr(master, &tio) == 0 {
+            tio.c_iflag = (tio.c_iflag | tcflag_t(IGNPAR)) & ~tcflag_t(ISTRIP | INLCR | IGNCR | ICRNL | IXON | IXANY | IXOFF)
+            tio.c_lflag &= ~tcflag_t(ISIG | ICANON | ECHO | ECHOE | ECHOK | ECHONL | IEXTEN)
+            tio.c_oflag &= ~tcflag_t(OPOST)
+            tcsetattr(master, TCSANOW, &tio)
+        }
+        #endif
         running = true
         reader = DispatchSource.makeReadSource(fileDescriptor: master, queue: queue)
         exitWatch = DispatchSource.makeProcessSource(identifier: pid, eventMask: .exit, queue: queue)
@@ -162,5 +173,38 @@ extension TerminalSession {
             }
         }
         return characters
+    }
+}
+
+/// A host's command history for the Terminal tab: the commands its shells marked (`TerminalScreen.onCommand`), newest
+/// first, each once, at most 1000. A command typed after a space isn't kept, as the shells keep it out of theirs. Saved
+/// in the settings folder, history/<host id>.json (folder 0700, file 0600): never in airscp.json, an export or a log.
+public final class CommandHistory {
+    public static let limit = 1000
+    public private(set) var commands: [String]
+    let file: URL
+
+    public init(host: UUID, folder: URL = Store.directory) {
+        file = folder.appendingPathComponent("history", isDirectory: true).appendingPathComponent(host.uuidString + ".json")
+        commands = (try? Data(contentsOf: file)).flatMap { try? JSONDecoder().decode([String].self, from: $0) } ?? []
+    }
+
+    public func add(_ command: String) {
+        let line = command.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !line.isEmpty, !command.hasPrefix(" ") else { return }
+        commands.removeAll { $0 == line }
+        commands.insert(line, at: 0)
+        if commands.count > Self.limit { commands.removeLast(commands.count - Self.limit) }
+        let files = FileManager.default
+        try? files.createDirectory(at: file.deletingLastPathComponent(), withIntermediateDirectories: true,
+                                   attributes: [.posixPermissions: 0o700])
+        guard (try? JSONEncoder().encode(commands).write(to: file, options: .atomic)) != nil else { return }
+        try? files.setAttributes([.posixPermissions: 0o600], ofItemAtPath: file.path)
+    }
+
+    /// Forgets every command (Clear History; the host deleted).
+    public func clear() {
+        commands = []
+        try? FileManager.default.removeItem(at: file)
     }
 }

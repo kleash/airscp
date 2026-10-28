@@ -12,7 +12,7 @@ cd "$(dirname "$0")/.."
 
 cmake_version=4.4.3
 openssl_version=3.5.9
-freerdp_version=3.32.1
+freerdp_version=3.32.2
 # name, URL, SHA-256
 downloads=(
     "cmake-$cmake_version-macos-universal.tar.gz"
@@ -23,7 +23,7 @@ downloads=(
     603f5602e2eef00d77fbd429d34dcd5822bb301757a1bc9cdb24c670f1eb859a
     "freerdp-$freerdp_version.tar.gz"
     "https://github.com/FreeRDP/FreeRDP/releases/download/$freerdp_version/freerdp-$freerdp_version.tar.gz"
-    3021cf8848efbd0064664e187cb61e6101e4e74a4d8ffb495d9f7715e22d67de
+    e95a505c0057e4d06a3b120477c421028769deba4db9c639ef3465d050f0955c
 )
 archs=(arm64 x86_64)
 deployment_target=13.0

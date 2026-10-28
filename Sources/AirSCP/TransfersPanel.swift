@@ -361,6 +361,8 @@ enum TransferText {
         case .upload: return "arrow.up"
         case .download: return "arrow.down"
         case .relay: return "arrow.left.arrow.right"
+        case .compress: return "doc.zipper"
+        case .extract: return "shippingbox"
         }
     }
 
@@ -369,6 +371,8 @@ enum TransferText {
         case .upload: return "Upload"
         case .download: return "Download"
         case .relay: return "Server to server"
+        case .compress: return "Zip on S3 storage (through this Mac)"
+        case .extract: return "Extract on S3 storage (through this Mac)"
         }
     }
 
@@ -420,6 +424,8 @@ enum TransferText {
             case .upload: return "Uploading"
             case .download: return "Downloading"
             case .relay: return "Copying"
+            case .compress: return "Compressing"
+            case .extract: return "Extracting"
             }
         case .paused: return "Paused"
         case .done:

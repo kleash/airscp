@@ -525,7 +525,7 @@ struct HostEditorView: View {
         panel.directoryURL = URL(fileURLWithPath: sshDirectory, isDirectory: true)
         panel.message = "Choose the private key (not the .pub file). A PuTTY key (.ppk) is imported first."
         // A sheet on the editor (an app-modal panel would hold up everything, agent control too).
-        Panels.run(panel, on: window()) { [self] urls in
+        Panels.run(panel, on: window(), keep: true) { [self] urls in
             guard var path = urls.first?.path else { return }
             // A PuTTY key: ssh can't read it, so it becomes an OpenSSH key first (Use for This Host then chooses it).
             if PuTTYKey.isEncrypted((try? String(contentsOfFile: path, encoding: .utf8)) ?? "") != nil {

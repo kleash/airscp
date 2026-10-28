@@ -11,3 +11,19 @@ description = "PEM header strings in code, with no key after them"
 targetRules = ["private-key"]
 regexTarget = "match"
 regexes = ['''^-----BEGIN [A-Z ]*PRIVATE KEY-----"''']
+
+# The in-process S3 server's made-up keys in the tests (TestS3.accessKey and secret in S3Tests.swift): the secret has
+# "/" and "+" in it, as real ones do, so that the tests sign with such a key. It opens nothing.
+[[allowlists]]
+description = "The test S3 server's made-up keys"
+targetRules = ["generic-api-key"]
+regexTarget = "secret"
+regexes = ['''^airscp/Test\+Secret/Key$''']
+
+# The docs pictures' demo S3 storage (scripts/docs-screenshots.sh): a throwaway key for a container of its own on this
+# Mac, removed when the pictures are made.
+[[allowlists]]
+description = "The docs pictures' demo S3 key"
+targetRules = ["curl-auth-user"]
+regexTarget = "secret"
+regexes = ['''^shop-uploader:docs-demo-secret$''']

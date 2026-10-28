@@ -39,10 +39,11 @@ If nobody answers within 45 seconds, nothing is done, and the agent is told so.
 AirSCP asks before an agent:
 
 - deletes, replaces or renames files, or copies them to or from a server (uploads, downloads, drops, Synchronize);
+- zips or unpacks files on S3 storage, or makes a presigned link that lets anyone download a file;
 - opens a file in another app;
 - changes files' permissions or owners (Make Executable too), or puts a key on a server or in the ssh agent;
 - switches a tunnel on or off;
-- runs a command, a file or a snippet, or types into a Terminal tab;
+- runs a command, a file or a snippet, types into a Terminal tab, or closes a tab whose command still runs;
 - kills a process, cancels, retries or resumes transfers, disconnects or quits;
 - types, presses keys or clicks on a Windows desktop.
 

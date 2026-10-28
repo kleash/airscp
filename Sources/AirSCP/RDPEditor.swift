@@ -153,7 +153,7 @@ struct RDPEditorView: View {
                 }
                 Picker("Connect through:", selection: $draft.viaHostID) {
                     Text("None (connect directly)").tag(UUID?.none)
-                    ForEach(model.data.hosts.sorted { $0.displayName.localizedStandardCompare($1.displayName) == .orderedAscending }) {
+                    ForEach(model.data.hosts.filter { $0.s3 == nil }.sorted { $0.displayName.localizedStandardCompare($1.displayName) == .orderedAscending }) {
                         Text($0.displayName).tag(Optional($0.id))
                     }
                 }

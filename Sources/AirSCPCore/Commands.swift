@@ -13,6 +13,14 @@ public enum OpenSSH {
     /// (`config`). nil (the app) means the user's own ~/.ssh/config and keys.
     public static var configFile: String?
 
+    /// The App Store version's SSH folder when ssh's own ~/.ssh isn't it: a folder the person chose instead, or AirSCP's
+    /// own in its container. Its sandbox lets ssh into nothing else, so ssh gets that folder's config (`config`), default
+    /// keys and known_hosts (`options`) by name.
+    public static var sshFolder: String?
+
+    /// The key files ssh tries by itself in ~/.ssh, in its order.
+    static let defaultKeys = ["id_rsa", "id_ecdsa", "id_ecdsa_sk", "id_ed25519", "id_ed25519_sk"]
+
     /// The host's settings as -o options, shared verbatim by ssh, scp, sftp, ssh-copy-id and ssh -O. Only -o:
     /// ssh's -p (port) means "preserve" to scp and sftp. The first hop goes through the host's proxy, or with a
     /// jump host through the jump host's own proxy (nested in its ProxyCommand). `silent` (an automatic reconnect's
@@ -55,7 +63,19 @@ public enum OpenSSH {
             let option = line.trimmingCharacters(in: .whitespaces)
             if !option.isEmpty && !option.hasPrefix("#") { options += ["-o", option] }
         }
-        return options
+        // After the host's own choices, which win (ssh takes an option's first value).
+        return options + (sshFolder.map { folderDefaults($0, for: host) } ?? [])
+    }
+
+    /// What ssh would find in ~/.ssh by itself, named in `folder` (the App Store version's SSH folder): its default keys
+    /// that exist, for a host without a key file of its own, and its known_hosts.
+    static func folderDefaults(_ folder: String, for host: SSHHost) -> [String] {
+        func option(_ key: String, _ path: String) -> [String] {
+            ["-o", key + "=" + Quote.configValue(path.replacingOccurrences(of: "%", with: "%%"))]
+        }
+        let keys = host.auth == .keyFile && !host.keyFile.isEmpty ? []
+            : defaultKeys.map { folder + "/" + $0 }.filter { FileManager.default.fileExists(atPath: $0) }
+        return keys.flatMap { option("IdentityFile", $0) } + option("UserKnownHostsFile", folder + "/known_hosts")
     }
 
     /// Why `host` can't connect when its jump host no longer exists (deleted, or not in an imported file): without one,
@@ -207,8 +227,16 @@ public enum OpenSSH {
     /// the terminal itself. `command` runs with a tty (-t) instead of a login shell.
     public static func terminal(_ host: SSHHost, jump: SSHHost?, socket: String, command: String? = nil) -> [String] {
         [ssh] + config + ["-o", "ControlPath=" + socket, "-o", "ControlMaster=no"] + options(host, jump: jump)
-            + (command == nil ? [host.hostname] : ["-t", host.hostname, command!])
+            + (command == nil ? [host.hostname] : [tty, host.hostname, command!])
     }
+
+    /// -t, or -tt in the App Store version: its sandbox refuses ssh's raw mode on the terminal (`TerminalSession` sets
+    /// it instead), and forced, ssh doesn't print that refusal.
+    #if APPSTORE
+    static let tty = "-tt"
+    #else
+    static let tty = "-t"
+    #endif
 
     /// The remote command for AirSCP's own terminal: the login shell (in `directory`, else the login folder), after a
     /// line that tells the terminal the shell's pid (AirSCP's OSC 1337;AirSCPPid, which it doesn't show): the shell is
@@ -377,7 +405,17 @@ public enum OpenSSH {
     /// -F with the test seam's config, and IdentityFile=none: whatever that config says, ssh would otherwise offer the
     /// default key files of the real ~/.ssh (id_rsa, id_ed25519…) to every host without a key of its own. A host's
     /// own key file (-o IdentityFile) still applies: ssh adds each IdentityFile to a list, and skips "none".
-    static var config: [String] { configFile.map { ["-F", $0, "-o", "IdentityFile=none"] } ?? [] }
+    /// The App Store version's SSH folder (`sshFolder`) the same way, with its config if it has one.
+    static var config: [String] {
+        if let configFile { return ["-F", configFile, "-o", "IdentityFile=none"] }
+        return sshFolder.map(folderConfig) ?? []
+    }
+
+    /// `config` for the App Store version's SSH folder: its config file, else none (not the real ~/.ssh/config).
+    static func folderConfig(_ folder: String) -> [String] {
+        let file = folder + "/config"
+        return ["-F", FileManager.default.fileExists(atPath: file) ? file : "none", "-o", "IdentityFile=none"]
+    }
 
     /// `argv` with the tools' debug output on (-vv) for the debug log (`Runner`): ssh, scp and sftp, and the ssh of a jump
     /// host's ProxyCommand. It goes before the first -F or -o, so that the tools' own flags (ssh -M -N, scp -r) stay first.

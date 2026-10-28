@@ -60,13 +60,19 @@
 - [Copy and paste between Mac and Windows](https://kleash.github.io/airscp/remote-desktop/clipboard.html): Text and files go both ways through the clipboard, like on one computer.
 - [Keyboard, mouse and screen size](https://kleash.github.io/airscp/remote-desktop/keyboard-and-screen.html)
 
+## S3 storage
+- [S3 storage](https://kleash.github.io/airscp/s3/): AirSCP opens Amazon S3 and storage that works like it (MinIO, Cloudflare R2, Backblaze B2, Wasabi, Ceph and others). Its buckets open in the Files tab like a server's folders: you browse, drag files in and out, rename, delete, edit and zip, and long copies wait in the Transfers list.
+- [Connect to S3 or S3-compatible storage](https://kleash.github.io/airscp/s3/connect.html): Save your storage once, with its access key. Then double-click it in the sidebar to see its buckets.
+- [Browse and transfer](https://kleash.github.io/airscp/s3/browse-and-transfer.html): S3 storage works in the Files tab as a server does. This Mac is on the left, the storage on the right.
+- [Zip and extract](https://kleash.github.io/airscp/s3/zip-and-extract.html): S3 storage can't make or open archives itself. AirSCP does it on your Mac, as a job in the Transfers list: it downloads, zips or unpacks, and uploads.
+
 ## Snippets & Run Command
 - [Snippets & Run Command](https://kleash.github.io/airscp/commands/): Run commands on a server without opening a terminal, save the ones you use often, or open a real terminal when you need one.
 - [Run a command](https://kleash.github.io/airscp/commands/run-a-command.html): Run one command on a server and read its output right in AirSCP.
 - [Save commands as snippets](https://kleash.github.io/airscp/commands/snippets.html): A snippet is a command you run often, saved with a name. You choose the host each time you run it.
 - [Open a terminal](https://kleash.github.io/airscp/commands/open-a-terminal.html): Open an ssh session to a host in Terminal or iTerm. It rides on AirSCP's open connection, so you don't log in again.
 - [See the commands AirSCP ran](https://kleash.github.io/airscp/commands/command-log.html): AirSCP is a window on top of the ssh tools of macOS. The command log shows every command it ran for a host, as a line you can copy and run yourself.
-- [The Terminal tab](https://kleash.github.io/airscp/commands/terminal-tab.html): A shell on the server, inside AirSCP. It uses the host's connection, so there is no second login. It knows files: right-click a file name in the output to show, download or edit it, and drop Finder files on it to upload them to the folder you are in. With bash and zsh it also knows your commands: how each one ended, how long it took and what it printed.
+- [The Terminal tab](https://kleash.github.io/airscp/commands/terminal-tab.html): A shell on the server, inside AirSCP. It uses the host's connection, so there is no second login. Open as many shells as you like, each in a tab of its own. It knows files: right-click a file name in the output to show, download or edit it, drag it to Finder, and drop Finder files on it to upload them to the folder you are in. With bash and zsh it also knows your commands: how each one ended, how long it took and what it printed, and it keeps them in a history you can search.
 
 ## Certificates and keystores
 - [Certificates and keystores](https://kleash.github.io/airscp/certificates/): **Tools ▸ Certificate Manager…** does the everyday certificate work without `openssl` or `keytool` commands. Open a certificate, key or keystore, see what is in it and when it expires, check its chain, save it in the format another system wants, or make a new certificate request. Everything happens on this Mac.

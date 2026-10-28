@@ -75,6 +75,42 @@ map with tests is [feature-map.md](feature-map.md).
 - **UI performance**: listing, sorting and progress parsing happen off the main thread; progress updates are throttled
   (≤ 10/s per job, ≤ 4/s for the panel); the Transfers panel lists unfinished jobs and the newest 100 finished.
 
+## Terminal tab
+
+- **Shells on the host's connection**: each tab is a `TerminalSession` (`ssh -t` riding the master, on a
+  pseudo-terminal from `CPTY`) drawn by `TerminalScreen`, an xterm emulator. bash and zsh start with OSC 133 marks
+  signed with a token per shell, so AirSCP knows each command, its exit status and whether the shell waits at an empty
+  prompt; other shells work without them.
+- **Typed for the person, never into a busy shell**: Open Terminal Here and Run in Terminal (with the setting, and
+  always in the App Store version) type at an empty prompt, else start a new tab. The commands the marks report go into
+  the host's history (`CommandHistory`, history/<host id>.json in the settings folder, 0600).
+
+## S3 storage
+
+- **An S3 connection is a saved host with an `s3` part** (`SSHHost.s3`: endpoint, region, access key ID, path style,
+  bucket to open at); its label, group, colour tag, proxy, favourites and Leave out are the host's. So the sidebar,
+  the workspace (the Files tab only), the panes, the Transfers panel, agents and intents take it as they take a server.
+  The secret key is the host's Keychain password; a session token is under `S3Settings.tokenKey`. Never in
+  airscp.json, logs or argv.
+- **No ssh at all**: the `Session` of such a host has an `S3Client` (`Session.s3`); connecting checks the keys with one
+  request, and every public file operation (list, makeDirectory, rename, move, copy, exists, delete, createFile, info,
+  fetch, store, writeText, checksum's download) starts with its S3 branch (`S3Files.swift`). `runMuxed` refuses an S3
+  session, so nothing ssh-only ever starts for one; its capabilities have no shell, and shell-only commands are off
+  with `Session.s3NoShell` as their reason.
+- **The client** (`S3.swift`): URLSession with one delegate (a 2xx body into a file, progress, cancel, the speed limit
+  by suspending a task ahead of it, the proxy's login), SigV4 in CryptoKit (`SigV4`, checked against AWS's own
+  examples), XMLParser. Paths: "/" is the buckets, "/bucket/a/b" a folder (prefix "a/b/") or a file (key "a/b").
+  Folders are common prefixes and empty "name/" markers. Amazon S3's bucket regions are found from
+  `x-amz-bucket-region` and remembered. Path style for path-style connections, bucket names with dots and endpoints at
+  an IP address. Errors map to plain words in `ErrorMapping.s3`.
+- **Transfers** (`S3Transfers.swift`, `TransferQueue.runS3`): one PUT with `x-amz-checksum-sha256`, or from 64 MB a
+  multipart upload of under 10,000 parts (Pause keeps its parts for Resume, which asks ListParts what arrived;
+  Cancel aborts it); downloads into `.airscp-<id>.part` with Range to continue (If-Match: a changed file starts again);
+  folders object by object; copies with an ssh server through a temporary folder on this Mac (`fetchForRelay`, both
+  ways); Download as .zip, Compress and Extract made on this Mac (ditto, tar, gzip) as `.compress`/`.extract` jobs.
+  Verify compares SHA-256 with the storage's (for a multipart upload, the SHA-256 of its parts' SHA-256s). An object
+  appears only when complete, so uploads need no part file there.
+
 ## Remote Desktop
 
 - FreeRDP 3 and OpenSSL 3, built static and universal by `scripts/build-freerdp.sh` (pinned versions, SHA-256
@@ -89,7 +125,8 @@ map with tests is [feature-map.md](feature-map.md).
 
 ## Data
 
-- `~/Library/Application Support/AirSCP/airscp.json`: hosts, groups, proxies, desktops, snippets, settings. Models are
+- `~/Library/Application Support/AirSCP/airscp.json`: hosts (S3 connections among them), groups, proxies, desktops,
+  snippets, settings. Models are
   Codable with `decodeIfPresent` for every field, so old files load; new fields go last with a default.
 - Passwords: one login-Keychain item (service `com.kleash.airscp`) holding a JSON dictionary. A failed read never
   leads to a write (so it can't wipe the item). A throwaway instance (`AIRSCP_SUPPORT_DIR`) keeps passwords in memory.
@@ -98,6 +135,22 @@ map with tests is [feature-map.md](feature-map.md).
 - Window sizes, the sidebar's width and the panes' columns: AppKit's autosave in AirSCP's defaults. A saved frame that
   no longer fits on a screen is dropped, and the window opens at its own size (`NSWindow.open`, at most 85 % × 80 % of
   the screen). A throwaway instance neither reads nor saves them (they are the user's).
+
+## The Mac App Store version
+
+`./build.sh --appstore` builds the same sources with Swift's `APPSTORE` condition, in the App Sandbox
+(`Resources/AirSCP-AppStore.entitlements`). ssh, scp, sftp and AirSCP's own helpers (askpass, `--proxy-connect`, `--mcp`)
+run inside its sandbox, so everything they touch is in the container or in a folder the person chose: control sockets
+in `<container>/Data/s` (short: a socket's path has 104 bytes), the askpass folder and the agent socket in its `tmp`.
+Folders chosen in an Open panel are kept as security-scoped bookmarks (`FolderAccess`) and opened again at launch; a
+process AirSCP starts afterwards inherits that access. The SSH folder is ~/.ssh once the person allows it (ssh's own
+defaults name it), else another folder whose config, keys and known_hosts are named on ssh's command lines. What the
+sandbox refuses is done another way: terminals open in the Terminal tab (no Apple Events), the pseudo-terminal's raw
+mode and size are set from the master's side (the sandbox refuses ioctls on the terminal's side), and agent control
+asks for its own windows through the accessibility API instead of the private AXEnhancedUserInterface. S3 storage needs
+nothing more: its HTTPS is the app's own (network.client), its zips are made in the container's tmp, and Import from
+~/.aws asks for the .aws folder in an Open panel.
+Release and trying it locally: [release.md](release.md#mac-app-store).
 
 ## Agent control
 

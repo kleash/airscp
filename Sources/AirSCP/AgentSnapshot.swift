@@ -5,7 +5,7 @@ import SwiftUI
 /// One node of a window's accessibility tree, as VoiceOver reads it: an AppKit view or cell, or a SwiftUI node. Read
 /// through key-value coding, because SwiftUI's nodes answer the NSAccessibility getters without declaring the protocol.
 /// SwiftUI builds its nodes only once the app has `AXEnhancedUserInterface` set, as an assistive app would set it
-/// (`AgentServer` does while agent control is on).
+/// (`AgentServer` does while agent control is on; the App Store version asks for its own windows instead).
 @MainActor
 struct AXNode {
     let object: NSObject
@@ -341,7 +341,7 @@ extension AgentServer {
         let search = main?.sidebar.search ?? ""
         let connected = model.connected.enumerated().compactMap { index, id -> [String: Any]? in
             if let host = model.host(id) {
-                return ["name": host.displayName, "kind": "host", "state": name(model.states[id]),
+                return ["name": host.displayName, "kind": host.s3 == nil ? "host" : "s3", "state": name(model.states[id]),
                         "transfers": model.activeTransfers[id] ?? 0, "shortcut": index < 9 ? "⌘\(index + 1)" : ""]
             }
             guard let entry = model.rdpEntry(id) else { return nil }
@@ -358,6 +358,10 @@ extension AgentServer {
                 if let route = data.route(for: host) {
                     json["route"] = route.short  // as the sidebar shows it: "via corp-proxy → bastion"
                     if route.missing { json["warning"] = route.full }
+                }
+                if host.s3 != nil {
+                    json["kind"] = "s3"  // S3 storage: files only
+                    return json
                 }
                 json["hostKeyCheck"] = host.hostKeyCheck.rawValue  // ask, acceptNew or off
                 if host.hostKeyCheck == .off { json["shield"] = ChecksOffShield.help(ssh: true) }
@@ -545,13 +549,23 @@ extension AgentServer {
 
     // MARK: Terminal
 
-    /// The Terminal tab's shell: running, its folder and title as the shell said them, the cursor, and the text of the
-    /// last `lines` lines (scrollback included), wrapped lines joined. With bash and zsh, which mark their commands, the
-    /// last 20 commands too: each one's line, exit status, time and output (its last 50 lines), the one running last.
+    /// The Terminal tab: its tabs (each one's place from 1, title, folder, whether its shell runs and waits at its
+    /// prompt), and the shell of the tab shown: running, its folder and title as the shell said them, the cursor, and the
+    /// text of the last `lines` lines (scrollback included), wrapped lines joined. With bash and zsh, which mark their
+    /// commands, the last 20 commands too: each one's line, exit status, time and output (its last 50 lines), the one
+    /// running last.
     func terminalJSON(_ terminal: TerminalController, lines: Int = 200) -> [String: Any] {
-        guard let session = terminal.session else { return ["running": false] }
+        let tabs = terminal.sessions.enumerated().map { index, session -> [String: Any] in
+            var tab: [String: Any] = ["index": index + 1, "title": terminal.title(of: session), "running": session.running,
+                                      "shown": index == terminal.current]
+            if let directory = session.screen.directory { tab["directory"] = directory }
+            if session.screen.marksCommands { tab["atPrompt"] = session.screen.waitsAtPrompt }
+            return tab
+        }
+        guard let session = terminal.session else { return ["running": false, "tabs": tabs] }
         let screen = session.screen
-        var json: [String: Any] = ["running": session.running, "columns": screen.columns, "rows": screen.rows,
+        var json: [String: Any] = ["tabs": tabs, "tab": terminal.current + 1,
+                                   "running": session.running, "columns": screen.columns, "rows": screen.rows,
                                    "cursor": ["x": screen.cursorX, "y": screen.cursorY], "fullScreen": screen.alternateScreen,
                                    "lines": Array(screen.text.components(separatedBy: "\n").suffix(max(lines, 1)))]
         if let directory = screen.directory { json["directory"] = directory }

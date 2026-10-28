@@ -268,14 +268,52 @@ struct InfoView: View {
                 row("Modified", modified(info))
                 if let accessed = info?.accessed { row("Accessed", Self.dates.string(from: accessed)) }
                 if let changed = info?.changed { row("Changed", Self.dates.string(from: changed)) }
-                row("Owner", info?.owner ?? entry.owner)
-                row("Group", info?.group ?? entry.group)
+                if let s3 = info?.s3 {
+                    // S3 storage: no owner or permissions, but what the storage keeps with the object.
+                    row("Content type", s3.contentType)
+                    row("Storage class", s3.storageClass)
+                    row("ETag", s3.etag)
+                    // In hex, as Calculate shows it; one of a file uploaded in parts is of the parts' own.
+                    if let checksum = s3.checksum {
+                        row("SHA-256", checksum.contains("-") ? checksum + " (of its parts' checksums)"
+                            : Data(base64Encoded: checksum).map { $0.map { String(format: "%02x", $0) }.joined() } ?? checksum)
+                    }
+                    ForEach(s3.metadata.keys.sorted(), id: \.self) { name in row("Metadata " + name, s3.metadata[name]) }
+                } else if !isS3 {
+                    row("Owner", info?.owner ?? entry.owner)
+                    row("Group", info?.group ?? entry.group)
+                }
                 if let target = info?.linkTarget { row("Link to", target) }
             }
             if entry.kind == .file {
                 Divider()
                 checksumSection
             }
+            if !isS3 { permissionsSection }
+            if let failure = model.failure {
+                Text(failure).foregroundColor(Color(nsColor: .systemRed)).fixedSize(horizontal: false, vertical: true)
+            }
+            HStack {
+                if model.loading { ProgressView().controlSize(.small) }
+                Spacer()
+                if entry.kind != .symlink && !isS3 {
+                    Button("Apply Permissions") { model.applyPermissions() }
+                        .disabled(model.loading || invalidMode || (model.mode == model.appliedMode && !model.recursive))
+                        .help("Change the permissions on the server now (change a box first)")
+                }
+                Button("Done", action: close).keyboardShortcut(.defaultAction).primaryTint().help("Close")
+            }
+        }
+        .padding(20)
+        .frame(width: 460)
+        .onExitCommand(perform: close)  // Escape, as in the other sheets (Return is Done)
+    }
+
+    private var isS3: Bool { model.session.s3 != nil }
+
+    @ViewBuilder private var permissionsSection: some View {
+        let entry = model.entry
+        VStack(alignment: .leading, spacing: 14) {
             Divider()
             Text("Permissions").font(.subheadline.weight(.semibold))
             // A link's own mode is 777, and chmod changes its target's: they are changed on the target.
@@ -288,23 +326,7 @@ struct InfoView: View {
                         .help("Off by default. On applies the same permissions to every file and folder inside (chmod -R)")
                 }
             }
-            if let failure = model.failure {
-                Text(failure).foregroundColor(Color(nsColor: .systemRed)).fixedSize(horizontal: false, vertical: true)
-            }
-            HStack {
-                if model.loading { ProgressView().controlSize(.small) }
-                Spacer()
-                if entry.kind != .symlink {
-                    Button("Apply Permissions") { model.applyPermissions() }
-                        .disabled(model.loading || invalidMode || (model.mode == model.appliedMode && !model.recursive))
-                        .help("Change the permissions on the server now (change a box first)")
-                }
-                Button("Done", action: close).keyboardShortcut(.defaultAction).primaryTint().help("Close")
-            }
         }
-        .padding(20)
-        .frame(width: 460)
-        .onExitCommand(perform: close)  // Escape, as in the other sheets (Return is Done)
     }
 
     private var checksumSection: some View {
@@ -322,6 +344,7 @@ struct InfoView: View {
                     .disabled(model.computing)
                     .accessibilityIdentifier("info.calculateChecksum")
                     .help(model.session.capabilities.shell ? "Work out the file's checksum on the server"
+                          : model.session.s3 != nil ? "Download a temporary copy and work out its checksum here"
                           : "Download a temporary copy and work out its checksum here (this server allows file transfers only)")
             }
             if let checksum = model.checksum {
@@ -417,7 +440,7 @@ final class FindModel: ObservableObject {
         status = "Searching…"
         generation += 1
         let generation = self.generation
-        search = Task {
+        search = Task { [self] in
             let outcome: String
             do {
                 // Shown as they come (a big tree or a slow link takes a while), in the order found.

@@ -158,8 +158,14 @@ final class BrowserContentController: NSViewController {
     }
 
     private var localStart: String {
+        #if APPSTORE
+        // Only a folder the sandbox opens without asking; else Downloads, which it always opens.
+        if let dir = (workspace?.host ?? session.host).lastLocalDir, FileList.isLocalFolder(dir), FolderAccess.covers(dir) { return dir }
+        return FolderAccess.home + "/Downloads"
+        #else
         if let dir = (workspace?.host ?? session.host).lastLocalDir, FileList.isLocalFolder(dir) { return dir }
         return NSHomeDirectory()
+        #endif
     }
 
     /// The server's "Remote folder" setting (~ and relative to the home folder allowed), else its home folder.
@@ -235,8 +241,9 @@ final class BrowserContentController: NSViewController {
         case (.remote(let from), .remote(let to)) where from.host.id == to.host.id:
             if items.contains(where: { dir == $0.path || dir.hasPrefix($0.path + "/") }) { return [] }
             if mask.contains(.move) { return items.allSatisfy { RemotePath.parent($0.path) == dir } ? [] : .move }
-            // A copy within the server is cp: not on an account without a shell (a move is sftp's rename).
-            return mask.contains(.copy) && from.capabilities.shell ? .copy : []
+            // A copy within the server is cp: not on an account without a shell (a move is sftp's rename). S3 storage
+            // copies on its own (CopyObject).
+            return mask.contains(.copy) && (from.capabilities.shell || from.s3 != nil) ? .copy : []
         case (.local, .remote), (.remote, .local):
             // ⌘ held (no copy in the mask), as Finder moves between disks: copied, then deleted where it was.
             if !mask.contains(.copy) && (mask.contains(.generic) || mask.contains(.move)) { return .move }
@@ -417,7 +424,7 @@ final class BrowserContentController: NSViewController {
         }
         let moving = move ? items.filter { RemotePath.parent($0.path) != dir } : items
         let place = name(of: dir, on: server)
-        guard !moving.isEmpty,
+        guard !moving.isEmpty, await confirmFolderWork(moving, on: server, verb: move ? "Move" : "Copy"),
               let existing = await entries(of: dir, on: server, failure: "Can't \(move ? "move" : "copy") to \(place)"),
               // Copies into their own folder keep both without asking, like Finder's Duplicate.
               let plan = await plan(moving, existing: existing.map(\.name), caseInsensitive: server.capabilities.caseInsensitive,
@@ -447,6 +454,25 @@ final class BrowserContentController: NSViewController {
             }
         }
         for pane in [left!, right!] where pane.session?.host.id == server.host.id { await pane.reload() }
+    }
+
+    /// S3 storage has no real folders: renaming, moving or copying one copies each file in it, one by one. Asks first,
+    /// saying how many; true when none of `items` is a folder on S3 storage, or the person agreed.
+    func confirmFolderWork(_ items: [FileItem], on server: Session, verb: String) async -> Bool {
+        let folders = items.filter(\.isFolder)
+        guard server.s3 != nil, !folders.isEmpty else { return true }
+        var count = 0
+        guard await pane(showing: server).perform("Counting the files…", failure: "Can't \(verb.lowercased())", {
+            count = try await server.s3FileCount(folders.map(\.path))
+        }) else { return false }
+        let alert = NSAlert()
+        alert.messageText = "\(verb) " + (folders.count == 1 ? "“\(folders[0].name)”" : FileList.items(folders.count))
+            + " (\(count == 1 ? "1 file" : "\(count.formatted()) files"))?"
+        alert.informativeText = "S3 storage has no real folders: AirSCP copies each file on the storage"
+            + (verb == "Copy" ? "." : ", then deletes the original.") + " Many files take a while."
+        alert.addButton(withTitle: verb).toolTip = "\(verb) them now"
+        alert.addButton(withTitle: "Cancel").toolTip = "Don't \(verb.lowercased()) anything"
+        return await run(alert) == .alertFirstButtonReturn
     }
 
     /// The pane showing `dir` on the server, else one showing the server: where its work shows a spinner.
@@ -616,16 +642,17 @@ final class BrowserContentController: NSViewController {
         let alert = NSAlert()
         let what = count == folders ? (folders == 1 ? "1 folder" : "\(folders) folders") : FileList.items(count)
         alert.messageText = "\(verb) \(what) to \(place)?"
-        alert.informativeText = [
-            folders == 0 ? nil : reason == nil ? "Each folder goes as one stream; the symbolic links in it stay links."
+        alert.informativeText = server.s3 != nil
+            ? "Each file goes on its own, with its path in the folder; symbolic links are copied as the files they point to, "
+                + "and links to folders are left out."
+            : [folders == 0 ? nil : reason == nil ? "Each folder goes as one stream; the symbolic links in it stay links."
                 : "This server can't send folders as one stream: symbolic links are copied as the files they point to.",
-            reason.map { "Compressing isn't possible here: \($0)" }
+               reason.map { "Compressing isn't possible here: \($0)" }
                 ?? "Compressing packs everything into one .tar.gz stream: faster on slow connections and for many small "
-                    + "files, slower on fast ones.",
-        ].compactMap { $0 }.joined(separator: "\n\n")
+                    + "files, slower on fast ones."].compactMap { $0 }.joined(separator: "\n\n")
         alert.addButton(withTitle: verb).toolTip = "Start the transfer; it runs in the Transfers queue"
         alert.addButton(withTitle: "Cancel").toolTip = "Don't copy anything"
-        alert.showsSuppressionButton = true
+        alert.showsSuppressionButton = server.s3 == nil  // S3 storage can't unpack a stream
         alert.suppressionButton?.title = "Compress during transfer — faster on slow links and for many small files"
         alert.suppressionButton?.toolTip = reason ?? "One .tar.gz stream: faster on slow connections and for many small "
             + "files, slower on fast ones"
@@ -633,7 +660,7 @@ final class BrowserContentController: NSViewController {
         alert.suppressionButton?.state = reason == nil && count - folders >= TransferQueue.streamThreshold ? .on : .off
         alert.suppressionButton?.isEnabled = reason == nil
         let saved = workspace?.model.host(server.host.id)?.leaveOut ?? server.host.leaveOut
-        let streams = server.capabilities.shell && server.capabilities.tools.contains("tar")
+        let streams = server.capabilities.shell && server.capabilities.tools.contains("tar") || server.s3 != nil
         let field = NSTextField(string: saved)
         field.placeholderString = "*.log, node_modules, .git"
         field.setAccessibilityIdentifier("transfer.leaveOut")
@@ -682,6 +709,7 @@ final class BrowserContentController: NSViewController {
         guard let server = pane.session, let sourceDir = pane.dir else { return }
         let other = otherPane(of: pane)
         let dir = !other.isRemote ? other.dir ?? settings.downloadFolder : settings.downloadFolder
+        if server.s3 != nil { return downloadZip(items, from: server, in: sourceDir, into: dir) }
         planning += 1
         Task {
             defer { planning -= 1 }
@@ -712,6 +740,25 @@ final class BrowserContentController: NSViewController {
             let base = names.count == 1 ? names[0] : "Archive"
             let archive = Names.unique(base + ".tar.gz", existing: existing, caseInsensitive: true)
             server.transfers.downloadArchive(names, in: sourceDir, to: RemotePath.join(dir, archive), extract: extract)
+        }
+    }
+
+    /// Download as .zip from S3 storage: the items are downloaded into a private folder on this Mac and zipped there (a
+    /// queued job); the .zip is kept in `dir`.
+    private func downloadZip(_ items: [FileItem], from server: Session, in sourceDir: String, into dir: String) {
+        planning += 1
+        Task {
+            defer { planning -= 1 }
+            let alert = NSAlert()
+            alert.messageText = items.count == 1 ? "Download “\(items[0].name)” as a .zip?" : "Download \(FileList.items(items.count)) as one .zip?"
+            alert.informativeText = "Into “\(RemotePath.name(dir))”. AirSCP downloads them, then zips them on this Mac."
+            alert.addButton(withTitle: "Download").toolTip = "Start the download; it runs in the Transfers queue"
+            alert.addButton(withTitle: "Cancel").toolTip = "Don't download"
+            alert.addHelp(.s3Zip)
+            guard await run(alert) == .alertFirstButtonReturn else { return }
+            let existing = await Task.detached(priority: .userInitiated) { FileList.localNames(dir) }.value
+            let archive = Names.unique((items.count == 1 ? items[0].name : "Archive") + ".zip", existing: existing, caseInsensitive: true)
+            server.transfers.downloadArchive(items.map(\.name), in: sourceDir, to: RemotePath.join(dir, archive), extract: false)
         }
     }
 
@@ -849,7 +896,7 @@ final class BrowserContentController: NSViewController {
         if let clipboard = currentClipboard {
             // Within the server: a move (sftp rename), or a copy (cp, which needs a shell).
             if pane.session?.host.id == clipboard.session.host.id {
-                guard !clipboard.cut, !clipboard.session.capabilities.shell else { return nil }
+                guard !clipboard.cut, !clipboard.session.capabilities.shell, clipboard.session.s3 == nil else { return nil }
                 return (clipboard.session.capabilities.noShellReason ?? "This server doesn't run shell commands.")
                     + " Copying on the server needs a shell: Cut and Paste moves the items instead."
             }
@@ -1114,9 +1161,11 @@ final class BrowserContentController: NSViewController {
             case .done, .completedWithErrors: break
             default: continue
             }
-            // Compressed uploads and relays name the folder they unpack into; other jobs the item itself.
+            // Compressed uploads and relays name the folder they unpack into; other jobs the item itself (S3 storage's zips:
+            // the folder holding them).
             let local = job.direction == .download
-            let dir = !local && !job.names.isEmpty ? job.destination : RemotePath.parent(job.destination)
+            let dir = [.compress, .extract].contains(job.direction) ? job.source
+                : !local && !job.names.isEmpty ? job.destination : RemotePath.parent(job.destination)
             pendingReloads.append((job.hostID, local, dir, Date()))
         }
         let busy = Set(jobs.filter { $0.status.isActive }.map(\.hostID))

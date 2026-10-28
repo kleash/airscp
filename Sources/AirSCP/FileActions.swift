@@ -109,6 +109,9 @@ extension FilePane {
 
     var isWindows: Bool { session?.capabilities.windows ?? false }
 
+    /// The pane shows S3 storage (no shell, permissions or links; zips through this Mac).
+    var isS3: Bool { session?.s3 != nil }
+
     /// False (and says so) when the folder shown already has the name.
     private func checkFree(_ name: String, in dir: String) -> Bool {
         guard let existing = Names.existing(name, in: items.map(\.name), caseInsensitive: ignoresCase), dir == self.dir else {
@@ -131,6 +134,7 @@ extension FilePane {
     /// Renames within the folder; an existing name asks Replace / Keep Both (a different case or Unicode form of the
     /// same name is just a rename).
     func rename(_ item: FileItem, to name: String, in dir: String) async {
+        if let session, let browser, await !browser.confirmFolderWork([item], on: session, verb: "Rename") { return }
         var others = items.filter { $0.path != item.path }
         // The listing may be older than the server: a name taken since (checked now) brings a fresh listing, so that
         // the question below asks about it instead of replacing it unasked.
@@ -194,12 +198,23 @@ extension FilePane {
         guard browser?.settings.confirmDelete ?? true else { return delete() }
         let names = targets.prefix(8).map { "“\($0.name)”" }.joined(separator: ", ")
             + (targets.count > 8 ? " and \(targets.count - 8) more" : "")
-        let folders = targets.contains { $0.isFolder }
+        let folders = targets.filter { $0.isFolder }
         let host = " on “\(session.host.displayName)”"  // the window may show another host by the time it's answered
-        confirm(targets.count == 1 ? "Delete “\(targets[0].name)”\(host)?" : "Delete \(FileList.items(targets.count))\(host)?",
-                info: (targets.count == 1 ? "" : names + "\n\n") + (folders ? "Folders are deleted with everything in them. " : "")
-                    + "This can't be undone.",
-                button: "Delete", destructive: true, on: view.window, action: delete)
+        let ask = { [self] (files: String) in
+            confirm(targets.count == 1 ? "Delete “\(targets[0].name)”\(host)?" : "Delete \(FileList.items(targets.count))\(host)?",
+                    info: (targets.count == 1 ? "" : names + "\n\n")
+                        + (folders.isEmpty ? "" : "Folders are deleted with everything in them\(files). ") + "This can't be undone.",
+                    button: "Delete", destructive: true, on: view.window, action: delete)
+        }
+        guard isS3 && !folders.isEmpty else { return ask("") }
+        // S3 storage's folders: how many files go with them.
+        Task {
+            var count = 0
+            guard await perform("Counting the files…", failure: "Can't delete", {
+                count = try await session.s3FileCount(folders.map(\.path))
+            }) else { return }
+            ask(" (\(count == 1 ? "1 file" : "\(count.formatted()) files"))")
+        }
     }
 
     // MARK: Server operations
@@ -260,6 +275,7 @@ extension FilePane {
         guard let session, let dir, let window = view.window else { return }
         let names = targets(sender).map(\.name)
         guard !names.isEmpty else { return }
+        if isS3 { return compressOnS3(names, in: dir, session: session, on: window) }
         let alert = NSAlert()
         alert.messageText = names.count == 1 ? "Compress “\(names[0])”" : "Compress \(FileList.items(names.count))"
         alert.informativeText = "The archive is made in “\(displayName(dir))” on the server."
@@ -297,6 +313,20 @@ extension FilePane {
         }
     }
 
+    /// S3 storage zips through this Mac: a queued job downloads the items, zips them and uploads the .zip next to them.
+    private func compressOnS3(_ names: [String], in dir: String, session: Session, on window: NSWindow) {
+        let alert = NSAlert()
+        alert.messageText = names.count == 1 ? "Compress “\(names[0])” into a .zip?" : "Compress \(FileList.items(names.count)) into a .zip?"
+        alert.informativeText = "AirSCP downloads them to this Mac, zips them there and uploads the .zip into “\(displayName(dir))”: "
+            + "a job in Transfers, with its progress."
+        alert.addButton(withTitle: "Compress").toolTip = "Queue the job that makes the .zip next to the items"
+        alert.addButton(withTitle: "Cancel").toolTip = "Don't compress"
+        alert.addHelp(.s3Zip)
+        alert.beginSheetModal(for: window) { response in
+            if response == .alertFirstButtonReturn { session.transfers.compress(names, in: dir) }
+        }
+    }
+
     @objc func extractHere(_ sender: Any?) { extract(sender, into: .here) }
 
     @objc func extractToFolder(_ sender: Any?) { extract(sender, into: .newFolder) }
@@ -304,6 +334,12 @@ extension FilePane {
     /// Extract Here first asks about items that are there already: replace them, or extract into a new folder.
     private func extract(_ sender: Any?, into destination: ExtractDestination) {
         guard let session, let dir, let entry = targets(sender).first?.entry else { return }
+        // On S3 storage, a queued job unpacks it on this Mac and uploads its items (into a new folder when a name is
+        // taken: nothing is replaced unasked).
+        if isS3 {
+            session.transfers.extract(entry.name, in: dir, newFolder: destination == .newFolder)
+            return
+        }
         Task {
             var destination = destination
             if destination == .here {
@@ -364,7 +400,7 @@ extension FilePane {
         run.toolTip = "Run it and show its output in AirSCP"
         run.setAccessibilityIdentifier("run.run")
         let terminal = alert.addButton(withTitle: "Run in Terminal")
-        terminal.toolTip = "Run it in Terminal, for programs that ask questions or need sudo"
+        terminal.toolTip = RunCommandView.inTerminal
         terminal.setAccessibilityIdentifier("run.runInTerminal")
         alert.addButton(withTitle: "Cancel").toolTip = "Don't run it"
         alert.window.initialFirstResponder = field
@@ -373,7 +409,7 @@ extension FilePane {
             switch response {
             // sh runs it, never the login shell (fish, csh and tcsh mis-read the name's quoting): `Session.run(_:sh:)`.
             case .alertFirstButtonReturn: browser?.workspace?.showRunCommand(command, run: true, sh: true)
-            case .alertSecondButtonReturn: browser?.workspace?.openTerminal(command: OpenSSH.viaSh(command))
+            case .alertSecondButtonReturn: browser?.workspace?.openTerminal(command: command, sh: true)
             default: break
             }
         }
@@ -585,6 +621,45 @@ extension FilePane {
         browser?.paste(into: self)
     }
 
+    /// S3 storage: the items' s3://bucket/key links (or the folder's), one per line.
+    @objc func copyS3Link(_ sender: Any?) {
+        let targets = targets(sender)
+        let links = targets.isEmpty ? [Session.s3URI(dir ?? "/", folder: true)] : targets.map { Session.s3URI($0.path, folder: $0.isFolder) }
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(links.joined(separator: "\n"), forType: .string)
+    }
+
+    /// S3 storage: an https link to the file that anyone may open, without keys, until it expires (at most a week).
+    @objc func copyPresignedLink(_ sender: Any?) {
+        guard let session, let item = targets(sender).first, item.kind == .file, let window = view.window else { return }
+        let alert = NSAlert()
+        alert.messageText = "Copy a link to “\(item.name)” that works without keys?"
+        alert.informativeText = "Anyone who has the link can download the file until it expires."
+        let expiry = NSPopUpButton(frame: NSRect(x: 0, y: 0, width: 200, height: 26), pullsDown: false)
+        for (title, seconds) in [("For 1 hour", 3600), ("For 1 day", 86400), ("For 7 days (the longest)", 604_800)] {
+            expiry.addItem(withTitle: title)
+            expiry.lastItem?.tag = seconds
+        }
+        expiry.selectItem(at: 1)
+        expiry.toolTip = "How long the link works; S3 allows a week at most"
+        expiry.setAccessibilityIdentifier("presign.expiry")
+        alert.accessoryView = expiry
+        alert.addButton(withTitle: "Copy Link").toolTip = "Copy the link to the clipboard"
+        alert.addButton(withTitle: "Cancel").toolTip = "Don't make a link"
+        alert.addHelp(.s3Files)
+        alert.beginSheetModal(for: window) { [self] response in
+            guard response == .alertFirstButtonReturn else { return }
+            let seconds = expiry.selectedTag()
+            Task {
+                await perform("Making the link…", failure: "Can't make a link to “\(item.name)”") {
+                    let link = try await session.presignS3(item.path, expires: seconds)
+                    NSPasteboard.general.clearContents()
+                    NSPasteboard.general.setString(link.absoluteString, forType: .string)
+                }
+            }
+        }
+    }
+
     /// The paths of the items (or of the folder shown), one per line.
     @objc func copyPath(_ sender: Any?) {
         let paths = targets(sender).map(\.path)
@@ -603,8 +678,10 @@ extension FilePane {
             entries += [("New Folder…", #selector(newFolder(_:)))]
             if isRemote { entries += [("New File…", #selector(newFile(_:))), ("Upload…", #selector(chooseUpload(_:)))] }
             entries += [nil, ("Paste", #selector(paste(_:))), ("Copy Path", #selector(copyPath(_:))), nil]
-            if isRemote { entries += [("New Symbolic Link…", #selector(newSymbolicLink(_:)))] }
-            if isRemote {
+            if isRemote && !isS3 { entries += [("New Symbolic Link…", #selector(newSymbolicLink(_:)))] }
+            if isS3 {
+                entries += [("Copy S3 Link", #selector(copyS3Link(_:))), ("Find Files…", #selector(findFiles(_:)))]
+            } else if isRemote {
                 entries += [("Open Terminal Here", #selector(openTerminalHere(_:))),
                             ("Calculate Folder Sizes", #selector(calculateFolderSizes(_:))), ("Find Files…", #selector(findFiles(_:)))]
             } else {
@@ -626,11 +703,12 @@ extension FilePane {
                         : ("Upload and Delete…", #selector(uploadAndDelete(_:)))]
         }
         if isRemote {
-            entries += [("Download To…", #selector(downloadTo(_:))), ("Download as .tar.gz…", #selector(downloadArchive(_:)))]
+            entries += [("Download To…", #selector(downloadTo(_:))),
+                        (isS3 ? "Download as .zip…" : "Download as .tar.gz…", #selector(downloadArchive(_:)))]
         } else if browser?.otherPane(of: self).isRemote == true {
             entries += [("Upload Compressed", #selector(uploadCompressed(_:)))]
         }
-        if isRemote {
+        if isRemote && !isS3 {
             entries.append(nil)
             if single?.kind == .file { entries += [("Run…", #selector(runItem(_:)))] }
             entries += [("Make Executable", #selector(makeExecutable(_:))), ("Permissions…", #selector(editPermissions(_:)))]
@@ -639,11 +717,16 @@ extension FilePane {
         entries += [nil, ("Rename…", #selector(renameItem(_:)))]
         if isRemote {
             entries += [("Move To…", #selector(moveTo(_:))), ("Copy To…", #selector(copyTo(_:)))]
-            if single != nil { entries += [("New Symbolic Link…", #selector(newSymbolicLink(_:)))] }
-            entries += [("Duplicate", #selector(duplicateItems(_:))), ("Compress…", #selector(compressItems(_:)))]
+            if single != nil && !isS3 { entries += [("New Symbolic Link…", #selector(newSymbolicLink(_:)))] }
+            entries += isS3 ? [("Compress…", #selector(compressItems(_:)))]
+                : [("Duplicate", #selector(duplicateItems(_:))), ("Compress…", #selector(compressItems(_:)))]
             if let single, Session.isArchive(single.name) {
                 entries += [("Extract Here", #selector(extractHere(_:))), ("Extract to New Folder", #selector(extractToFolder(_:)))]
             }
+        }
+        if isS3 {
+            entries += [nil, ("Copy S3 Link", #selector(copyS3Link(_:)))]
+            if single?.kind == .file { entries += [("Copy Presigned Link…", #selector(copyPresignedLink(_:)))] }
         }
         entries += [nil]
         if isRemote { entries += [("Cut", #selector(cut(_:)))] }
@@ -671,6 +754,9 @@ extension FilePane {
         if item.action == #selector(copyToOtherPane(_:)), item.menu !== table.menu,
            let title = browser?.transferTitle(for: self).menu {
             item.title = title
+        }
+        if item.action == #selector(downloadArchive(_:)), item.menu !== table.menu {
+            item.title = isS3 ? "Download as .zip…" : "Download as .tar.gz…"
         }
         item.explain(enabled: enabled, reason: reason)
         return enabled
@@ -731,8 +817,13 @@ extension FilePane {
             let other = browser?.otherPane(of: self)
             return need(listed && !targets.isEmpty && other?.dir != nil && other?.isConnected == true
                         && (isRemote || other?.isRemote == true), "Select something, and show a folder in the other pane.")
+        case #selector(copyS3Link(_:)), #selector(copyPresignedLink(_:)):
+            guard isS3 else { return (false, "Works in a pane that shows S3 storage.") }
+            if action == #selector(copyPresignedLink(_:)) { return need(listed && single?.kind == .file, "Select one file.") }
+            return need(listed && (dir != "/" || !targets.isEmpty), "Select something, or open a bucket.")
         case #selector(makeExecutable(_:)), #selector(editPermissions(_:)):
             guard isRemote else { return (false, serverOnly) }
+            if isS3 { return (false, "S3 storage has no permissions: who may read a file is up to the bucket's policy.") }
             // Windows' OpenSSH answers chmod with success and changes nothing.
             if isWindows { return (false, "A Windows server has no Unix permissions: set them in Windows (the file's Properties ▸ Security).") }
             // A link's own permissions are 777, and chmod changes its target's: change them on the target.
@@ -779,7 +870,7 @@ extension FilePane {
                         reason ?? "Select one archive (.zip, .tar.gz, .tgz, .gz…).")
         case #selector(downloadArchive(_:)):
             guard isRemote else { return (false, serverOnly) }
-            let reason = session?.compressUnavailableReason(.tarGz)
+            let reason = session?.compressUnavailableReason(isS3 ? .zip : .tarGz)
             return need(listed && !targets.isEmpty && reason == nil, reason ?? "Select server items first.")
         case #selector(uploadCompressed(_:)):
             guard !isRemote else { return (false, "Works in the This Mac pane, with a server's folder in the other pane.") }

@@ -503,7 +503,7 @@ private func report(_ state: Session.State, _ workspace: HostWorkspace?) {
         defer { main.window?.orderOut(nil) }
         let add = try #require(main.window?.toolbar?.items.first { $0.itemIdentifier == .add } as? NSMenuToolbarItem)
         #expect(add.menu.items.first?.title == "")  // the pull-down's title
-        #expect(add.menu.items.dropFirst().map(\.title) == ["New Host…", "New Remote Desktop…", "New Group…"])
+        #expect(add.menu.items.dropFirst().map(\.title) == ["New Host…", "New Remote Desktop…", "New S3 Connection…", "New Group…"])
         #expect(add.menu.items.dropFirst().allSatisfy { $0.toolTip?.isEmpty == false })
         // AppKit draws it as a pull-down of this menu (when its view is there).
         let frame = main.window?.contentView?.superview

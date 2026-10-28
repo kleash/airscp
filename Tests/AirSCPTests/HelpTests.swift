@@ -149,7 +149,14 @@ extension FeatureRoundAppTests {
             check("Terminal tab, find", window)
             #expect(AXNode.flatten(window).contains { $0.id == "terminal.findText" })
             _ = await call(agent, "press", ["id": "terminal.findDone"])
-            main.selectedWorkspace?.terminal.session?.close()
+            // Two tabs on the strip, History… (with its Clear History) and Insert Path….
+            #expect(await call(agent, "press", ["id": "terminal.newTab"]).error == nil)
+            check("Terminal tab, two tabs", window)
+            await sheet("History…", then: {
+                #expect(AXNode.flatten(window.attachedSheet!).contains { $0.id == "terminal.clearHistory" })
+            }) { _ = await call(agent, "press", ["id": "terminal.history"]) }
+            await sheet("Insert Path…") { _ = await call(agent, "press", ["id": "terminal.insertPath"]) }
+            main.selectedWorkspace?.terminal.sessions.forEach { $0.close() }
             _ = await call(agent, "press", ["title": "Files"])
             // The Monitor's processes and ports with figures (this Mac's sshd isn't Linux: they are set here), a port picked.
             _ = await call(agent, "press", ["title": "Monitor"])

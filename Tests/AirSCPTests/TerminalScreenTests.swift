@@ -307,6 +307,74 @@ private func marked(_ text: String, columns: Int = 30, rows: Int = 8) -> Termina
     #expect(s.find("st").map(\.start) == [P(line: 5, column: 2)])
 }
 
+// MARK: History and Insert Path
+
+/// Each command the shell marked goes to the history once it ends, as it was typed: a space in front stays (such a command
+/// isn't kept), and a prompt where nothing ran (an empty line, ⌃C) gives none. bash before 4.4 marks no output: its
+/// command is read off the screen when it ends.
+@Test func eachCommandThatEndsIsToldOnceAsTyped() {
+    var ran: [String] = []
+    let s = TerminalScreen(columns: 30, rows: 8)
+    s.markToken = token
+    s.onCommand = { ran.append($0) }
+    s.feed(prompt + "ls\r\n" + mark("C") + "a.txt\r\n" + ended(0) + prompt)
+    s.feed("\r\n" + ended(0) + prompt + "x^C\r\n" + ended(130) + prompt)
+    s.feed(" echo secret\r\n" + mark("C") + ended(0) + prompt + "sleep 9\r\n" + mark("C"))
+    #expect(ran == ["ls", " echo secret"] && s.blocks.map(\.text) == ["ls", " echo secret", "sleep 9"], "\(ran)")
+    s.feed(ended(0) + prompt + "  pwd\r\n" + started("  pwd") + ended(0) + prompt)
+    #expect(ran == ["ls", " echo secret", "sleep 9", "  pwd"], "\(ran)")
+    var old: [String] = []
+    let bash = TerminalScreen(columns: 30, rows: 8)
+    bash.markToken = token
+    bash.onCommand = { old.append($0) }
+    bash.feed(prompt + "ls\r\nout\r\n" + ended(0) + prompt + "\r\n" + ended(0) + prompt + " ls -a\r\n" + ended(0) + prompt)
+    #expect(old == ["ls", " ls -a"], "\(old)")
+}
+
+/// The host's history: newest first, each command once, at most 1000, not one typed after a space; in its own file
+/// (folder 0700, file 0600) that a new instance reads, gone with Clear History and with the host.
+@MainActor @Test func theHistoryKeepsCommandsNewestFirstOnceEachInAPrivateFile() throws {
+    let folder = URL(fileURLWithPath: try scratch()), host = UUID()
+    let history = CommandHistory(host: host, folder: folder)
+    for command in ["ls", "pwd", " echo secret", "ls  ", "", "   ", "for i in 1 2; do\necho $i; done"] { history.add(command) }
+    #expect(history.commands == ["for i in 1 2; do\necho $i; done", "ls", "pwd"])
+    let file = folder.path + "/history/" + host.uuidString + ".json"
+    func mode(_ path: String) -> Int? {
+        ((try? FileManager.default.attributesOfItem(atPath: path))?[.posixPermissions] as? NSNumber)?.intValue
+    }
+    #expect(mode(file) == 0o600 && mode(folder.path + "/history") == 0o700)
+    #expect(CommandHistory(host: host, folder: folder).commands == history.commands && CommandHistory(host: UUID(), folder: folder).commands.isEmpty)
+    for number in 0..<1005 { history.add("echo \(number)") }
+    #expect(history.commands.count == CommandHistory.limit && history.commands.first == "echo 1004" && history.commands.last == "echo 5")
+    history.clear()
+    #expect(history.commands.isEmpty && !FileManager.default.fileExists(atPath: file) && CommandHistory(host: host, folder: folder).commands.isEmpty)
+    let model = testModel([SSHHost(label: "web", hostname: "web.example.com")])
+    let id = model.data.hosts[0].id
+    CommandHistory(host: id).add("uptime")
+    #expect(CommandHistory(host: id).commands == ["uptime"])
+    model.delete(id)
+    #expect(CommandHistory(host: id).commands.isEmpty)
+}
+
+/// Insert Path reads the last word before the cursor as the shell would (quotes, backslashes, a quote left open, words
+/// after = or ;), and how much of the line to take back; it types names quoted where they need it, ~/ bare.
+@MainActor @Test func insertPathReadsTheWordBeforeTheCursorAsTheShellWould() {
+    let s = marked(prompt + "cat /var/lo")
+    #expect(s.typedBeforeCursor == "cat /var/lo")
+    #expect(Quote.lastWord(in: s.typedBeforeCursor) == ("/var/lo", 7))
+    s.feed(" ")
+    #expect(Quote.lastWord(in: s.typedBeforeCursor) == ("", 0))
+    // A shell that marks nothing: the cursor's line, prompt and all.
+    #expect(Quote.lastWord(in: screen(30, 3, "~ $ cat site/no").typedBeforeCursor) == ("site/no", 7))
+    #expect(Quote.lastWord(in: "ls 'my di") == ("my di", 6))
+    #expect(Quote.lastWord(in: "ls \"a b/\\$x\\y") == ("a b/$x\\y", 10))
+    #expect(Quote.lastWord(in: "cp a\\ b ünï/fi") == ("ünï/fi", 6))
+    #expect(Quote.lastWord(in: "make --prefix=/us") == ("/us", 3))
+    #expect(Quote.lastWord(in: "true;ls ~/do") == ("~/do", 4))
+    #expect(TerminalController.typed("/var/log/") == "/var/log/" && TerminalController.typed("site/my notes.txt") == "'site/my notes.txt'")
+    #expect(TerminalController.typed("~/it's/") == "~/'it'\\''s/'" && TerminalController.typed("=x") == "'=x'")
+}
+
 // MARK: The Terminal tab on a real server
 
 /// The Terminal tab runs a login shell riding the host's connection: what is typed runs on the server, the shell's
@@ -587,14 +655,15 @@ extension FeatureRoundAppTests {
 }
 
 extension FeatureRoundAppTests {
-    /// Open Terminal Here into a running shell types cd only where the shell reads the folder's path as a name: tcsh marks
-    /// nothing (it isn't bash or zsh), so a \ or ! isn't typed there, another path is once the person says when; zsh
-    /// marks its commands, so a ! is typed at its empty prompt; a control character (a tab here) is typed nowhere.
-    @MainActor @Test func cdIsTypedOnlyWhereTheShellReadsTheFolderAsAName() async throws {
+    /// With Settings' Terminal tab option, Open Terminal Here types cd at the shown tab's empty prompt (zsh says it waits
+    /// there, and reads a ! in the quoted name as a name), else opens a new tab in the folder: a shell that marks nothing
+    /// (tcsh), a busy one, a name with a control character (typed, it would act as its key). Run in Terminal types its
+    /// command at an empty prompt too, and runs it in a new tab while the shown one is busy.
+    @MainActor @Test func openTerminalHereAndRunInTerminalUseAnEmptyPromptElseANewTab() async throws {
         _ = NSApplication.shared
-        let cases: [(shell: String, folders: [(name: String, sheet: String?)])] = [
-            ("/bin/tcsh", [("odd!name", "type cd yourself"), ("plain", "Type cd into the Terminal tab?")]),
-            ("/bin/zsh", [("tab\there", "type cd yourself"), ("odd!name", nil)]),
+        let cases: [(shell: String, folders: [(name: String, typed: Bool)])] = [
+            ("/bin/tcsh", [("odd!name", false)]),
+            ("/bin/zsh", [("odd!name", true), ("tab\there", false)]),
         ]
         for (shell, folders) in cases {
             var options = TestServer.Options()
@@ -616,27 +685,222 @@ extension FeatureRoundAppTests {
                 #expect(await call(agent, "wait", ["until": "connected", "timeout": 20]).error == nil)
                 _ = await call(agent, "menu", ["path": "Host > Terminal Tab"])
                 let workspace = try #require(main.selectedWorkspace)
-                #expect(await eventually(timeout: 20) { workspace.terminal.session?.screen.shellPID != nil })
-                let screen = try #require(workspace.terminal.session?.screen)
-                if shell.hasSuffix("zsh") { #expect(await eventually(timeout: 20) { screen.waitsAtPrompt }, "\(screen.text)") }
-                for (name, sheet) in folders {
+                let terminal = try #require(workspace.terminal)
+                #expect(await eventually(timeout: 20) { terminal.session?.screen.shellPID != nil })
+                if shell.hasSuffix("zsh") { #expect(await eventually(timeout: 20) { terminal.session?.screen.waitsAtPrompt == true }) }
+                func real(_ path: String?) -> String? { path.map { URL(fileURLWithPath: $0).resolvingSymlinksInPath().path } }
+                @MainActor func openHere(_ name: String) async {
                     _ = await call(agent, "press", ["title": "Files"])
                     #expect(await call(agent, "go", ["pane": "right", "path": server.home]).error == nil)
                     #expect(await call(agent, "select", ["pane": "right", "names": [name]]).error == nil, "\(shell) \(name)")
                     #expect(await call(agent, "menu", ["path": "File > Open Terminal Here"]).error == nil)
-                    if let sheet {
-                        let shown = await call(agent, "wait", ["until": "sheet", "text": sheet, "timeout": 10])
-                        #expect(shown.error == nil, "\(shell) \(name): \(shown.error ?? "")")
-                        _ = await call(agent, "key", ["combo": "escape"])
-                        #expect(await call(agent, "wait", ["until": "no_sheet", "timeout": 10]).error == nil)
-                    } else {
-                        #expect(await eventually(timeout: 20) { screen.directory == server.path(name) }, "\(screen.directory ?? "nil")")
-                    }
+                    #expect(workspace.tabs.selectedTabViewItemIndex == 3)
                 }
-                #expect(screen.directory != server.path("tab\there"), "\(screen.directory ?? "nil")")
-                workspace.terminal.session?.close()
+                for (name, typed) in folders {
+                    let tabs = terminal.sessions.count
+                    await openHere(name)
+                    #expect(terminal.sessions.count == tabs + (typed ? 0 : 1) && terminal.current == terminal.sessions.count - 1,
+                            "\(shell) \(name)")
+                    var folder: String?
+                    #expect(await eventually(timeout: 20) {
+                        folder = await terminal.currentDirectory()
+                        return real(folder) == real(server.path(name))
+                    }, "\(shell) \(name): \(folder ?? "nil")")
+                }
+                guard shell.hasSuffix("zsh") else { return }
+                // A busy shell: a new tab.
+                let screen = try #require(terminal.session?.screen)
+                #expect(await eventually(timeout: 20) { screen.waitsAtPrompt })
+                _ = await call(agent, "type", ["text": "sleep 30\n", "target": "terminal"])
+                #expect(await eventually(timeout: 20) { screen.blocks.last?.running == true })
+                await openHere("odd!name")
+                #expect(terminal.sessions.count == 3 && terminal.session?.screen !== screen)
+                // Run in Terminal: at the new tab's empty prompt, typed and run there; while it is busy, in a tab of its own.
+                let idle = try #require(terminal.session?.screen)
+                #expect(await eventually(timeout: 20) { idle.waitsAtPrompt })
+                #expect(await call(agent, "menu", ["path": "Host > Run Command…"]).error == nil)
+                #expect(await call(agent, "set", ["id": "runCommand.command", "value": "echo ran-$((1+1))"]).error == nil)
+                #expect(await call(agent, "press", ["id": "runCommand.runInTerminal"]).error == nil)
+                #expect(await eventually(timeout: 20) { idle.blocks.last?.text == "echo ran-$((1+1))" && idle.blocks.last?.status == 0 })
+                #expect(terminal.sessions.count == 3 && idle.blocks.last.map(idle.output) == "ran-2")
+                _ = await call(agent, "type", ["text": "sleep 30\n", "target": "terminal"])
+                #expect(await eventually(timeout: 20) { idle.blocks.last?.running == true })
+                #expect(await call(agent, "set", ["id": "runCommand.command", "value": "echo own-$((2+2))"]).error == nil)
+                #expect(await call(agent, "press", ["id": "runCommand.runInTerminal"]).error == nil)
+                #expect(terminal.sessions.count == 4)
+                #expect(await eventually(timeout: 20) { terminal.session?.screen.text.contains("own-4") == true })
+                _ = await call(agent, "press", ["title": "Close"])
+                terminal.sessions.forEach { $0.close() }
                 await workspace.connection.disconnect()
             }
+        }
+    }
+
+    /// Several shells in the Terminal tab ride the host's one connection (sshd sees no other login): a new tab opens in
+    /// the folder of the one shown; agents read the tabs, switch them on the strip and type into the one shown; Close
+    /// Terminal Tab asks while a command runs, and the last tab stays. The commands the shells mark go into the host's
+    /// history (not one typed after a space), and History… types one at the prompt without running it.
+    @MainActor @Test func terminalTabsShareOneLoginAndTheHostsHistory() async throws {
+        _ = NSApplication.shared
+        var options = TestServer.Options()
+        options.shell = "/bin/zsh"
+        try await withServer(options) { @MainActor server in
+            try write("hello\n", to: server.path("site/notes.txt"))
+            try write("", to: server.path(".zshrc"))
+            let model = testModel([server.host()])
+            let askpass = try AskpassServer(helperPath: TestEnvironment.airscpBinary)
+            defer { askpass.close() }
+            let (main, agent, _) = try agentWindow(model, askpass)
+            defer {
+                agent.close()
+                main.window?.orderOut(nil)
+            }
+            _ = await call(agent, "select", ["pane": "sidebar", "names": [server.host().displayName]])
+            _ = await call(agent, "menu", ["path": "Host > Connect"])
+            #expect(await call(agent, "wait", ["until": "connected", "timeout": 20]).error == nil)
+            func logins() -> Int {
+                ((try? String(contentsOfFile: server.root + "/sshd.log")) ?? "").components(separatedBy: "Accepted publickey").count - 1
+            }
+            let connected = logins()
+            _ = await call(agent, "menu", ["path": "Host > Terminal Tab"])
+            let workspace = try #require(main.selectedWorkspace)
+            let terminal = try #require(workspace.terminal)
+            @MainActor func screen(_ index: Int) -> TerminalScreen? {
+                terminal.sessions.indices.contains(index) ? terminal.sessions[index].screen : nil
+            }
+            @MainActor func type(_ text: String) async { _ = await call(agent, "type", ["text": text, "target": "terminal"]) }
+            @MainActor func tabs() async -> [[String: Any]] {
+                (await call(agent, "snapshot", ["include": ["terminal"]])["terminal"] as? [String: Any])?["tabs"] as? [[String: Any]] ?? []
+            }
+            #expect(await eventually(timeout: 20) { screen(0)?.waitsAtPrompt == true }, "\(screen(0)?.text ?? "")")
+            await type("cd site && echo one\n")
+            #expect(await eventually(timeout: 20) { screen(0)?.blocks.last?.status == 0 && screen(0)?.waitsAtPrompt == true })
+
+            // A second tab, in the first one's folder.
+            #expect(await call(agent, "press", ["id": "terminal.newTab"]).error == nil)
+            #expect(terminal.sessions.count == 2 && terminal.current == 1)
+            #expect(await eventually(timeout: 20) { screen(1)?.waitsAtPrompt == true && screen(1)?.directory == server.path("site") },
+                    "\(screen(1)?.text ?? "")")
+            let listed = await tabs()
+            #expect(listed.map { $0["index"] as? Int } == [1, 2] && listed.map { $0["shown"] as? Bool } == [false, true]
+                    && listed.map { $0["title"] as? String } == ["site", "site"]
+                    && listed.allSatisfy { $0["directory"] as? String == server.path("site") && $0["atPrompt"] as? Bool == true },
+                    "\(listed)")
+            // Typing goes to the tab shown; a command typed after a space stays out of the history.
+            await type(" echo secret-$((1+1))\n")
+            await type("echo two\n")
+            #expect(await eventually(timeout: 20) { screen(1)?.blocks.last?.text == "echo two" && screen(1)?.waitsAtPrompt == true })
+            #expect(screen(1)?.text.contains("secret-2") == true && screen(0)?.text.contains("secret-2") == false)
+            #expect(terminal.history.commands == ["echo two", "cd site && echo one"], "\(terminal.history.commands)")
+            // Agents switch on the strip, by place when titles repeat.
+            #expect(await call(agent, "set", ["id": "terminal.tabs", "value": 1]).error == nil)
+            #expect(terminal.current == 0 && terminal.terminal.session === terminal.sessions[0])
+            await type("echo back-$((2+1))\n")
+            #expect(await eventually(timeout: 20) { screen(0)?.text.contains("back-3") == true })
+            #expect(screen(1)?.text.contains("back-3") == false)
+            #expect(await call(agent, "menu", ["path": "Host > Show Next Terminal Tab"]).error == nil && terminal.current == 1)
+            // Follow in Files follows the tab shown.
+            #expect(await call(agent, "set", ["id": "terminal.follow", "value": true]).error == nil)
+            await type("cd ..\n")
+            #expect(await eventually(timeout: 20) { workspace.browser.right.dir == server.home }, "\(workspace.browser.right.dir ?? "nil")")
+            #expect(await call(agent, "menu", ["path": "Host > Show Previous Terminal Tab"]).error == nil && terminal.current == 0)
+            #expect(await eventually(timeout: 20) { workspace.browser.right.dir == server.path("site") }, "\(workspace.browser.right.dir ?? "nil")")
+            _ = await call(agent, "set", ["id": "terminal.follow", "value": false])
+            _ = await call(agent, "set", ["id": "terminal.tabs", "value": 2])
+            // Both shells ride the connection: no other login.
+            #expect(logins() == connected && connected >= 1, "\(logins()) logins")
+
+            // History… types a command at the prompt, not run; Clear History forgets them all.
+            let ran = screen(1)?.blocks.count ?? 0
+            #expect(await call(agent, "press", ["id": "terminal.history"]).error == nil)
+            #expect(await call(agent, "wait", ["until": "sheet", "timeout": 10]).error == nil)
+            #expect(await call(agent, "set", ["id": "terminal.pickFilter", "value": "cd s"]).error == nil)
+            #expect(await call(agent, "press", ["title": "Insert"]).error == nil)
+            #expect(await eventually(timeout: 10) { screen(1)?.text.hasSuffix("cd site && echo one") == true }, "\(screen(1)?.text ?? "")")
+            #expect(screen(1)?.waitsAtPrompt == false && screen(1)?.blocks.count == ran)
+            _ = await call(agent, "key", ["combo": "ctrl+u", "target": "terminal"])
+            #expect(await call(agent, "press", ["id": "terminal.history"]).error == nil)
+            #expect(await call(agent, "press", ["id": "terminal.clearHistory"]).error == nil)
+            #expect(terminal.history.commands.isEmpty && CommandHistory(host: workspace.connection.hostID).commands.isEmpty)
+            _ = await call(agent, "press", ["title": "Cancel"])
+
+            // Close Terminal Tab asks while a command runs; the last tab stays.
+            await type("sleep 30\n")
+            #expect(await eventually(timeout: 20) { screen(1)?.blocks.last?.running == true })
+            #expect(await call(agent, "press", ["id": "terminal.closeTab"]).error == nil)
+            #expect(await call(agent, "wait", ["until": "sheet", "text": "Close this terminal tab?", "timeout": 10]).error == nil)
+            #expect(await call(agent, "press", ["title": "Close Tab"]).error == nil)
+            #expect(terminal.sessions.count == 1 && terminal.current == 0)
+            #expect(await call(agent, "press", ["id": "terminal.closeTab"]).error?.contains("last tab stays") == true)
+            terminal.sessions.forEach { $0.close() }
+            await workspace.connection.disconnect()
+        }
+    }
+
+    /// Insert Path… lists the folder of the word before the cursor (here relative to the shell's folder) as the Files pane
+    /// lists it, filtered by what is typed of the name; the name chosen takes the word's place, quoted where it needs it.
+    /// A path from the output dragged to Finder is downloaded through the transfer queue (the Files pane's file promise).
+    @MainActor @Test func insertPathTypesServerNamesAndPathsDragOutToFinder() async throws {
+        _ = NSApplication.shared
+        var options = TestServer.Options()
+        options.shell = "/bin/zsh"
+        try await withServer(options) { @MainActor server in
+            try write("hello\n", to: server.path("site/notes.txt"))
+            try write("mine\n", to: server.path("site/my notes.txt"))
+            try rawMkdir(server.path("site/sub"))
+            try write("", to: server.path(".zshrc"))
+            let model = testModel([server.host()])
+            let askpass = try AskpassServer(helperPath: TestEnvironment.airscpBinary)
+            defer { askpass.close() }
+            let (main, agent, _) = try agentWindow(model, askpass)
+            defer {
+                agent.close()
+                main.window?.orderOut(nil)
+            }
+            _ = await call(agent, "select", ["pane": "sidebar", "names": [server.host().displayName]])
+            _ = await call(agent, "menu", ["path": "Host > Connect"])
+            #expect(await call(agent, "wait", ["until": "connected", "timeout": 20]).error == nil)
+            _ = await call(agent, "menu", ["path": "Host > Terminal Tab"])
+            let workspace = try #require(main.selectedWorkspace)
+            let terminal = try #require(workspace.terminal)
+            #expect(await eventually(timeout: 20) { terminal.session?.screen.waitsAtPrompt == true })
+            let screen = try #require(terminal.session?.screen)
+            @MainActor func sheet() async -> [String: Any] {
+                (await call(agent, "snapshot", ["include": ["sheets"]])["sheets"] as? [[String: Any]])?.last ?? [:]
+            }
+            _ = await call(agent, "type", ["text": "cat si", "target": "terminal"])
+            #expect(await eventually(timeout: 10) { screen.text.hasSuffix("cat si") })
+            #expect(await call(agent, "press", ["id": "terminal.insertPath"]).error == nil)
+            #expect(await call(agent, "wait", ["until": "sheet", "timeout": 20]).error == nil)
+            var shown = await sheet()
+            #expect(shown["title"] as? String == "Insert a name from \(server.home)" && (shown["text"] as? String) == "site/", "\(shown)")
+            #expect(await call(agent, "press", ["title": "Insert"]).error == nil)
+            #expect(await eventually(timeout: 10) { screen.text.hasSuffix("cat site/") }, "\(screen.text)")
+            #expect(await call(agent, "press", ["id": "terminal.insertPath"]).error == nil)
+            #expect(await call(agent, "wait", ["until": "sheet", "timeout": 20]).error == nil)
+            shown = await sheet()
+            #expect((shown["text"] as? String) == "my notes.txt\nnotes.txt\nsub/", "\(shown)")
+            #expect(await call(agent, "select", ["in": "sheet", "names": ["my notes.txt"]]).error == nil)
+            #expect(await call(agent, "press", ["title": "Insert"]).error == nil)
+            #expect(await eventually(timeout: 10) { screen.text.hasSuffix("cat 'site/my notes.txt'") }, "\(screen.text)")
+            _ = await call(agent, "type", ["text": "\n", "target": "terminal"])
+            #expect(await eventually(timeout: 20) { screen.blocks.last?.status == 0 && screen.waitsAtPrompt })
+            #expect(screen.blocks.last.map(screen.output) == "mine")
+
+            // Dragged out: the item a word names, promised to Finder and downloaded where it is dropped.
+            let item = try #require(await terminal.item(named: "site/notes.txt"))
+            let pane = try #require(workspace.browser.right)
+            let provider = pane.filePromise(for: item, on: workspace.session)
+            let drop = try server.scratch(), done = Recorder<String>()
+            OffMainThread {
+                pane.filePromiseProvider(provider, writePromiseTo: URL(fileURLWithPath: drop + "/notes.txt")) { error in
+                    done.append(error.map { "\($0)" } ?? "ok")
+                }
+            }.start()
+            #expect(await eventually { done.all == ["ok"] }, "\(done.all)")
+            #expect(read(drop + "/notes.txt") == "hello\n")
+            terminal.session?.close()
+            await workspace.connection.disconnect()
         }
     }
 }
@@ -654,6 +918,8 @@ extension FeatureRoundAppTests {
                 let session = try await lab.connected(host)
                 let screen = TerminalScreen(columns: 100, rows: 30)
                 screen.markToken = "1ab5"
+                var ran: [String] = []
+                screen.onCommand = { ran.append($0) }
                 let argv = OpenSSH.terminal(host, jump: nil, socket: session.socketPath,
                                             command: OpenSSH.terminalShell(in: nil, token: "1ab5"))
                 let terminal = try TerminalSession(argv, environment: session.askpass.terminalEnvironment, screen: screen)
@@ -678,6 +944,10 @@ extension FeatureRoundAppTests {
                 terminal.send("echo \"x$i\"; done\r")
                 #expect(await eventually(timeout: 30) { screen.blocks.last?.text.hasPrefix("for") == true && screen.waitsAtPrompt })
                 #expect(screen.blocks.last?.text == "for i in 1 2; do\necho \"x$i\"; done", "\(screen.text)")
+                // Each command for the history, as typed: one typed after a space keeps it.
+                terminal.send(" echo hidden\r")
+                #expect(await eventually(timeout: 30) { ran.last == " echo hidden" }, "\(ran)")
+                #expect(ran.prefix(2) == ["echo marker-$((6*7)) ${AIRSCP_RC-none}; false", "for i in 1 2; do\necho \"x$i\"; done"])
             }
         }
     }

@@ -53,12 +53,16 @@ extension AppleIntelligence {
 struct AppleAssistant: Assistant {
     func answer(_ question: String, instructions: String, context: String) async throws -> String {
         let session = LanguageModelSession(instructions: instructions)
-        return try await session.respond(to: "What AirSCP shows now:\n\(context)\n\nThe user asks: \(question)").content
+        // A cap: an answer that runs on (it can repeat the summary back) stops there instead of failing at the model's
+        // 4,096 tokens.
+        return try await session.respond(to: "What AirSCP shows now:\n\(context)\n\nThe user asks: \(question)",
+                                         options: GenerationOptions(maximumResponseTokens: 500)).content
     }
 
     func generate(_ prompt: String, instructions: String, schema: AssistantOutput) async throws -> String {
         let session = LanguageModelSession(instructions: instructions)
-        return try await session.respond(to: prompt, schema: try Self.schema(schema)).content.jsonString
+        return try await session.respond(to: prompt, schema: try Self.schema(schema), options: GenerationOptions(sampling: .greedy))
+            .content.jsonString
     }
 
     /// The model's schema for each shape (built at run time: the Command Line Tools have no @Generable macro).

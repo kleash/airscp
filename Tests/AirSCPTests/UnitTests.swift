@@ -665,11 +665,13 @@ private func optionValues(_ argv: [String]) -> [String] {
     #expect(!exists(fresh.path) && !exists(root + "/Fresh"))
 }
 
-/// UserDefaults in memory, for `Store.copyFromPorter`: what it reads (other apps' domains) and what it sets.
+/// UserDefaults in memory, for `Store.copyFromPorter` and `FolderAccess`: what they read (other apps' domains, their
+/// own values) and what they set.
 final class MemoryDefaults: UserDefaults {
     var domains: [String: [String: Any]] = [:], values: [String: Any] = [:]
     override func persistentDomain(forName name: String) -> [String: Any]? { domains[name] }
     override func set(_ value: Any?, forKey key: String) { values[key] = value }
+    override func object(forKey key: String) -> Any? { values[key] }
 }
 
 @Test func filesFromTheFirstVersionLoadWithTheNewDefaults() throws {

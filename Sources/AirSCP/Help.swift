@@ -6,7 +6,18 @@ import SwiftUI
 /// same in the menu bar and in a context menu. While an item is off, its validation puts the reason there instead
 /// (`NSMenuItem.explain`).
 enum MenuHelp {
-    static let tips: [Selector: String] = Dictionary([
+    /// The App Store version's own tips, ahead of the rest (a command's first tip counts): it has no Terminal hand-off.
+    #if APPSTORE
+    private static let appStore: [(Selector, String)] = [
+        (#selector(AppDelegate.showSettings(_:)), "Change the look, the SSH folder, where downloads and new keys go, how new servers are checked and the file browser's defaults"),
+        (#selector(FilePane.openTerminalHere(_:)), "Open a shell on this server in the folder shown, in the host's Terminal tab"),
+        (#selector(MainWindowController.openTerminal(_:)), "Open a shell on this host in its Terminal tab, through its connection"),
+    ]
+    #else
+    private static let appStore: [(Selector, String)] = []
+    #endif
+
+    static let tips: [Selector: String] = Dictionary(appStore + [
         // AirSCP
         (#selector(NSApplication.orderFrontStandardAboutPanel(_:)), "Show AirSCP's version and the licences of what it is built with"),
         (#selector(AppDelegate.showSettings(_:)), "Change the look, the terminal app, where downloads and new keys go, how new servers are checked and the file browser's defaults"),
@@ -17,6 +28,8 @@ enum MenuHelp {
         // File
         (#selector(AppDelegate.newHost(_:)), "Save a server you log in to over SSH: its address, user and how to log in"),
         (#selector(AppDelegate.newRemoteDesktop(_:)), "Save a Windows computer to open with the built-in Remote Desktop client"),
+        (#selector(AppDelegate.newS3Connection(_:)), "Save an Amazon S3 or S3-compatible storage account, to browse its buckets like a server"),
+        (#selector(AppDelegate.importAWSProfiles(_:)), "Make S3 connections from the AWS CLI's profiles in ~/.aws that have an access key"),
         (#selector(AppDelegate.newGroup(_:)), "Make a group to sort hosts under in the sidebar"),
         (#selector(AppDelegate.importSSHConfig(_:)), "Make hosts from the aliases in your ~/.ssh/config; ssh keeps reading their settings there"),
         (#selector(AppDelegate.importWinSCP(_:)), "Make hosts from WinSCP's sites (its exported WinSCP.ini) with their keys; passwords stay behind"),
@@ -37,12 +50,12 @@ enum MenuHelp {
         (#selector(FilePane.copyToOtherPane(_:)), "Copy the selection into the folder the other pane shows (drag does the same)"),
         (#selector(FilePane.chooseUpload(_:)), "Choose files on this Mac to upload into the server folder shown"),
         (#selector(FilePane.downloadTo(_:)), "Download the selection into a folder you choose on this Mac"),
-        (#selector(FilePane.downloadArchive(_:)), "Download the selection as one archive the server streams (no space needed there)"),
+        (#selector(FilePane.downloadArchive(_:)), "Download the selection as one archive the server streams (no space needed there); from S3 storage, a .zip made on this Mac"),
         (#selector(FilePane.uploadCompressed(_:)), "Pack the selected Mac items into one .tar.gz, upload it and unpack it on the server"),
         (#selector(FilePane.synchronize(_:)), "Compare the Mac folder with the server folder and copy what is new or newer"),
         (#selector(FilePane.renameItem(_:)), "Rename the selected item"),
         (#selector(FilePane.duplicateItems(_:)), "Copy the selected server items next to themselves (“name 2”)"),
-        (#selector(FilePane.compressItems(_:)), "Pack the selected server items into a .zip or .tar.gz on the server"),
+        (#selector(FilePane.compressItems(_:)), "Pack the selected server items into a .zip or .tar.gz on the server (S3 storage: a .zip, made on this Mac)"),
         (#selector(FilePane.extractHere(_:)), "Unpack the selected archive into this folder on the server (asks before replacing)"),
         (#selector(FilePane.extractToFolder(_:)), "Unpack the selected archive into a new folder named after it"),
         (#selector(FilePane.editPermissions(_:)), "Change who may read, write and run the selected server items (chmod)"),
@@ -50,6 +63,8 @@ enum MenuHelp {
         (#selector(FilePane.runItem(_:)), "Run the selected server file as a program and show its output"),
         (#selector(FilePane.copyPath(_:)), "Copy the full path of the selection (or of the folder shown)"),
         (#selector(FilePane.copyNames(_:)), "Copy the names of the selection, one per line"),
+        (#selector(FilePane.copyS3Link(_:)), "Copy the s3://bucket/key link of the selection (or of the folder shown)"),
+        (#selector(FilePane.copyPresignedLink(_:)), "Copy an https link to the file that anyone can open, without keys, until it expires"),
         (#selector(FilePane.uploadAndDelete(_:)), "Upload the selection to the other pane's server folder, then move it to the Trash here"),
         (#selector(FilePane.downloadAndDelete(_:)), "Download the selection to the other pane's folder, then delete it on the server"),
         (#selector(FilePane.selectByPattern(_:)), "Add the items whose names match a pattern (*.log) to the selection"),
@@ -99,6 +114,10 @@ enum MenuHelp {
         (#selector(MainWindowController.runCommand(_:)), "Run one command on the host and read its output here (sudo and editors: Terminal)"),
         (#selector(MainWindowController.showTunnels(_:)), "Show the host's port forwards (its Tunnels tab)"),
         (#selector(MainWindowController.showTerminal(_:)), "Show a shell on the host inside AirSCP (its Terminal tab), through this connection"),
+        (#selector(MainWindowController.newTerminalTab(_:)), "Open another shell on the host in the Terminal tab, on the same connection"),
+        (#selector(MainWindowController.closeTerminalTab(_:)), "Close the terminal tab shown and its shell; asks first while a command runs in it"),
+        (#selector(MainWindowController.showPreviousTerminalTab(_:)), "Show the Terminal tab's shell to the left of the one shown"),
+        (#selector(MainWindowController.showNextTerminalTab(_:)), "Show the Terminal tab's shell to the right of the one shown"),
         (#selector(MainWindowController.copySSHCommand(_:)), "Copy the ssh command line for this host, to paste into any terminal"),
         (#selector(MainWindowController.copyLink(_:)), "Copy an sftp:// link to this host and the folder shown (never a password)"),
         (#selector(MainWindowController.showServerInfo(_:)), "Show the server's key fingerprint, software, encryption and free space"),
@@ -229,6 +248,9 @@ enum HelpPage: String, CaseIterable {
     case trustServer = "connecting/trust-a-server.html"
     case certificates = "connecting/self-signed-certificates.html"
     case remoteDesktop = "remote-desktop/add-a-windows-computer.html"
+    case s3 = "s3/connect.html"
+    case s3Files = "s3/browse-and-transfer.html"
+    case s3Zip = "s3/zip-and-extract.html"
     case folderTransfer = "files/upload-a-folder.html"
     case conflicts = "files/replace-or-keep-both.html"
     case permissions = "files/permissions.html"
@@ -318,7 +340,12 @@ extension NSAlert {
 /// The welcome sheet: once on a first run with no hosts, and from Help ▸ Welcome to AirSCP…. Its three
 /// buttons close it and run their command; Start just closes it.
 struct WelcomeView: View {
-    enum Choice { case importConfig, newHost, newDesktop }
+    enum Choice {
+        case importConfig, newHost, newDesktop
+        #if APPSTORE
+        case sshFolder
+        #endif
+    }
 
     let close: (Choice?) -> Void
 
@@ -331,6 +358,15 @@ struct WelcomeView: View {
             Text("AirSCP is a two-pane file browser and Remote Desktop client for your servers. Add a host, connect, and "
                  + "drag files between your Mac and the server.")
                 .fixedSize(horizontal: false, vertical: true)
+            #if APPSTORE
+            VStack(alignment: .leading, spacing: 4) {
+                Button("Give Access to Your SSH Folder…") { close(.sshFolder) }
+                    .help("Choose ~/.ssh in an Open panel, so that ssh can use your keys, known hosts and config")
+                Text("The App Store version of AirSCP opens only the folders you choose. Without your SSH folder it uses "
+                     + "keys you make or import in AirSCP, kept in its own folder.")
+                    .font(.caption).foregroundColor(.secondary).fixedSize(horizontal: false, vertical: true)
+            }
+            #endif
             HStack {
                 Button("Import from ~/.ssh/config…") { close(.importConfig) }
                     .help(MenuHelp.tips[#selector(AppDelegate.importSSHConfig(_:))] ?? "")

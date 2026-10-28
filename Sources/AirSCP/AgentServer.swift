@@ -114,11 +114,23 @@ final class AgentServer {
     /// Servers open now: the flag stays set while any is (the tests run several at once).
     private static var openServers = 0
 
+    /// SwiftUI builds its accessibility nodes (the controls agents find) only while an assistive app uses AirSCP:
+    /// AXEnhancedUserInterface says one does. The App Store version may use only public API: it asks for its own windows
+    /// through the accessibility API instead, which does the same (off the main thread, which answers it), and the nodes
+    /// then stay.
     private static func setEnhancedUserInterface(_ on: Bool) {
         openServers += on ? 1 : -1
         guard openServers == (on ? 1 : 0) else { return }
+        #if APPSTORE
+        guard on else { return }
+        DispatchQueue.global().async {
+            var windows: CFTypeRef?
+            _ = AXUIElementCopyAttributeValue(AXUIElementCreateApplication(getpid()), kAXWindowsAttribute as CFString, &windows)
+        }
+        #else
         _ = (NSApp as NSObject).perform(NSSelectorFromString("accessibilitySetValue:forAttribute:"),
                                         with: NSNumber(value: on), with: "AXEnhancedUserInterface")
+        #endif
     }
 
     /// Whether something listens at `path` (a socket left by a crash doesn't).
@@ -787,7 +799,9 @@ final class AgentServer {
                 popup.sendAction(popup.action, to: popup.target)
             }
         case let segments as NSSegmentedControl:
+            // By its label, else by its place from 1 (labels can repeat: two terminal tabs in one folder).
             guard let index = (0..<segments.segmentCount).first(where: { normalized(segments.label(forSegment: $0) ?? "") == normalized(text) })
+                    ?? Int(text).map({ $0 - 1 }).flatMap({ (0..<segments.segmentCount).contains($0) ? $0 : nil })
             else { throw Failure("“\(text)” isn't one of the choices.") }
             segments.selectedSegment = index
             segments.sendAction(segments.action, to: segments.target)
@@ -1870,6 +1884,13 @@ final class AgentServer {
         #selector(RemoteEditor.save(_:)), #selector(MainWindowController.disconnectHost(_:)), #selector(NSApplication.terminate(_:)),
     ]
 
+    /// S3 storage's Compress and Extract, jobs that download to this Mac and upload what they make (copies, as Download
+    /// as .zip is), and its presigned link, which lets anyone who gets it download the file.
+    static let s3Commands: Set<Selector> = [
+        #selector(FilePane.compressItems(_:)), #selector(FilePane.extractHere(_:)), #selector(FilePane.extractToFolder(_:)),
+        #selector(FilePane.copyPresignedLink(_:)),
+    ]
+
     /// The person at the Mac decides about `change` first while Settings ▸ Ask before agents change things is on
     /// (`change` is worked out only then): returns whether they were asked, throws when they don't allow it.
     @discardableResult
@@ -1920,8 +1941,8 @@ final class AgentServer {
     /// (Paste into a field, Open on folders) or asks its own question first (Delete of server items, Disconnect and Quit
     /// while something is being copied): that question's destructive button asks the person then.
     private func change(_ what: String, sending action: Selector, to target: AnyObject?) -> Change? {
-        guard Self.changingCommands.contains(action) else { return nil }
         let pane = target as? FilePane
+        guard Self.changingCommands.contains(action) || pane?.isS3 == true && Self.s3Commands.contains(action) else { return nil }
         switch action {
         case #selector(NSText.paste(_:)):
             if target is TerminalView {
@@ -1983,6 +2004,10 @@ final class AgentServer {
             return try change(setting: node, to: !((node.value as? NSNumber)?.boolValue ?? false))
         }
         let what = "press “\(node.title.isEmpty ? node.id : node.title)”"
+        // History… and Insert Path… type their entry at the Terminal tab's prompt.
+        if node.id == "terminal.pickInsert", let picker = window.contentViewController as? TerminalPicker {
+            return terminalChange("type into", text: picker.chosen ?? "")
+        }
         let button = node.view as? NSButton
         if button?.hasDestructiveAction == true || Self.changingControls.contains(node.id) {
             let selected = TransferCenter.shared.jobs.filter { model.transferSelection.ids.contains($0.id) }
@@ -2238,7 +2263,12 @@ final class AgentServer {
     /// screen is locked, a window draws as inactive (grey window buttons, dimmer sidebar text, grey selections, tabs and
     /// default buttons), and pictures for the docs would show that. AppKit's key and main appearance is lent to them for
     /// the drawing only: Core Animation commits after it, so the screen never shows the change.
+    /// Not in the App Store version (these NSWindow methods aren't public API): its pictures of a window behind other
+    /// apps show it inactive.
     static func drawingAsKey(_ windows: [NSWindow], _ draw: () -> Void) {
+        #if APPSTORE
+        draw()
+        #else
         let lent = windows.filter { !$0.isKeyWindow }
         func send(_ name: String) {
             let selector = NSSelectorFromString(name)
@@ -2251,6 +2281,7 @@ final class AgentServer {
             send("resignKeyAppearance")
         }
         draw()
+        #endif
     }
 
     private func draw(_ window: NSWindow, _ overlays: [NSWindow], size: NSSize, in context: NSGraphicsContext) {

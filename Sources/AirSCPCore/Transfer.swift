@@ -128,7 +128,8 @@ struct ProgressParser {
 /// One upload, download or server-to-server copy, as the queue panel shows it.
 public struct TransferJob: Identifiable, Equatable {
     /// `relay`: from another connected server (`sourceHostID`) to this job's host.
-    public enum Direction: Equatable { case upload, download, relay }
+    /// `compress` and `extract`: S3 storage's zips, made or unpacked on this Mac (`TransferQueue.compress`, `extract`).
+    public enum Direction: Equatable { case upload, download, relay, compress, extract }
 
     public enum Status: Equatable {
         case queued, running, done
@@ -232,7 +233,7 @@ public final class TransferQueue {
     /// scp's and sftp's -l (Kbit/s) for a job starting now: the test seam, else the Transfers panel's speed limit.
     private var limit: Int? { bandwidthLimit ?? TransferCenter.shared.speedLimit.map { max(1, $0 * 8 / 1024) } }
     /// The pump's limit (bytes a second) for a stream starting now: the test seam, else the panel's speed limit.
-    private var streamLimit: Int? { bandwidthLimit.map { $0 * 1024 / 8 } ?? TransferCenter.shared.speedLimit }
+    var streamLimit: Int? { bandwidthLimit.map { $0 * 1024 / 8 } ?? TransferCenter.shared.speedLimit }
     /// A job is queued, running or paused (confirm before quitting or disconnecting).
     public var isBusy: Bool { lock.locked { _jobs.contains { !$0.status.isFinished } } }
 
@@ -328,6 +329,22 @@ public final class TransferQueue {
                       replacing: Bool) -> UUID {
         add(TransferJob(id: UUID(), direction: .relay, hostID: hostID, sourceHostID: source.host.id, source: dir,
                         destination: remoteDir, names: names, isFolder: true, replacing: replacing, preserveTimes: false))
+    }
+
+    /// S3 storage: `names` in the folder `dir` zipped on this Mac into a new .zip in `dir` ("name.zip", or "Archive.zip"
+    /// for several; "… 2.zip" when taken).
+    @discardableResult
+    public func compress(_ names: [String], in dir: String) -> UUID {
+        add(TransferJob(id: UUID(), direction: .compress, hostID: hostID, sourceHostID: nil, source: dir, destination: dir,
+                        names: names, isFolder: false, replacing: false, preserveTimes: false))
+    }
+
+    /// S3 storage: the archive `name` in `dir` unpacked on this Mac and its items uploaded into `dir`; into a new folder
+    /// named after it when `newFolder`, or when an item of the same name is there already.
+    @discardableResult
+    public func extract(_ name: String, in dir: String, newFolder: Bool) -> UUID {
+        add(TransferJob(id: UUID(), direction: .extract, hostID: hostID, sourceHostID: nil, source: dir, destination: dir,
+                        names: [name], isFolder: newFolder, replacing: false, preserveTimes: false))
     }
 
     /// After an automatic reconnect (called by Session): the jobs that failed with `.disconnected` are queued again (a
@@ -493,8 +510,7 @@ public final class TransferQueue {
         }
         publish()
         // Awaited: Disconnect and Quit close the connection next.
-        let lines = removals(jobs)
-        if let session, !lines.isEmpty, session.state == .connected { _ = try? await session.sftp(lines, slot: .transfer) }
+        await dropUploads(removals(jobs))
     }
 
     /// Whether the job's partial copy is kept for its retry (a single file that a lost connection or Pause cut off): Retry,
@@ -504,15 +520,13 @@ public final class TransferQueue {
     /// The jobs won't be retried: a partial copy kept for that goes, a download's part file here and an upload's
     /// partial file on the server (while connected: else it stays, as after any lost connection).
     private func discardPartials(_ jobs: [TransferJob]) {
-        let lines = removals(jobs)
-        if !lines.isEmpty, let session, session.state == .connected {
-            Task { _ = try? await session.sftp(lines, slot: .transfer) }
-        }
+        let uploads = removals(jobs)
+        if !uploads.isEmpty { Task { await dropUploads(uploads) } }
     }
 
-    /// Forgets the jobs' kept partial copies: removes the downloads' part files, and returns the sftp lines that remove
-    /// the uploads' (the temporary copy of one that replaces, else the cut-off file under its own name).
-    private func removals(_ jobs: [TransferJob]) -> [String] {
+    /// Forgets the jobs' kept partial copies: removes the downloads' part files, and returns the uploads whose partial
+    /// copies are on the server (`dropUploads`).
+    private func removals(_ jobs: [TransferJob]) -> [TransferJob] {
         let kept = lock.locked { () -> [TransferJob] in
             let kept = jobs.filter { resumable.contains($0.id) }
             kept.forEach { resumable.remove($0.id) }
@@ -520,7 +534,18 @@ public final class TransferQueue {
         }
         for job in kept where job.direction == .download { unlink(TransferQueue.partPath(job)) }
         return kept.filter { $0.direction == .upload }
-            .map { "-rm \(Quote.sftp($0.replacing ? TransferQueue.partPath($0) : $0.destination))" }
+    }
+
+    /// Removes the uploads' partial copies on the server (the temporary copy of one that replaces, else the cut-off file
+    /// under its own name; on S3 storage the kept parts), while connected: else they stay, as after any lost connection.
+    private func dropUploads(_ uploads: [TransferJob]) async {
+        guard !uploads.isEmpty, let session, session.state == .connected else { return }
+        if let s3 = session.s3 {
+            for job in uploads { await s3.abandon(job.id) }
+            return
+        }
+        _ = try? await session.sftp(uploads.map { "-rm \(Quote.sftp($0.replacing ? TransferQueue.partPath($0) : $0.destination))" },
+                                    slot: .transfer)
     }
 
     /// Returns when no job is running or queued.
@@ -597,12 +622,17 @@ public final class TransferQueue {
         DebugLog.write("Transfer started: " + what, host: DebugLog.name(for: hostID))
         var status: TransferJob.Status
         if let session {
-            switch job.direction {
-            case .upload where job.names.isEmpty: status = await upload(job, session: session, cancellation: cancellation)
-            case .download where job.names.isEmpty: status = await download(job, session: session, cancellation: cancellation)
-            case .upload: status = await uploadCompressed(job, session: session, cancellation: cancellation)
-            case .download: status = await downloadArchive(job, session: session, cancellation: cancellation)
-            case .relay: status = await relay(job, session: session, cancellation: cancellation)
+            if let s3 = session.s3 {
+                status = await runS3(job, session: session, s3: s3, cancellation: cancellation)
+            } else {
+                switch job.direction {
+                case .upload where job.names.isEmpty: status = await upload(job, session: session, cancellation: cancellation)
+                case .download where job.names.isEmpty: status = await download(job, session: session, cancellation: cancellation)
+                case .upload: status = await uploadCompressed(job, session: session, cancellation: cancellation)
+                case .download: status = await downloadArchive(job, session: session, cancellation: cancellation)
+                case .relay: status = await relay(job, session: session, cancellation: cancellation)
+                case .compress, .extract: status = .failed(AirSCPError(.other, "Only S3 storage zips through this Mac."))
+                }
             }
             // scp says "lost connection" when the master went away under it: that is a disconnect (retried after
             // reconnecting), which -O check tells apart from the server refusing.
@@ -739,7 +769,7 @@ public final class TransferQueue {
 
     /// scp copying `local` to `remote` (upload) or `remote` to `local`; for a host browsed as another user, sftp's put or
     /// get instead (scp can't run as another user), its batch as the input, with sftp's progress meter (scp's format).
-    private func copy(upload: Bool, _ local: String, _ remote: String, folder: Bool, preserveTimes: Bool,
+    func copy(upload: Bool, _ local: String, _ remote: String, folder: Bool, preserveTimes: Bool,
                       session: Session) throws -> (argv: [String], input: String?) {
         guard session.copiesWithSFTP else {
             let argv = upload
@@ -757,7 +787,7 @@ public final class TransferQueue {
 
     /// The job's single file stopped with its partial copy intact, for the next try to continue: a lost connection cut
     /// it off, or Pause stopped it (`pausing`, set before its processes were stopped).
-    private func keepsPartial(_ job: TransferJob, after error: Error) -> Bool {
+    func keepsPartial(_ job: TransferJob, after error: Error) -> Bool {
         let kind = (error as? AirSCPError)?.kind
         return kind == .disconnected || kind == .cancelled && lock.locked { pausing.contains(job.id) }
     }
@@ -782,7 +812,7 @@ public final class TransferQueue {
         return result.status == 0
     }
 
-    private func setResumed(_ id: UUID, _ resumed: Bool) {
+    func setResumed(_ id: UUID, _ resumed: Bool) {
         lock.locked { if let index = _jobs.firstIndex(where: { $0.id == id }) { _jobs[index].resumed = resumed } }
         publish()
     }
@@ -795,6 +825,7 @@ public final class TransferQueue {
     /// A single file's copy checked against the original: their SHA-256, worked out where each one is (the server's
     /// with `sha256(_:on:)`, this Mac's in AirSCP). nil when cancelled.
     private func checksum(_ job: TransferJob, session: Session, cancellation: Cancellation) async -> TransferJob.Checksum? {
+        if let s3 = session.s3 { return await checksumS3(job, session: session, s3: s3, cancellation: cancellation) }
         let (local, remote) = job.direction == .upload ? (job.source, job.destination) : (job.destination, job.source)
         let checksum: TransferJob.Checksum
         do {
@@ -1053,21 +1084,8 @@ public final class TransferQueue {
             throw AirSCPError(.other, "Can't create a temporary folder: \(String(cString: strerror(errno)))")
         }
         defer { try? FileManager.default.removeItem(atPath: temp) }
-        var errors: [String] = []
-        var fetched: [String] = []
-        for name in job.names {
-            let (argv, input) = try copy(upload: false, temp + "/" + name, RemotePath.join(job.source, name), folder: true,
-                                     preserveTimes: true, session: source)
-            let result = try await source.runMuxed(argv, input: input, cancellation: cancellation,
-                                                   terminal: { self.progress(job.id, $0) })
-            if result.status != 0 {
-                guard result.status == 1 && access(temp + "/" + name, F_OK) == 0 else {
-                    throw ErrorMapping.map(result.stderr, status: result.status)
-                }
-                errors.append(result.stderr)
-            }
-            fetched.append(name)
-        }
+        var errors = try await fetchForRelay(job, from: source, into: temp, meter: Progress(), cancellation: cancellation)
+        let fetched = job.names.filter { access(temp + "/" + $0, F_OK) == 0 }
         try? await session.deleteFolders([staging], slot: .transfer)  // an earlier try's
         try await session.sftp(["mkdir \(Quote.sftp(staging))"], slot: .transfer)
         for name in fetched {
@@ -1121,7 +1139,7 @@ public final class TransferQueue {
     }
 
     /// Terminal output of the running scp (on a background thread).
-    private func progress(_ id: UUID, _ data: Data) {
+    func progress(_ id: UUID, _ data: Data) {
         let report = lock.locked { () -> Bool in
             guard var parser = parsers[id] else { return false }
             let changed = parser.feed(data)
@@ -1141,7 +1159,7 @@ public final class TransferQueue {
     }
 
     /// A stream begins: its progress is bytes and speed, against `total` when known (else indeterminate).
-    private func startStream(_ id: UUID, label: String, total: Int64?) {
+    func startStream(_ id: UUID, label: String, total: Int64?) {
         lock.locked {
             meters[id] = Meter(time: Date(), bytes: 0, rate: 0)
             if let index = _jobs.firstIndex(where: { $0.id == id }) {
@@ -1155,7 +1173,7 @@ public final class TransferQueue {
 
     /// A stream has carried `bytes` so far (on a background thread, after every chunk): at most ten updates a second,
     /// and the `final` count.
-    private func streamed(_ id: UUID, _ bytes: Int64, final: Bool = false) {
+    func streamed(_ id: UUID, _ bytes: Int64, final: Bool = false) {
         let report = lock.locked { () -> Bool in
             let now = Date()
             guard final || now.timeIntervalSince(lastProgressReport) >= 0.1, var meter = meters[id],
@@ -1181,7 +1199,7 @@ public final class TransferQueue {
     }
 
     /// The size of a single file's transfer, known before it starts (the Size column).
-    private func setTotal(_ id: UUID, _ total: Int64?) {
+    func setTotal(_ id: UUID, _ total: Int64?) {
         lock.locked {
             if let index = _jobs.firstIndex(where: { $0.id == id }) { _jobs[index].progress.total = total }
         }

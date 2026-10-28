@@ -275,7 +275,7 @@ final class SyncModel: ObservableObject {
     /// One of the folders is a home folder (this Mac's, or the account's on the server): its comparison can take
     /// minutes, so it waits for Compare instead of starting as the sheet opens.
     var waitsForCompare: Bool {
-        localDir == NSHomeDirectory() || remoteDir == session.capabilities.home || localDir == "/" || remoteDir == "/"
+        localDir == FolderAccess.home || remoteDir == session.capabilities.home || localDir == "/" || remoteDir == "/"
     }
 
     func compare() {

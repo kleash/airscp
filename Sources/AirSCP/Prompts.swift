@@ -257,7 +257,9 @@ enum Panels {
     static var agentReplacing: (file: URL, save: () -> Void)?
 
     /// Shows `panel` on `window` (on its own without one) and calls `chosen` with what was picked, unless cancelled.
-    static func run(_ panel: NSSavePanel, on window: NSWindow?, chosen: @escaping ([URL]) -> Void) {
+    /// The App Store version keeps every folder an Open panel chose, and its files when `keep` (a key, a certificate
+    /// authority: files AirSCP opens again later), so that its sandbox opens them again at the next launch.
+    static func run(_ panel: NSSavePanel, on window: NSWindow?, keep: Bool = false, chosen: @escaping ([URL]) -> Void) {
         if let urls = agentChoice {
             agentChoice = nil
             agentPanelFolder = panel.directoryURL?.path
@@ -266,15 +268,26 @@ enum Panels {
             } else if !(panel is NSOpenPanel), FileManager.default.fileExists(atPath: urls[0].path) {
                 agentReplacing = (urls[0], { chosen(urls) })
             } else {
-                chosen(urls)
+                chosen(kept(urls, panel, keep))
             }
             return
         }
         let done: (NSApplication.ModalResponse) -> Void = { response in
             guard response == .OK else { return }
-            chosen((panel as? NSOpenPanel)?.urls ?? panel.url.map { [$0] } ?? [])
+            chosen(kept((panel as? NSOpenPanel)?.urls ?? panel.url.map { [$0] } ?? [], panel, keep))
         }
         if let window { panel.beginSheetModal(for: window, completionHandler: done) } else { panel.begin(completionHandler: done) }
+    }
+
+    /// `urls`, after the App Store version has kept those of an Open panel that `run` says (`FolderAccess`).
+    private static func kept(_ urls: [URL], _ panel: NSSavePanel, _ keep: Bool) -> [URL] {
+        #if APPSTORE
+        if panel is NSOpenPanel {
+            urls.filter { keep || (try? $0.resourceValues(forKeys: [.isDirectoryKey]))?.isDirectory == true }
+                .forEach { FolderAccess.remember($0) }
+        }
+        #endif
+        return urls
     }
 
     /// Why `urls` can't be this panel's answer: an Open panel takes existing items of the kinds it allows (one unless

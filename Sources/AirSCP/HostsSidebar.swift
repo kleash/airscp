@@ -59,7 +59,7 @@ struct Sidebar: View {
                         .accessibilityHidden(true)
                     Text("No hosts yet").font(.headline)
                     Text("A host is a server you log in to over SSH. Add one, or import the ones in your ~/.ssh/config. "
-                         + "For a Windows computer, add a Remote Desktop.")
+                         + "For a Windows computer, add a Remote Desktop; for Amazon S3 or similar storage, an S3 connection.")
                         .multilineTextAlignment(.center)
                         .foregroundColor(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
@@ -74,6 +74,10 @@ struct Sidebar: View {
                         .buttonStyle(.borderless)
                         .controlSize(.small)
                         .help(MenuHelp.tips[#selector(AppDelegate.newRemoteDesktop(_:))] ?? "")
+                    Button("New S3 Connection…") { controller.newS3Connection() }
+                        .buttonStyle(.borderless)
+                        .controlSize(.small)
+                        .help(MenuHelp.tips[#selector(AppDelegate.newS3Connection(_:))] ?? "")
                 }
                 .padding(24)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -196,6 +200,8 @@ struct Sidebar: View {
                     Button("Delete Group…") { controller.deleteGroup(group) }
                         .help(tip(#selector(MainWindowController.deleteGroupItem(_:))))
                 }
+        } else if section.storage {
+            Text(section.title).help("Saved S3 and S3-compatible storage. Double-click one to browse its buckets; right-click for more")
         } else {
             Text(section.title).help("Saved SSH servers. Double-click one to connect; right-click for more")
         }
@@ -205,18 +211,22 @@ struct Sidebar: View {
     private func menu(_ item: SidebarItem) -> some View {
         if let host = model.host(item.id) {
             Button("Connect") { controller.open(host.id) }.help(tip(#selector(MainWindowController.connectHost(_:))))
-            Button("Open Terminal") { controller.openTerminal(for: host.id) }
-                .help(tip(#selector(MainWindowController.openTerminal(_:))))
+            if host.s3 == nil {
+                Button("Open Terminal") { controller.openTerminal(for: host.id) }
+                    .help(tip(#selector(MainWindowController.openTerminal(_:))))
+            }
             if model.states[host.id] != nil {
                 Button("Disconnect") { controller.disconnect(host.id) }.help(tip(#selector(MainWindowController.disconnectHost(_:))))
             }
             Divider()
             Button("Edit…") { controller.edit(item) }.help(tip(#selector(MainWindowController.editHost(_:))))
             Button("Duplicate") { controller.duplicate(item) }.help(tip(#selector(MainWindowController.duplicateHost(_:))))
-            let problem = copyCommandProblem(host, in: model.data)
-            Button("Copy ssh Command") { copyCommand(host, in: model.data) }
-                .help(problem ?? tip(#selector(MainWindowController.copySSHCommand(_:))))
-                .disabled(problem != nil)
+            if host.s3 == nil {
+                let problem = copyCommandProblem(host, in: model.data)
+                Button("Copy ssh Command") { copyCommand(host, in: model.data) }
+                    .help(problem ?? tip(#selector(MainWindowController.copySSHCommand(_:))))
+                    .disabled(problem != nil)
+            }
             Picker("Colour Tag", selection: Binding(get: { host.color }, set: { color in
                 model.updateHost(host.id) { $0.color = color }
             })) {
@@ -256,8 +266,8 @@ struct HostRow: View {
     var body: some View {
         HStack(spacing: 9) {
             // Untagged: grey, so that a Blue tag stands out in Night Harbor too (Paper draws untagged chips in labelColor).
-            Chip(symbol: "server.rack", hue: tagColor(host.color) ?? Color(nsColor: .secondaryLabelColor),
-                 tagged: host.color != nil, selected: selected)
+            Chip(symbol: host.s3 == nil ? "server.rack" : "externaldrive.connected.to.line.below",
+                 hue: tagColor(host.color) ?? Color(nsColor: .secondaryLabelColor), tagged: host.color != nil, selected: selected)
             VStack(alignment: .leading, spacing: 1) {
                 Text(host.displayName).fontWeight(.semibold).lineLimit(1)
                 if missingKey != nil {

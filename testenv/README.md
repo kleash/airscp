@@ -26,6 +26,7 @@ account below takes that key as well as its password. The Docker project is `por
 | socksproxy | 127.0.0.1:42283 | `socksproxy:1080` | `porter` (`porter-proxy`) | Dante: SOCKS5 CONNECT to port 22 only, user name and password |
 | sudo | 127.0.0.1:42205 | | `dev` (`porter-sudo`) | Alpine where dev may sudo to root without a password, with OpenSSH's sftp-server |
 | passwd | 127.0.0.1:42206 | | `changer` (`Lab-Pass-Alpha-7`) | Alpine with shadow's setuid passwd; the Change Password test changes it and sets it back |
+| s3 | 127.0.0.1:42284 | `s3:7070` | access key `porter-s3`, secret key `porter-s3-secret` | Versity S3 Gateway (S3-compatible storage, files on a tmpfs, path-style addresses); the tests make their buckets |
 
 - **target**: passwords come as PAM keyboard-interactive prompts (`(dev@127.0.0.1) Password: `); `dev`'s
   `.bashrc` prints a line to standard output and one to standard error before anything else, and terminals get a

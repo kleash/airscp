@@ -20,15 +20,8 @@ that come with macOS.
    Or download the newest AirSCP zip file from the
    [Releases page](https://github.com/kleash/airscp/releases), open it, and drag **AirSCP** into your
    **Applications** folder.
-2. Open **AirSCP** from your Applications folder or with Spotlight. The first time, macOS says
-   **“AirSCP” Not Opened**: Apple could not check it for malware, because AirSCP isn't notarized yet. Click
-   **Done**, then:
-   1. Open **System Settings ▸ Privacy & Security** and scroll down.
-   2. Next to **“AirSCP” was blocked to protect your Mac**, click **Open Anyway**.
-   3. Confirm that you want to open it, with your password or Touch ID if macOS asks.
-
-   From then on AirSCP opens like any app. On macOS 14 or earlier you can instead right-click **AirSCP** in your
-   Applications folder, choose **Open**, then click **Open**.
+2. Open **AirSCP** from your Applications folder or with Spotlight. AirSCP is signed and notarized by Apple, so macOS
+   opens it after asking once whether you want to open an app downloaded from the internet: click **Open**.
 3. The **Welcome to AirSCP** sheet opens. Choose what you want to do first:
    - **Import from ~/.ssh/config…** if you already use ssh in Terminal.
    - **New Host…** to add one server.
@@ -36,6 +29,24 @@ that come with macOS.
    - **Start** to look around first.
 
 {% include shot.html name="welcome" alt="The welcome sheet" %}
+
+## The App Store version
+
+AirSCP also comes from the Mac App Store. It is the same app, but Apple's sandbox keeps it to what you allow, so a
+few things work differently. Homebrew or the Releases page give you the version without these differences.
+
+{% include shot.html name="welcome-appstore" alt="The App Store version's welcome sheet, with Give Access to Your SSH Folder…" %}
+
+| In the App Store version | Do this instead |
+|---|---|
+| AirSCP sees your SSH folder (`~/.ssh`) only after you allow it. | Click **Give Access to Your SSH Folder…** in the welcome sheet, or **Choose…** next to **SSH folder** in **Settings ▸ Keys**. Until then AirSCP keeps its own keys and known hosts. |
+| **This Mac**'s pane opens a folder only after you allow it (your Downloads folder is always open). | When AirSCP asks, click **Allow**. Choose your home folder to allow everything in it. |
+| **Open Terminal**, **Open Terminal Here** and **Run in Terminal** can't open Terminal or iTerm. | They use the host's [Terminal tab](../commands/terminal-tab.md) in AirSCP: at an empty prompt AirSCP types the `cd` or the command there, else it opens a new tab. |
+| **Import from WinSCP…** reads only the files you choose. | Choose `WinSCP.ini` and its `.ppk` keys together. |
+| **Import from ~/.aws…** reads your AWS folder only after you allow it. | When AirSCP asks, choose the `.aws` folder in your home folder and click **Allow**. |
+| Your hosts from the Homebrew version aren't there. | In that version: **File ▸ Export Hosts…**. In this one: **File ▸ Import Hosts…**. |
+| ssh uses only keys and configs in folders you allow, and not another app's ssh agent (a password manager's, for example). | Allow the folder that has them. For another app's agent, use the Homebrew version. |
+| `AirSCP --agent … --out file.png` can't save outside AirSCP's own folder. | Use `--out -` and send the picture where you want it, or let your MCP client take it. |
 
 ## Tips
 

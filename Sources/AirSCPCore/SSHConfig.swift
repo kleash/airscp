@@ -30,7 +30,9 @@ public enum SSHConfig {
                let match = line.range(of: #"^\s*Include(\s*=\s*|\s+)"#, options: [.regularExpression, .caseInsensitive]) {
                 let rest = line[match.upperBound...].components(separatedBy: "#").first ?? ""
                 for word in rest.split(whereSeparator: { $0.isWhitespace }) {
-                    var pattern = (word.trimmingCharacters(in: CharacterSet(charactersIn: "\"")) as NSString).expandingTildeInPath
+                    // ~ is the person's home (FolderAccess): in the App Store version NSString's ~ is the app's container.
+                    let word = word.trimmingCharacters(in: CharacterSet(charactersIn: "\""))
+                    var pattern = word.hasPrefix("~/") ? FolderAccess.home + word.dropFirst() : (word as NSString).expandingTildeInPath
                     if !pattern.hasPrefix("/") { pattern = folder + "/" + pattern }
                     for path in files(matching: pattern) {
                         if let included = try? String(contentsOfFile: path, encoding: .utf8) {

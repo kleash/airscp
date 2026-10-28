@@ -137,6 +137,12 @@ private func savedData() -> AirSCPData {
     #expect(plan[5].problem?.contains("at most 5 steps") == true)
     #expect(throws: AirSCPError.self) { try AssistantPlan.decode("not json") }
     #expect(AssistantPlan.actions.count == 10)
+    // An upload's server folder where a download's server paths go.
+    let upload = try AssistantPlan.decode(#"{"steps":[{"action":"upload","host":"web-01","localPaths":["~/site"],"remotePaths":["/var/www"]}]}"#)
+    #expect(upload.resolve(in: data)[0].sentence == "Upload ~/site to web-01 in /var/www")
+    // A download into a Mac folder that isn't there (the model makes up /Users/your_username/…) goes to the download folder.
+    let downloads = try AssistantPlan.decode(#"{"steps":[{"action":"download","host":"web-01","remotePaths":["/a"],"folder":"/nowhere/at-all"},{"action":"download","host":"web-01","remotePaths":["/b"],"folder":"/tmp"}]}"#).resolve(in: data)
+    #expect(downloads.map(\.sentence) == ["Download /a from web-01 to your download folder", "Download /b from web-01 to /tmp"])
 }
 
 @Test func theInventoryNamesSavedItemsWithoutSecrets() {
@@ -152,6 +158,8 @@ private func savedData() -> AirSCPData {
     #expect(AssistantContext.inventory(AirSCPData()) == "Nothing is saved in AirSCP yet.")
     #expect(AssistantContext.summarizeLog((1...80).map { "cmd \($0)" }).contains("cmd 80"))
     #expect(!AssistantContext.summarizeLog((1...80).map { "cmd \($0)" }).contains("cmd 30\n"))
+    // Lines are cut after the redaction: a secret across the cut goes with its whole line.
+    #expect(!AssistantContext.summarizeLog([String(repeating: "a", count: 195) + " s3cret-in-a-label"]).contains("s3cr"))
 }
 
 @MainActor @Test func doItShowsTheStepsAndRunsThemOnlyOnRun() async throws {

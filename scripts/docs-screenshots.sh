@@ -8,9 +8,12 @@
 #   scripts/docs-screenshots.sh     every picture; the Remote Desktop ones too when the Windows test VM answers
 #
 # Needs build/AirSCP.app (./build.sh --native makes it), Docker Desktop with the lab's images (testenv/up.sh builds
-# them; the lab's containers aren't touched: the demo server is a container of its own, porter-docs-web, removed at
-# the end) and python3 with Pillow (pip3 install pillow), which makes the PNGs small. AIRSCP_DOCS_WINDOWS=0 leaves out
-# the Windows VM. A step that fails stops the script and says what AirSCP showed (build/docs-shot-failed.png).
+# them; the lab's containers aren't touched: the demo server and the demo S3 storage are containers of their own,
+# porter-docs-web and porter-docs-s3, removed at the end) and python3 with Pillow (pip3 install pillow), which makes the
+# PNGs small. AIRSCP_DOCS_WINDOWS=0 leaves out the Windows VM. With build/appstore/AirSCP.app (./build.sh --appstore)
+# also the App Store version's welcome sheet. AIRSCP_APPSTORE_SHOTS=<folder> also writes the Mac App Store's pictures
+# there (2880 × 1800 and 1440 × 900). A step that fails stops the script and says what AirSCP showed
+# (build/docs-shot-failed.png).
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
@@ -44,14 +47,14 @@ stop() {
 }
 export AIRSCP_SUPPORT_DIR=$T/support
 stop
-"$docker" rm -f porter-docs-web >/dev/null 2>&1 || true
+"$docker" rm -f porter-docs-web porter-docs-s3 >/dev/null 2>&1 || true
 rm -rf /tmp/airscp-docs
 mkdir -p "$T/raw" "$T/support" "$T/ssh" "$T/Shared with Windows"
 chmod 700 "$T/ssh"
 cleanup() {
     set +e
     stop
-    "$docker" rm -f porter-docs-web >/dev/null 2>&1
+    "$docker" rm -f porter-docs-web porter-docs-s3 >/dev/null 2>&1
     rm -rf /tmp/airscp-docs
 }
 trap cleanup EXIT
@@ -117,6 +120,29 @@ touch -t 202610031011 "$server/logs" "$server/logs/archive" "$server/backups" "$
 COPYFILE_DISABLE=1 tar --no-xattrs --no-mac-metadata -C "$server" -cf - . \
     | "$docker" exec -i -u dev porter-docs-web tar -xf - -C /home/dev --delay-directory-restore
 "$docker" exec -d -u dev porter-docs-web python3 -m http.server 8080 --directory /home/dev/www
+
+# The demo S3 storage: the lab's S3 server (its image, as testenv/docker-compose.yml names it) in a container of its
+# own, with throwaway keys and two buckets of the demo's files. It dates each file by its file in the container, so
+# they get fixed dates too.
+s3port=42291
+s3image=$(sed -n 's/^ *image: *\(versity\/versitygw[^ ]*\).*/\1/p' testenv/docker-compose.yml)
+"$docker" run -d --rm --name porter-docs-s3 -p "127.0.0.1:$s3port:7070" --tmpfs /data \
+    --entrypoint /usr/local/bin/versitygw "$s3image" --access shop-uploader --secret docs-demo-secret posix /data >/dev/null
+s3() {  # s3 <path> [file]: PUT a bucket, or a file as an object
+    curl -fsS --aws-sigv4 aws:amz:us-east-1:s3 --user shop-uploader:docs-demo-secret -X PUT -H 'Content-Type:' \
+        ${2:+--data-binary "@$2"} "http://127.0.0.1:$s3port/$1" >/dev/null
+}
+for _ in $(seq 1 30); do curl -s -o /dev/null "http://127.0.0.1:$s3port/" && break; sleep 1; done
+s3 example-shop-media
+s3 example-shop-backups
+for file in index.html about.html css/site.css images/logo.svg images/team.jpg images/office.jpg downloads/catalogue.pdf \
+    downloads/price-list.pdf; do
+    s3 "example-shop-media/$file" "$mac/website/$file"
+done
+for file in site-2026-09-28.tar.gz site-2026-09-21.tar.gz db-2026-09-28.sql.gz; do
+    s3 "example-shop-backups/$file" "$server/backups/$file"
+done
+"$docker" exec porter-docs-s3 find /data/example-shop-media /data/example-shop-backups -exec touch -d '2026-10-02 08:40:00' {} +
 
 # ssh's own folder for this AirSCP: the lab key under a neutral name and comment, a known_hosts of its own, no agent,
 # and the demo names, which all lead to the container.
@@ -511,10 +537,15 @@ sleep 0.4
 shot snippets target=window:Snippets
 a menu path='File > Close' in=window:Snippets
 main
-# The Terminal tab: bash marks each command with how it ended (one that fails, last), then the find bar.
+# The Terminal tab with two shells: in the second, bash marks each command with how it ended (one that fails, last);
+# then the find bar.
 a menu path='Host > Terminal Tab'
 a wait until=text text='dev@web-01:~$' timeout=30
-a type target=terminal text=$'cd www\n'
+a type target=terminal text=$'cd logs\n'
+a wait until=text text='dev@web-01:~/logs$' timeout=20
+a press id=terminal.newTab
+a wait until=text text='dev@web-01:~/logs$' timeout=30  # the new tab's prompt: it starts in the folder of the first
+a type target=terminal text=$'cd ~/www\n'
 a wait until=text text='dev@web-01:~/www$' timeout=20
 a type target=terminal text=$'ls\n'
 a wait until=text text=contact.html timeout=20
@@ -526,17 +557,32 @@ shot terminal
 a press id=terminal.find
 a set id=terminal.findText value=html
 shot terminal-find
-# The tab alone, from its bar down to the Transfers panel, so that the shell's lines stay legible; each appearance has
-# a header of its own height.
+# The App Store's picture of it is the whole window.
+if [[ -n ${AIRSCP_APPSTORE_SHOTS:-} ]]; then mkdir -p "$T/appstore"; cp "$T/raw"/terminal-{light,dark}.png "$T/appstore/"; fi
+# The tab alone, from its strip of tabs down to the Transfers panel, so that the shell's lines stay legible; each
+# appearance has a header of its own height.
 for mode in light dark; do
     appearance "$(tr '[:lower:]' '[:upper:]' <<<"${mode:0:1}")${mode:1}"
-    top=$(frame main terminal.find | awk '{ print $2 - 5 }')
+    top=$(frame main terminal.tabs | awk '{ print $2 - 7 }')
     height=$(frame main transfers.speedLimit | awk -v top="$top" '{ print $2 - 14 - top }')
     crop terminal 218 "$top" 962 "$height" "$mode"
     crop terminal-find 218 "$top" 962 "$height" "$mode"
 done
 appearance Light
 a press id=terminal.findDone
+# History… (the host's commands, newest first) and Insert Path… (the folder of the path being typed).
+a press id=terminal.history
+sheet
+shot terminal-history target=sheet
+a press title=Cancel
+closed
+a type target=terminal text='tail -n 20 ~/logs/'
+a press id=terminal.insertPath
+sheet
+shot terminal-insert-path target=sheet
+a press title=Cancel
+closed
+a type target=terminal text=$'\025'  # Control-U: away with the line typed
 a press title=Tunnels
 sleep 0.5
 shot tunnels
@@ -726,6 +772,64 @@ if [[ -n $windows ]]; then
     a wait until=disconnected timeout=30
 fi
 
+# MARK: S3 storage
+
+# Last, so that the other pictures' sidebars don't show it.
+a menu path='File > New S3 Connection…'
+sheet
+a set id=s3Editor.name value='Shop storage'
+a set id=s3Editor.endpoint value="http://localhost:$s3port"
+a set id=s3Editor.accessKey value=shop-uploader
+a set id=s3Editor.secret value=docs-demo-secret
+a press id=s3Editor.test
+a wait until=sheet text='Connected:' timeout=30
+shot s3-editor target=sheet
+a press id=s3Editor.save
+closed
+a select pane=sidebar names='["Shop storage"]'
+a menu path='Host > Connect'
+a wait until=connected host='Shop storage' timeout=30
+a wait until=listed pane=right timeout=30
+a focus target=path pane=left
+a type text="$mac/website"
+a key combo=return
+a wait until=listed pane=left path="$mac/website" timeout=20
+a focus target=path pane=right
+a type text=/example-shop-media
+a key combo=return
+a wait until=listed pane=right path=/example-shop-media timeout=20
+a select pane=right names='["images"]'
+shot s3-files
+
+# MARK: The App Store version
+
+# Its welcome sheet, with Give Access to Your SSH Folder…: a copy of build/appstore/AirSCP.app under a test id, so the
+# sandbox gives it a container of its own (com.kleash.airscp.docs, kept for the next run; the App Store app's is
+# com.kleash.airscp's). Its settings folder is granted as the document it opens with; its agent calls run in its
+# sandbox, so their pictures come through standard output.
+if [[ -x build/appstore/AirSCP.app/Contents/MacOS/AirSCP ]]; then
+    store=/private$T/store
+    mkdir -p "$store/support"
+    cp -R build/appstore/AirSCP.app "$store/AirSCP.app"
+    plutil -replace CFBundleIdentifier -string com.kleash.airscp.docs "$store/AirSCP.app/Contents/Info.plist"
+    codesign --force --sign - --entitlements Resources/AirSCP-AppStore.entitlements "$store/AirSCP.app" 2>/dev/null
+    echo '{"settings": {"appearance": "light", "welcomeShown": true, "agentControl": true, "askBeforeAgentChanges": false}}' \
+        > "$store/support/airscp.json"
+    stop
+    bin=$store/AirSCP.app/Contents/MacOS/AirSCP  # a, stop and the rest now drive this one
+    instance() { pgrep -f "^$bin\$" || true; }
+    open -n -g -a "$store/AirSCP.app" "$store" --env AIRSCP_SUPPORT_DIR="$store/support" --env AIRSCP_AGENT=1
+    for _ in $(seq 1 60); do "$bin" --agent snapshot include='["windows"]' >/dev/null 2>&1 && break; sleep 0.5; done
+    a menu path='AirSCP > Settings…'
+    a menu path='Help > Welcome to AirSCP…'
+    sheet 'Give Access'
+    for mode in Light Dark; do
+        appearance $mode
+        "$bin" --agent screenshot scale=2 target=sheet --out - >"$T/raw/welcome-appstore-$(tr '[:upper:]' '[:lower:]' <<<$mode).png"
+    done
+    echo "  welcome-appstore"
+fi
+
 # MARK: Small PNGs
 
 python3 - "$T/raw" "$out" <<'PY'
@@ -744,3 +848,25 @@ for name in sorted(os.listdir(raw)):
     image.quantize(colors=256, method=method, kmeans=4, dither=Image.Dither.NONE).save(os.path.join(out, name), optimize=True)
 PY
 echo "Wrote $(ls "$T/raw" | wc -l | tr -d ' ') pictures to docs/assets/shots"
+
+# The Mac App Store's pictures: whole windows on the sizes App Store Connect takes, in their look's colour around them.
+if [[ -n ${AIRSCP_APPSTORE_SHOTS:-} ]]; then
+    mkdir -p "$AIRSCP_APPSTORE_SHOTS"
+    python3 - "$AIRSCP_APPSTORE_SHOTS" "$T/raw/main-window" "$T/raw/files-two-servers" "$T/raw/s3-files" \
+        "$T/appstore/terminal" "$T/raw/monitor" "$T/raw/certificates" "$T/raw/rdp-desktop" <<'PY'
+import os, sys
+from PIL import Image
+out, stems = sys.argv[1], sys.argv[2:]
+for number, stem in enumerate([s for s in stems if os.path.exists(f"{s}-light.png")], 1):
+    name = os.path.basename(stem)
+    for mode, ground in (("light", (232, 234, 237)), ("dark", (24, 28, 36))):
+        window = Image.open(f"{stem}-{mode}.png").convert("RGBA")
+        for width, height in ((2880, 1800), (1440, 900)):
+            scale = min(width * 0.9 / window.width, height * 0.9 / window.height)
+            shown = window.resize((round(window.width * scale), round(window.height * scale)), Image.LANCZOS)
+            canvas = Image.new("RGB", (width, height), ground)
+            canvas.paste(shown, ((width - shown.width) // 2, (height - shown.height) // 2), shown)
+            canvas.save(os.path.join(out, f"{number}-{name}-{mode}-{width}x{height}.png"), optimize=True)
+PY
+    echo "Wrote the App Store pictures to $AIRSCP_APPSTORE_SHOTS"
+fi

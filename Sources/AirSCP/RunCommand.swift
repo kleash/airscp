@@ -126,9 +126,16 @@ final class RunOutput: @unchecked Sendable {
 }
 
 struct RunCommandView: View {
+    #if APPSTORE
+    static let inTerminal = "Run it in the host's Terminal tab, for sudo, top and editors"
+    #else
+    static let inTerminal = "Run it with a terminal (Terminal, or the Terminal tab: Settings), for sudo, top and editors"
+    #endif
+
     @ObservedObject var model: RunCommandModel
     @ObservedObject var app: AppModel
-    let runInTerminal: (String) -> Void
+    /// Run in Terminal: the command, and whether it is for sh (`RunCommandModel.sh`).
+    let runInTerminal: (String, Bool) -> Void
     let close: () -> Void
 
     var body: some View {
@@ -163,9 +170,9 @@ struct RunCommandView: View {
                       : "Fill in a saved command")
                 Text(model.unavailableReason ?? "").font(.caption).foregroundColor(.secondary)
                 Spacer()
-                Button("Run in Terminal") { runInTerminal(model.sh ? OpenSSH.viaSh(model.command) : model.command) }
+                Button("Run in Terminal") { runInTerminal(model.command, model.sh) }
                     .accessibilityIdentifier("runCommand.runInTerminal")
-                    .help("Opens Terminal with a tty: for sudo, top, editors and anything interactive")
+                    .help(Self.inTerminal)
                     .disabled(model.command.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || model.unavailableReason != nil)
                 if model.running {
                     Button("Stop") { model.stop() }.help("Stop the command")
@@ -285,7 +292,7 @@ struct SnippetsView: View {
                     HStack {
                         Picker("Run on:", selection: $hostID) {
                             Text("Choose a host").tag(UUID?.none)
-                            ForEach(model.data.hosts.sorted { $0.displayName.localizedStandardCompare($1.displayName) == .orderedAscending }) {
+                            ForEach(model.data.hosts.filter { $0.s3 == nil }.sorted { $0.displayName.localizedStandardCompare($1.displayName) == .orderedAscending }) {
                                 Text($0.displayName).tag(Optional($0.id))
                             }
                         }

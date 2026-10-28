@@ -198,7 +198,7 @@ public final class AskpassServer {
         secret = random.map { String(format: "%02x", $0) }.joined()
         DebugLog.Secrets.add(secret)
         Self.removeStaleFolders()
-        var template = Array("/tmp/airscp-askpass.XXXXXX".utf8CString)
+        var template = Array((Self.parent + "airscp-askpass.XXXXXX").utf8CString)
         guard let made = mkdtemp(&template) else {
             throw AirSCPError(.other, "Can't create the askpass folder: \(String(cString: strerror(errno)))")
         }
@@ -225,12 +225,19 @@ public final class AskpassServer {
 
     deinit { close() }
 
+    /// Where the askpass folders are made: /tmp, or the App Store version's own temporary folder (its sandbox has no /tmp).
+    #if APPSTORE
+    static let parent = NSTemporaryDirectory()
+    #else
+    static let parent = "/tmp/"
+    #endif
+
     /// Folders that an AirSCP stopped without quitting (killed, or a test run cut off) left behind: this user's, whose
     /// socket no one listens on any more. A running AirSCP's socket answers, so its folder stays.
     static func removeStaleFolders() {
-        let names = (try? FileManager.default.contentsOfDirectory(atPath: "/tmp")) ?? []
+        let names = (try? FileManager.default.contentsOfDirectory(atPath: parent)) ?? []
         for name in names where name.hasPrefix("airscp-askpass.") {
-            let directory = "/tmp/" + name, socketPath = directory + "/sock"
+            let directory = parent + name, socketPath = directory + "/sock"
             var info = stat()
             // A minute old at least: a folder just made may not have its socket yet.
             guard lstat(directory, &info) == 0, info.st_uid == getuid(), info.st_mode & S_IFMT == S_IFDIR,
@@ -330,7 +337,7 @@ public final class AskpassServer {
         if let proxy = object["proxy"] as? String {
             guard let proxyID = UUID(uuidString: proxy), let proxyHandler else { return reply(token, [:]) }
             let mayAsk = object["mayAsk"] as? Bool ?? true
-            DispatchQueue.main.async {
+            DispatchQueue.main.async { [self] in
                 proxyHandler(proxyID, mayAsk, fromAirSCP) { [weak self] answer in
                     DebugLog.Secrets.add(answer?.password)
                     self?.reply(token, answer.map { ["host": $0.proxy.host, "port": $0.proxy.port, "username": $0.proxy.username,
@@ -342,7 +349,7 @@ public final class AskpassServer {
         guard let prompt = object["prompt"] as? String, let handler else { return reply(token, [:]) }
         let request = AskpassRequest(id: id, prompt: prompt, pid: Int32(object["pid"] as? Int ?? 0),
                                      silent: object["silent"] as? Bool ?? false, fromAirSCP: fromAirSCP)
-        DispatchQueue.main.async {
+        DispatchQueue.main.async { [self] in
             handler(request) { [weak self] answer in self?.reply(token, answer.map { ["answer": $0] } ?? [:]) }
         }
     }

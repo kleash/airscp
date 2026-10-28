@@ -40,6 +40,7 @@ opens tunnels. You don't need to type commands.
 | Make two folders the same | [Synchronize two folders](https://kleash.github.io/airscp/synchronize.html) |
 | Find a file on a server | [Find files on a server](https://kleash.github.io/airscp/find.html) |
 | Work on a Windows computer | [Remote Desktop (Windows)](https://kleash.github.io/airscp/remote-desktop/) |
+| Open Amazon S3 or similar storage | [S3 storage](https://kleash.github.io/airscp/s3/) |
 | See CPU, memory and processes | [Watch a Linux server](https://kleash.github.io/airscp/monitor.html) |
 | Reach a database behind a server | [Open a tunnel](https://kleash.github.io/airscp/tunnels.html) |
 | Log in without a password | [Make a new key pair](https://kleash.github.io/airscp/keys/new-key-pair.html) |
@@ -104,15 +105,8 @@ that come with macOS.
    Or download the newest AirSCP zip file from the
    [Releases page](https://github.com/kleash/airscp/releases), open it, and drag **AirSCP** into your
    **Applications** folder.
-2. Open **AirSCP** from your Applications folder or with Spotlight. The first time, macOS says
-   **“AirSCP” Not Opened**: Apple could not check it for malware, because AirSCP isn't notarized yet. Click
-   **Done**, then:
-   1. Open **System Settings ▸ Privacy & Security** and scroll down.
-   2. Next to **“AirSCP” was blocked to protect your Mac**, click **Open Anyway**.
-   3. Confirm that you want to open it, with your password or Touch ID if macOS asks.
-
-   From then on AirSCP opens like any app. On macOS 14 or earlier you can instead right-click **AirSCP** in your
-   Applications folder, choose **Open**, then click **Open**.
+2. Open **AirSCP** from your Applications folder or with Spotlight. AirSCP is signed and notarized by Apple, so macOS
+   opens it after asking once whether you want to open an app downloaded from the internet: click **Open**.
 3. The **Welcome to AirSCP** sheet opens. Choose what you want to do first:
    - **Import from ~/.ssh/config…** if you already use ssh in Terminal.
    - **New Host…** to add one server.
@@ -120,6 +114,24 @@ that come with macOS.
    - **Start** to look around first.
 
 (Picture: The welcome sheet)
+
+## The App Store version
+
+AirSCP also comes from the Mac App Store. It is the same app, but Apple's sandbox keeps it to what you allow, so a
+few things work differently. Homebrew or the Releases page give you the version without these differences.
+
+(Picture: The App Store version's welcome sheet, with Give Access to Your SSH Folder…)
+
+| In the App Store version | Do this instead |
+|---|---|
+| AirSCP sees your SSH folder (`~/.ssh`) only after you allow it. | Click **Give Access to Your SSH Folder…** in the welcome sheet, or **Choose…** next to **SSH folder** in **Settings ▸ Keys**. Until then AirSCP keeps its own keys and known hosts. |
+| **This Mac**'s pane opens a folder only after you allow it (your Downloads folder is always open). | When AirSCP asks, click **Allow**. Choose your home folder to allow everything in it. |
+| **Open Terminal**, **Open Terminal Here** and **Run in Terminal** can't open Terminal or iTerm. | They use the host's [Terminal tab](https://kleash.github.io/airscp/commands/terminal-tab.html) in AirSCP: at an empty prompt AirSCP types the `cd` or the command there, else it opens a new tab. |
+| **Import from WinSCP…** reads only the files you choose. | Choose `WinSCP.ini` and its `.ppk` keys together. |
+| **Import from ~/.aws…** reads your AWS folder only after you allow it. | When AirSCP asks, choose the `.aws` folder in your home folder and click **Allow**. |
+| Your hosts from the Homebrew version aren't there. | In that version: **File ▸ Export Hosts…**. In this one: **File ▸ Import Hosts…**. |
+| ssh uses only keys and configs in folders you allow, and not another app's ssh agent (a password manager's, for example). | Allow the folder that has them. For another app's agent, use the Homebrew version. |
+| `AirSCP --agent … --out file.png` can't save outside AirSCP's own folder. | Use `--out -` and send the picture where you want it, or let your MCP client take it. |
 
 ## Tips
 
@@ -1804,6 +1816,188 @@ Source: https://kleash.github.io/airscp/remote-desktop/keyboard-and-screen.html
 
 ---
 
+Source: https://kleash.github.io/airscp/s3/
+
+# S3 storage
+
+AirSCP opens Amazon S3 and storage that works like it (MinIO, Cloudflare R2, Backblaze B2, Wasabi, Ceph and others).
+Its buckets open in the Files tab like a server's folders: you browse, drag files in and out, rename, delete, edit and
+zip, and long copies wait in the Transfers list.
+
+## Pages
+
+- [Connect to S3 or S3-compatible storage](https://kleash.github.io/airscp/s3/connect.html)
+- [Browse and transfer](https://kleash.github.io/airscp/s3/browse-and-transfer.html)
+- [Zip and extract](https://kleash.github.io/airscp/s3/zip-and-extract.html)
+
+## Good to know
+
+- A bucket is a folder at the top. Folders inside a bucket are parts of the file names (`photos/2024/a.jpg`): an
+  empty folder is kept as an empty object named `folder/`.
+- S3 storage keeps files only. It has no commands, terminal, tunnels, permissions or symbolic links: those menu
+  items are off, and their tooltip says why.
+- AirSCP doesn't make or delete buckets. Do that in your provider's console.
+
+
+---
+
+Source: https://kleash.github.io/airscp/s3/connect.html
+
+# Connect to S3 or S3-compatible storage
+
+Save your storage once, with its access key. Then double-click it in the sidebar to see its buckets.
+
+## Steps
+
+1. Choose **File ▸ New S3 Connection…**, or click **+** in the toolbar and choose **New S3 Connection…**.
+2. Fill in the fields (see the table below).
+3. Click **Test Connection** to check the keys without saving (optional).
+4. Click **Add**. The connection appears in the sidebar under **S3 Storage**.
+5. Double-click it. Its buckets appear in the right pane.
+
+(Picture: New S3 Connection with a name, an endpoint and an access key, after Test Connection: Connected: 2 buckets)
+
+| Field | What to type |
+|---|---|
+| **Name** | A short name for the sidebar, for example `Photos`. Optional. |
+| **Endpoint** | Leave it empty for Amazon S3. For other storage, the address your provider gives, for example `https://<account>.r2.cloudflarestorage.com` or `http://192.168.1.10:9000`. A plain `http://` address works only with an IP address or a local name (`nas`, `nas.local`): macOS wants `https://` for other names. |
+| **Region** | Optional for Amazon S3: AirSCP finds each bucket's region by itself. For other storage, the region they name (Cloudflare R2: `auto`). |
+| **Access key ID** | The key's ID from your provider's console. |
+| **Secret access key** | The key's secret. It goes to your Keychain, never to AirSCP's settings file. |
+| **Bucket** | Optional. The bucket to open first. Needed when your key may not list the buckets. |
+| **Group** | A group to sort the connection under in the sidebar. |
+
+## Advanced
+
+| Setting | What it does |
+|---|---|
+| **Path-style addresses** | Puts the bucket in the address's path (`https://host/bucket`) instead of the host name. Most self-hosted storage (MinIO, Ceph) wants it. An endpoint at an IP address always uses it. |
+| **Session token** | Only for temporary keys. It goes to your Keychain. |
+| **Proxy** | Only when your network reaches the internet through a proxy. See [Connect through a proxy](https://kleash.github.io/airscp/connecting/proxies.html). |
+
+## Import from ~/.aws
+
+Do you use the AWS command line tool? Choose **File ▸ Import from ~/.aws…**. AirSCP makes a connection for each
+profile that has its own access key, with its region and `endpoint_url`. The secret keys go to your Keychain; the
+files in `~/.aws` stay as they are. The App Store version asks you to allow your `.aws` folder the first time.
+
+Profiles that sign in with single sign-on (SSO), get their keys from a program (`credential_process`) or take on a
+role (`role_arn`) can't be imported. AirSCP lists them with the reason. Make an access key for such an account, and
+add it with **New S3 Connection…**.
+
+## Change, copy or delete a connection
+
+- **Host ▸ Edit…** changes the selected connection.
+- **Host ▸ Duplicate** makes a copy, with its keys.
+- **Host ▸ Delete…** forgets the connection and its keys. The files on the storage stay.
+- **Host ▸ Copy Link** copies the `s3://bucket/folder/` link of the folder you see.
+
+## Tips
+
+- "The secret key doesn't match the access key": edit the connection and type the secret key again.
+- "This Mac's clock is too far off": turn on **Set time and date automatically** in System Settings ▸ General ▸
+  Date & Time. S3 refuses requests from a clock that is wrong by more than 15 minutes.
+- "This access key may not list the buckets": type the bucket's name in **Bucket**.
+- The **?** button in the sheet opens this page.
+
+
+---
+
+Source: https://kleash.github.io/airscp/s3/browse-and-transfer.html
+
+# Browse and transfer
+
+S3 storage works in the Files tab as a server does. This Mac is on the left, the storage on the right.
+
+(Picture: The bucket example-shop-media on the right, with its folders and files; a website folder of this Mac on the left)
+
+## Steps
+
+- **Open a bucket or folder**: double-click it.
+- **Upload**: drag files or folders from the left pane or from Finder onto the right pane. Or select them on the left
+  and click **Upload**.
+- **Download**: drag items to the left pane or to Finder. Or select them and click **Download**, or choose
+  **File ▸ Download To…**.
+- **New folder**: **File ▸ New Folder…**. **New file**: **File ▸ New File…**.
+- **Rename, move, copy**: **File ▸ Rename…**, **File ▸ Move To…**, **File ▸ Copy To…**. A folder moves with
+  everything in it.
+- **Delete**: select items and press <kbd>⌫</kbd>. AirSCP asks first. A folder goes with everything in it.
+- **Edit a text file**: **File ▸ Edit in AirSCP**. When you save, AirSCP checks that nobody changed the file meanwhile.
+- **Get Info**: size, date, content type, storage class, ETag, the SHA-256 checksum the storage keeps, and the file's
+  metadata.
+- **Find Files…**: search names below the folder you see.
+- **Synchronize…**: make a Mac folder and a storage folder the same, by size and date. See [Synchronize](https://kleash.github.io/airscp/synchronize.html).
+
+## Copy a link
+
+Right-click a file:
+
+- **Copy S3 Link** copies its `s3://bucket/key` address, for tools such as the AWS command line.
+- **Copy Presigned Link…** makes an `https` link that anyone can open without keys. Choose how long it works: an hour,
+  a day, or 7 days (the longest S3 allows).
+
+## Copy between a server and S3
+
+Choose a connected server in the left pane's menu (where it says **This Mac**). Then drag items between the server and
+the storage. They go through your Mac.
+
+## Transfers
+
+Every upload and download waits in the Transfers list. You can pause and resume it, cancel it, retry it and limit its
+speed, as for a server. See [Pause and resume](https://kleash.github.io/airscp/transfers/pause-and-resume.html) and [Verify with checksums](https://kleash.github.io/airscp/transfers/verify-checksums.html).
+
+- Big files (from 64 MB) go in parts. A paused upload keeps the parts that arrived, and **Resume** sends only the rest.
+- A paused download keeps what arrived, and **Resume** continues from there.
+- **Verify** compares the file's SHA-256 checksum on your Mac with the one the storage keeps. Storage that keeps no
+  checksum for a file says so.
+- A file appears on the storage only when it has arrived whole.
+- In a folder you upload, a symbolic link to a file goes as that file. A link to a folder is left out, and the
+  transfer names it.
+
+## Tips
+
+- S3 has no real folders: a folder is the part of the names before a `/`. A name AirSCP can't show as a file (an empty
+  name, `.` or `..`) is left out of the list.
+- A bucket in another Amazon S3 region works too: AirSCP finds its region.
+
+
+---
+
+Source: https://kleash.github.io/airscp/s3/zip-and-extract.html
+
+# Zip and extract
+
+S3 storage can't make or open archives itself. AirSCP does it on your Mac, as a job in the Transfers list: it
+downloads, zips or unpacks, and uploads.
+
+## Steps
+
+**Download as a .zip**
+
+1. Select the items and choose **File ▸ Download as .zip…**.
+2. Click **Download**. The `.zip` lands in the folder the left pane shows (or in your Downloads folder).
+
+**Compress in the bucket**
+
+1. Select the items and choose **File ▸ Compress…**.
+2. Click **Compress**. A `.zip` appears next to the items (`Archive.zip` for several items).
+
+**Extract**
+
+- Select a `.zip`, `.tar`, `.tar.gz`, `.tgz` or `.gz` file.
+- **File ▸ Extract Here** puts its items in the same folder. When an item of the same name is there already, AirSCP
+  puts them in a new folder named after the archive instead: nothing is replaced.
+- **File ▸ Extract to New Folder** always puts them in a new folder.
+
+## Tips
+
+- Zips are made with macOS's `ditto`, without Mac-only extras, so they open on Windows and Linux too.
+- The job needs room on your Mac for the items while it works. It cleans up when it ends.
+- Like any transfer, the job can be paused (it starts again on Resume), cancelled or retried.
+
+
+---
+
 Source: https://kleash.github.io/airscp/monitor.html
 
 # Watch a Linux server
@@ -1985,7 +2179,8 @@ unusual file name can't be misread.
 ## Tips
 
 - The command runs in your account's login shell, without a terminal.
-- For `sudo`, `top`, editors and anything that asks questions, click **Run in Terminal**.
+- For `sudo`, `top`, editors and anything that asks questions, click **Run in Terminal**. It opens Terminal, or the
+  [Terminal tab](https://kleash.github.io/airscp/commands/terminal-tab.html) when Settings says so.
 - The output shows while the command runs. **Stop** ends a running command on the server too; what it printed stays.
 - AirSCP keeps the last thousand lines of output and of error output.
 - File-transfer-only (sftp) accounts can't run commands: the menu item is greyed out and says why.
@@ -2049,8 +2244,8 @@ Open an ssh session to a host in Terminal or iTerm. It rides on AirSCP's open co
 - To start in the folder you are looking at: right-click in the server pane and choose **Open Terminal Here**
   (<kbd>⌥⌘T</kbd>).
 - To use iTerm instead of Terminal: **AirSCP ▸ Settings… ▸ Open terminals in**.
-- To have **Open Terminal Here** use AirSCP's own [Terminal tab](https://kleash.github.io/airscp/commands/terminal-tab.html) instead: **AirSCP ▸ Settings… ▸
-  Open Terminal Here in the Terminal tab**.
+- To have **Open Terminal Here** and **Run in Terminal** use AirSCP's own [Terminal tab](https://kleash.github.io/airscp/commands/terminal-tab.html) instead:
+  **AirSCP ▸ Settings… ▸ Open Terminal Here and Run in Terminal in the Terminal tab**.
 
 (Picture: The toolbar's Open Terminal button above the Files tab)
 
@@ -2091,16 +2286,29 @@ Source: https://kleash.github.io/airscp/commands/terminal-tab.html
 
 # The Terminal tab
 
-A shell on the server, inside AirSCP. It uses the host's connection, so there is no second login. It knows files:
-right-click a file name in the output to show, download or edit it, and drop Finder files on it to upload them to the
-folder you are in. With bash and zsh it also knows your commands: how each one ended, how long it took and what it
-printed.
+A shell on the server, inside AirSCP. It uses the host's connection, so there is no second login. Open as many shells
+as you like, each in a tab of its own. It knows files: right-click a file name in the output to show, download or edit
+it, drag it to Finder, and drop Finder files on it to upload them to the folder you are in. With bash and zsh it also
+knows your commands: how each one ended, how long it took and what it printed, and it keeps them in a history you can
+search.
 
 ## Steps
 
 1. Connect to the host.
 2. Click **Terminal** above the files, or choose **Host ▸ Terminal Tab** (<kbd>⌃⌘T</kbd>).
 3. Type as in any terminal. Programs such as `less`, `vim`, `top` and `nano` work full screen.
+
+## Open more shells in tabs
+
+Click **+** above the terminal, or choose **Host ▸ New Terminal Tab** (<kbd>⇧⌘T</kbd>). The new shell starts in the
+folder of the one you were looking at, on the same connection: no second login.
+
+- Click a tab to show its shell. **Host ▸ Show Previous Terminal Tab** (<kbd>⇧⌘[</kbd>) and **Show Next Terminal Tab**
+  (<kbd>⇧⌘]</kbd>) go through them.
+- Each tab is named after its shell's folder, or the title the shell or a program gives it.
+- To close the tab you see, click **×** or choose **Host ▸ Close Terminal Tab**. If a command is still running in it,
+  AirSCP asks first (it can tell with bash and zsh, and for full-screen programs). The last tab stays: type `exit` to end
+  its shell.
 
 ## See how each command ended
 
@@ -2109,7 +2317,7 @@ With bash and zsh, each command you run gets a small label at the right of its l
 - **✓ 0.4 s**: it worked, and took 0.4 seconds.
 - **✗ exit 1 · 2.1 s**, in red: it failed, with exit status 1. A red bar runs down the left side of its output.
 
-(Picture: The Terminal tab: cd, ls and grep marked ✓ with their time, and cat missing.txt marked ✗ exit 1 in red)
+(Picture: The Terminal tab with two shells in tabs: cd, ls and grep marked ✓ with their time, and cat missing.txt marked ✗ exit 1 in red)
 
 Right-click a command or its output:
 
@@ -2135,17 +2343,47 @@ the one below. **Done** (or <kbd>Esc</kbd>) closes the find bar.
 Tick **Follow in Files** at the top of the tab. Each time you `cd` to another folder, the Files tab's server pane goes
 there too. It goes only where the shell itself says it is: a folder that a program prints can't move it.
 
-To go the other way, turn on **Open Terminal Here in the Terminal tab** in **AirSCP ▸ Settings…**. Then a server
-folder's **Open Terminal Here** (<kbd>⌥⌘T</kbd>) goes to this tab. If the shell is at an empty prompt, AirSCP types
-`cd` with the folder for you; if it is busy, AirSCP asks first. It doesn't type `cd` to a folder whose path has a
-control character, nor, in a shell other than bash or zsh, a `\` or `!`, which such a shell may read as more than a
-name: type it yourself.
+To go the other way, turn on **Open Terminal Here and Run in Terminal in the Terminal tab** in **AirSCP ▸ Settings…**.
+Then a server folder's **Open Terminal Here** (<kbd>⌥⌘T</kbd>) goes to this tab. If the shell is at an empty prompt,
+AirSCP types `cd` with the folder for you. If it is busy, or isn't bash or zsh (AirSCP can't tell when such a shell
+waits), AirSCP opens a new tab in that folder instead, and never types into the busy one.
+
+**Run in Terminal** (in **Run Command**, a snippet's option, **File ▸ Run…**, the Monitor's **Kill with sudo**) works the
+same way with this setting: the command is typed and run at an empty prompt, or runs in a new tab.
+
+The App Store version always works this way, without the setting.
 
 ## Insert a snippet
 
 Click **Insert Snippet** at the top of the tab (or right-click ▸ **Insert Snippet**) and choose one. AirSCP types the
 command at the prompt but doesn't run it: read it, change it if you need to, then press <kbd>Return</kbd>. Placeholders
 such as `{file}` are typed as they are: replace them first. See [Save commands as snippets](https://kleash.github.io/airscp/commands/snippets.html).
+
+## Go back to an earlier command
+
+Click **History…** above the terminal (or right-click ▸ **History…**). It lists the commands you ran on this host,
+newest first, from every tab and every earlier shell. Type to filter the list, use <kbd>↑</kbd> and <kbd>↓</kbd>, then
+press <kbd>Return</kbd> (or click **Insert**): AirSCP types the command at the prompt but doesn't run it. Read it,
+change it if you need to, then press <kbd>Return</kbd>.
+
+(Picture: History…: the commands run on the host, newest first, with a filter, Clear History and Insert)
+
+- Commands are kept when they end, with bash and zsh. A command you type with a space in front is not kept, as the
+  shells themselves do.
+- AirSCP keeps the last 1,000 commands of each host, each one once, on this Mac only. **Clear History** forgets them.
+  The server's own shell history stays as it is.
+
+## Insert a path from the server
+
+Press <kbd>⌥⇥</kbd> (or click **Insert Path…**, or right-click ▸ **Insert Path…**). AirSCP lists the folder of the path
+you are typing: `cat /var/log/sy` lists `/var/log`, `cat site/` lists `site` in the shell's folder, and nothing typed
+lists the shell's folder. Type to filter, choose one, and press <kbd>Return</kbd>: AirSCP types its name in place of what
+you typed, with quotes if it has spaces or other special characters. A folder comes with a `/`, so you can go on.
+
+(Picture: Insert Path… while typing tail -n 20 ~/logs/: the names in /home/dev/logs)
+
+This helps with long names, and with shells that can't complete names themselves. The list comes from the same
+listing as the Files tab.
 
 ## Work with files from the output
 
@@ -2158,6 +2396,11 @@ Right-click a file or folder name that a command printed (`ls`, `find`, `grep -l
 - **Copy Path**: its full path on the server.
 
 A name without a path is taken from the folder the shell is in.
+
+## Drag a file to Finder
+
+Select a file or folder name in the output (double-click it), then drag the selection to a Finder window or the
+desktop. AirSCP downloads it there through the transfer queue, as when you drag from the Files tab.
 
 ## Upload by dropping files
 
@@ -2176,14 +2419,14 @@ With bash older than 4.4, commands show how they ended but not how long they too
 **Copy Command** and paste it.
 
 Completing names with <kbd>Tab</kbd> and going back through earlier commands with <kbd>↑</kbd> come from the server's
-own shell, as in any terminal. AirSCP doesn't add its own.
+own shell, as in any terminal. **Insert Path…** and **History…** are AirSCP's, and work in every shell.
 
 ## Tips
 
 - Select text by dragging; <kbd>⌘C</kbd> copies it and <kbd>⌘V</kbd> pastes. A double-click selects a word.
 - Scroll up to see earlier output. **Clear Scrollback** (right-click) forgets it.
 - <kbd>⌃C</kbd>, <kbd>⌃D</kbd> and the other Ctrl keys go to the shell. <kbd>⌘</kbd> shortcuts stay AirSCP's.
-- When the shell ends (you typed `exit`, or the connection dropped), press <kbd>Return</kbd> for a new one.
+- When the shell ends (you typed `exit`, or the connection dropped), press <kbd>Return</kbd> in its tab for a new one.
 - **Host ▸ Open Terminal** (<kbd>⌘T</kbd>) still opens Terminal or iTerm instead. See [Open a terminal](https://kleash.github.io/airscp/commands/open-a-terminal.html).
 
 ## If something goes wrong
@@ -2610,13 +2853,15 @@ still apply. With Increase contrast on, the dark look drops its blue tint.
 | Setting | What it does |
 |---|---|
 | **Open terminals in** | Terminal (default) or iTerm, for Open Terminal, Run in Terminal and Kill with sudo. |
-| **Open Terminal Here in the Terminal tab** | Off by default. On: a server folder's **Open Terminal Here** goes to the host's [Terminal tab](https://kleash.github.io/airscp/commands/terminal-tab.html) in AirSCP instead. |
+| **Open Terminal Here and Run in Terminal in the Terminal tab** | Off by default. On: a server folder's **Open Terminal Here** and **Run in Terminal** go to the host's [Terminal tab](https://kleash.github.io/airscp/commands/terminal-tab.html) in AirSCP instead: typed at an empty prompt, else in a new tab. |
 | **Downloads folder** | Where **Download To…** starts, and where **Download as .tar.gz** puts the archive when the other pane isn't this Mac. Drags and the Download button go to the folder shown. |
 | **Show hidden files in new panes** | Off by default. Each pane can still switch with <kbd>⇧⌘.</kbd>. |
 | **Copied files keep their original date** | Off by default: copies are dated now. On: they keep the file's own date (`scp -p`). |
 | **Verify transfers with SHA-256** | Off by default. On: each copied file is compared with the original once it arrives. See [Check a copy with its checksum](https://kleash.github.io/airscp/transfers/verify-checksums.html). |
 | **Ask before deleting on a server** | On by default. |
 | **Always calculate folder sizes** | Off by default: folders show “—” until you click **Σ**. |
+
+The App Store version has neither terminal setting: it always uses the Terminal tab.
 
 ## Security
 
@@ -2627,6 +2872,10 @@ How new hosts check their server's key, and new desktops their server's certific
 
 **New keys go in**: the folder where New Key Pair and Import Key save keys. `~/.ssh` by default, where ssh finds them by
 itself.
+
+**SSH folder** (the App Store version only): the folder ssh uses for your keys, known hosts and config. Click
+**Choose…** and choose `~/.ssh` (the panel opens there). Until you do, AirSCP keeps its own. See
+[The App Store version](https://kleash.github.io/airscp/getting-started/install.html#the-app-store-version).
 
 ## Apple Intelligence
 
@@ -2693,10 +2942,11 @@ If nobody answers within 45 seconds, nothing is done, and the agent is told so.
 AirSCP asks before an agent:
 
 - deletes, replaces or renames files, or copies them to or from a server (uploads, downloads, drops, Synchronize);
+- zips or unpacks files on S3 storage, or makes a presigned link that lets anyone download a file;
 - opens a file in another app;
 - changes files' permissions or owners (Make Executable too), or puts a key on a server or in the ssh agent;
 - switches a tunnel on or off;
-- runs a command, a file or a snippet, or types into a Terminal tab;
+- runs a command, a file or a snippet, types into a Terminal tab, or closes a tab whose command still runs;
 - kills a process, cancels, retries or resumes transfers, disconnects or quits;
 - types, presses keys or clicks on a Windows desktop.
 
@@ -2962,8 +3212,12 @@ AirSCP keeps your servers, files and passwords on your Mac.
 
 - **No account, no tracking**: AirSCP sends nothing about you or your use anywhere. It connects only to the servers and
   computers you choose.
-- **Hosts and settings**: in `~/Library/Application Support/AirSCP/airscp.json`.
-- **Passwords**: in your login Keychain, one item named `com.kleash.airscp`, and only when you tick **Remember**.
+- **Hosts and settings**: in `~/Library/Application Support/AirSCP/airscp.json` (the App Store version keeps them in
+  its own folder, `~/Library/Containers/com.kleash.airscp`).
+- **Passwords**: in your login Keychain, one item named `com.kleash.airscp`, and only when you tick **Remember**. An S3
+  connection's secret key is always kept there.
+- **Terminal history**: the commands you ran in a host's Terminal tab, in the `history` folder next to `airscp.json`,
+  which only you can read. **Clear History** or deleting the host removes it.
 - **Exports** (File ▸ Export Hosts…) never contain passwords or private keys.
 
 ## How connections are protected
@@ -3000,6 +3254,40 @@ Please don't open a public issue: follow the security policy (`SECURITY.md`) in
 Source: https://kleash.github.io/airscp/whats-new.html
 
 # What's new
+
+## AirSCP 1.3.0
+
+- **Amazon S3 and S3-compatible storage**: **File ▸ New S3 Connection…** saves an Amazon S3, MinIO, Cloudflare R2,
+  Backblaze B2, Wasabi or Ceph account. Its buckets open in the Files tab like a server's folders: browse, drag files
+  in and out, rename, move, copy, delete, edit, Get Info, Find Files and Synchronize. Big files go in parts that
+  survive a pause. The secret key stays in your Keychain. See [S3 storage](https://kleash.github.io/airscp/s3/).
+- **Import from ~/.aws**: **File ▸ Import from ~/.aws…** makes S3 connections from the AWS command line tool's
+  profiles.
+- **Links to files on S3**: right-click ▸ **Copy S3 Link** or **Copy Presigned Link…** (an `https` link anyone can open
+  until it expires).
+- **Zips on S3**: **Download as .zip…**, **Compress…** in the bucket and **Extract Here**, made on your Mac. See
+  [Zip and extract](https://kleash.github.io/airscp/s3/zip-and-extract.html).
+- **Terminal tabs**: open several shells on one host in the Terminal tab, each in a tab of its own, all on the same
+  connection (no second login). Click **+** or choose **Host ▸ New Terminal Tab** (<kbd>⇧⌘T</kbd>); <kbd>⇧⌘[</kbd> and
+  <kbd>⇧⌘]</kbd> go through them, and closing a tab asks first while a command still runs in it. See
+  [The Terminal tab](https://kleash.github.io/airscp/commands/terminal-tab.html).
+- **Command history**: **History…** lists the commands you ran on a host (bash and zsh), newest first. Type to filter,
+  and AirSCP types the one you choose at the prompt without running it. It stays on this Mac; **Clear History** forgets it.
+- **Insert Path…** (<kbd>⌥⇥</kbd>): pick a file or folder name from the server's folder you are typing, and AirSCP types
+  it at the prompt, quoted where it needs it. Handy for long names and shells that can't complete names.
+- **Drag to Finder**: select a file name in the Terminal tab's output and drag it to Finder to download it.
+- **Open Terminal Here and Run in Terminal** can both go to the Terminal tab (Settings): at an empty prompt AirSCP types
+  the `cd` or the command there; while the shell is busy, it opens a new tab instead of typing into it.
+- **In the Mac App Store**: the same AirSCP, in Apple's sandbox. You choose the folders it may open, starting with your
+  SSH folder, and terminals open in the Terminal tab. See [The App Store version](https://kleash.github.io/airscp/getting-started/install.html#the-app-store-version).
+- **Apple Intelligence** gives shorter answers that stick closer to AirSCP's real menus and buttons. The Command
+  Log's **Summarize…** now sees which commands failed, and **Do It…** keeps closer to the steps you ask for.
+- **AI agents** work with S3 storage and terminal tabs too. They ask you first before they zip or unpack files on S3
+  or make a presigned link, as they do before they copy or delete. **`AirSCP --agent … --out -`** writes a screenshot to
+  standard output.
+- **Security**: Remote Desktop now uses FreeRDP 3.32.2, which fixes 40 problems found in 3.32.1 (10 of them rated
+  high). None has a CVE number yet; they are listed in
+  [FreeRDP's security advisories](https://github.com/FreeRDP/FreeRDP/security/advisories).
 
 ## AirSCP 1.2.0
 
@@ -3149,9 +3437,9 @@ Source: https://github.com/kleash/airscp/blob/main/Resources/AgentGuide.md
 # AirSCP agent guide
 
 AirSCP is a Mac app for SSH servers (saved hosts, a two-pane file browser with Find Files and Synchronize, transfers,
-remote file operations, a Linux monitor, tunnels, HTTP proxies and jump hosts) and Windows desktops (a built-in Remote
-Desktop client). These tools drive the running AirSCP the way its user does. `guide topic=<name>` gives the details:
-tools, hosts, proxies, transfers, files, monitor, tunnels, keys, settings, rdp, troubleshooting.
+remote file operations, a Linux monitor, tunnels, HTTP proxies and jump hosts), S3 storage and Windows desktops (a
+built-in Remote Desktop client). These tools drive the running AirSCP the way its user does. `guide topic=<name>` gives
+the details: tools, hosts, proxies, transfers, files, monitor, tunnels, keys, settings, rdp, troubleshooting.
 
 ## overview
 How to work with AirSCP:
@@ -3198,7 +3486,7 @@ How to work with AirSCP:
 ## tools
 Each tool takes a JSON object. From a shell: `AirSCP --agent <tool> key=value …` (values are text, except for
 arguments the tool takes as numbers, true/false or lists: `timeout=60`, `names=["a.txt"]`), `--json` for the raw
-reply, `--out shot.png` for an image. The binary is `/Applications/AirSCP.app/Contents/MacOS/AirSCP` (in `~/Applications` when
+reply, `--out shot.png` for an image (`--out -` writes it to standard output). The binary is `/Applications/AirSCP.app/Contents/MacOS/AirSCP` (in `~/Applications` when
 AirSCP was installed with `./install.sh`).
 
 - `snapshot {include?, rows?, log?, in?}` — AirSCP's state. Default sections: windows, selection, sidebar, workspace
@@ -3306,6 +3594,16 @@ AirSCP was installed with `./install.sh`).
   sheet's text (and Add is off). `press title=Add` (Save when editing; disabled while the sheet's text names a
   problem). `press title="Test Connection"` logs in and out with the fields as typed: its questions come as sheets on
   the editor, and the result is in the editor's text (`wait until=sheet text="Logged in"`).
+- S3 storage (Amazon S3, MinIO, Cloudflare R2, Backblaze B2, Wasabi, Ceph): `menu path="File > New S3 Connection…"` →
+  a sheet. Fields: `s3Editor.name`, `s3Editor.endpoint` (empty: Amazon S3), `s3Editor.region`, `s3Editor.accessKey`,
+  `s3Editor.secret` (from a shell: `value=-`), `s3Editor.bucket` (the bucket to open at; needed for a key that may not
+  list the buckets), `s3Editor.group`; under Advanced (`press id=s3Editor.advanced`): `s3Editor.pathStyle`,
+  `s3Editor.token`, `s3Editor.proxy`. `press id=s3Editor.test` checks the keys (its result is in the sheet's text:
+  "Connected: 3 buckets."), `press id=s3Editor.save`. `menu path="File > Import from ~/.aws…"` makes connections from
+  the AWS CLI's profiles (its sheet names the profiles left out, with why). In the sidebar such an entry has
+  `"kind": "s3"`; it connects and disconnects as a host does, with the Files tab only: Terminal, Monitor, Tunnels, Run
+  Command, Server Info and Copy ssh Command are refused with the reason. `menu path="Host > Copy Link"` copies its
+  s3://bucket/folder/ link.
 - A host's route: `snapshot` → sidebar hosts' `route` ("via bastion", "via proxy corp-proxy", "via corp-proxy →
   bastion"; a jump host or proxy that no longer exists: "via a missing jump host" with a `warning`). The window's
   subtitle shows it too ("Connected · via bastion"), and the sidebar's search finds hosts by it.
@@ -3346,8 +3644,21 @@ AirSCP was installed with `./install.sh`).
   id=terminal.snippets value=<snippet name>` (typed at the prompt, not run; as any text for the terminal, it waits for
   the person at the Mac), `press id=terminal.find` then `set id=terminal.findText value=<text>` (find;
   `terminal.findCount` reads "2 of 5" in `snapshot include=["elements"]`), `press id=terminal.findDone`. Settings'
-  `settings.openTerminalHereInTab` sends Open Terminal Here to this tab: `cd` typed at an empty prompt, else a question
-  "Type cd into the Terminal tab?" first (its Type cd waits for the person at the Mac).
+  `settings.openTerminalHereInTab` sends Open Terminal Here and Run in Terminal to this tab: the `cd` or the command typed
+  at an empty prompt, else a new tab (nothing is typed into a busy shell).
+  Tabs: each tab is its own shell on the same connection. `snapshot` → terminal: `tabs` lists them (`index` from 1,
+  `title`, `directory`, `running`, `atPrompt` with bash and zsh, `shown`), `tab` is the index of the one shown, and the
+  rest of the section (lines, commands) is that tab's; `type` and `key` with target terminal go to it. `press
+  id=terminal.newTab` (or `menu path="Host > New Terminal Tab"`) opens one in the shown tab's folder; `set
+  id=terminal.tabs value=2` shows tab 2 (by its index, or its title on the strip);
+  `menu path="Host > Show Next Terminal Tab"` and `menu path="Host > Show Previous Terminal Tab"` go through them; `press
+  id=terminal.closeTab` closes the tab shown (a sheet "Close this terminal tab?" first while a command runs; the last tab
+  stays). History: `press id=terminal.history` → a sheet listing
+  the host's commands, newest first; `set id=terminal.pickFilter value=<text>` filters it, `select in=sheet
+  names=["<command>"]` chooses one, `press title=Insert` types it at the prompt without running it (as typing, it waits
+  for the person at the Mac), `press id=terminal.clearHistory` forgets them. Insert Path: `press id=terminal.insertPath`
+  → the same sheet with the names in the folder of the word before the cursor (relative to the shell's folder);
+  `press title=Insert` types the name chosen in place of that word, quoted for the shell.
 - Certificate Manager: `menu path="Tools > Certificate Manager…"` (its controls `in="window:Certificate Manager"`);
   open files with `press id=certificates.open files=[…]` (a password sheet: `set id=certificates.password`, `press
   title=Open`); `select in="window:Certificate Manager" names=["Certificate: web.example.com"]` (rows read "Certificate: …",
@@ -3526,6 +3837,15 @@ AirSCP was installed with `./install.sh`).
   `wait until=transfers_done`, then `wait until=listed` for each pane. `press title=Cancel` closes the sheet, also
   while it compares. A folder that can't be listed is named in the failure: add it to Leave out to compare without it.
 - A command the server can't run (sftp-only account, no zip) is refused with the reason.
+- S3 storage in a pane: "/" lists the buckets; `go path=/bucket/folder` (or `open name=bucket`) shows a folder.
+  Uploads, downloads, drops, New Folder…, New File…, Rename…, Move To…, Copy To…, Delete…, Edit in AirSCP, Get Info
+  (content type, storage class, ETag, SHA-256, metadata), Find Files… and Synchronize… (by size and date) work as on a
+  server. `menu path="context > Download as .zip…"`, `menu path="File > Compress…"` (press Compress: a .zip next to
+  the items) and Extract Here / Extract to New Folder are jobs in the Transfers list ("Zip on S3 storage…", "Extract on
+  S3 storage…"); each waits for the person at the Mac first, as copies do. `menu path="context > Copy S3 Link"` copies
+  s3://bucket/key; `menu path="context > Copy Presigned Link…"` waits for the person too (anyone with the link can
+  download the file), then asks how long it works (`set id=presign.expiry value="For 1 day"`): press "Copy Link".
+  Permissions, symbolic links, Run and the terminal are refused with the reason.
 
 ## monitor
 - `press title=Monitor` (the host's tab) → `wait until=monitor` (or `wait until=monitor text=<a process name>`) →
@@ -3600,6 +3920,8 @@ AirSCP was installed with `./install.sh`).
   hostEditor.hostKey), `settings.certificate` (new desktops' certificate, as rdpEditor.certificate; with a company
   certificate authority: `settings.caFile`, or `press id=settings.chooseCA in="window:Settings" file=/path/ca.pem`),
   the folder for new keys (`press id=settings.keyFolder in="window:Settings" file=/folder`; "Use ~/.ssh" goes back),
+  in the App Store version the SSH folder (`press id=settings.sshFolder in="window:Settings" file=/Users/me/.ssh`: only
+  a folder the user allowed already; see troubleshooting),
   `settings.agentControl` (turning it off ends
   agent control at once; `settings.mcpCommand` is the `claude mcp add` command it shows, `settings.copyMCPCommand`
   copies it), `settings.askBeforeAgentChanges` (changes wait for the person at the Mac, see overview: only they can
@@ -3690,11 +4012,12 @@ AirSCP was installed with `./install.sh`).
 - Questions to the person at the Mac (Settings ▸ "Ask before agents change things", on unless they turned it off).
   These wait up to 45 s for their Allow Once, Allow for 15 Minutes (no more questions until then) or Deny: a request
   that deletes, replaces or renames files (Rename's button), copies them (`drop`, Upload…, Download…, Paste,
-  Synchronize), opens a file in its app, changes permissions or owners (Permissions' Apply, Make Executable), puts a
-  key on a server (Keys' Install) or in the ssh agent (Add to Agent), switches a tunnel on or off, runs a command, a
-  file or a snippet, kills a process, disconnects, quits, cancels, retries or resumes transfers, types text (a snippet
-  too) or presses keys in a Terminal tab, types, presses keys or clicks on a Windows desktop, or presses a button that
-  a question marks as destructive (Delete, Replace, Kill, Type cd…). A question AirSCP asks itself (Delete's) comes
+  Synchronize; on S3 storage also Compress…, Extract Here and Extract to New Folder), makes an S3 presigned link, opens
+  a file in its app, changes permissions or owners (Permissions' Apply, Make Executable), puts a key on a server (Keys'
+  Install) or in the ssh agent (Add to Agent), switches a tunnel on or off, runs a command, a file or a snippet, kills a
+  process, disconnects, quits, cancels, retries or resumes transfers, types text (a snippet, a History or Insert Path
+  entry too) or presses keys in a Terminal tab, types, presses keys or clicks on a Windows desktop, or presses a button
+  that a question marks as destructive (Delete, Replace, Kill, Close Tab…). A question AirSCP asks itself (Delete's) comes
   first, as always: its Delete button is what waits. Looking, selecting, going to folders, opening AirSCP's own sheets
   and typing into its fields never wait, and only the person can turn the setting off.
   "The person at the Mac declined: <what>": they said no; nothing was done. Don't try it another way (another tool or
@@ -3726,5 +4049,13 @@ AirSCP was installed with `./install.sh`).
   wait until it is unlocked, though the reply says ok; the Monitor refreshes only while you are at work (a `wait`).
 - Screenshots draw AirSCP's own windows: a table's header can show the rows scrolled under it, the toolbar and the
   sidebar have no glass, and menus are never in them. A host's state is in `snapshot` (sidebar).
+- The App Store version (its Settings window has `settings.sshFolder`) runs in Apple's sandbox. It opens only the
+  folders of this Mac the user allowed, and `file=` can't allow one: only the user's own choice in an Open panel does.
+  A Mac folder it may not open yet fails with "Operation not permitted": ask the user to open it once in this Mac's pane
+  (AirSCP then asks them to allow it), or to choose their SSH folder in Settings ▸ Keys. Import from ~/.aws asks them
+  to allow their .aws folder the first time. Open Terminal, Open Terminal Here, Run in Terminal and Kill with sudo use
+  the host's Terminal tab (as `settings.openTerminalHereInTab` does in the other version, which this one doesn't have).
+  From a shell, `--out file.png` saves only in AirSCP's own container: use `--out -`. Its screenshots draw a window
+  behind other apps as inactive.
 - Quit (`menu path="AirSCP > Quit AirSCP"`): refused while a sheet is open; it asks first while transfers run or an
   editor has unsaved changes (the reply is that question), else it answers `quitting` and AirSCP quits.

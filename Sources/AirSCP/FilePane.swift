@@ -227,6 +227,13 @@ final class FilePane: NSViewController, NSTableViewDataSource, NSTableViewDelega
         do {
             listed = try await task.value
         } catch {
+            #if APPSTORE
+            // The sandbox opens a folder of this Mac only once the person chose it: ask, then list it.
+            if case .local = source, generation == listGeneration, !quiet, failed == nil, !FolderAccess.covers(path) {
+                askForAccess(path, select: select, record: record)
+                return false
+            }
+            #endif
             if generation == listGeneration { failed?(error) }
             if generation == listGeneration && !quiet {
                 // Not "Refresh the list": a folder typed or chosen that isn't there.
@@ -260,6 +267,23 @@ final class FilePane: NSViewController, NSTableViewDataSource, NSTableViewDelega
         didList(path)
         return true
     }
+
+    #if APPSTORE
+    /// An Open panel on a folder the sandbox doesn't open yet: Allow keeps it (`Panels.run`) and lists it.
+    private func askForAccess(_ path: String, select: [String], record: Bool) {
+        let panel = NSOpenPanel()
+        panel.canChooseFiles = false
+        panel.canChooseDirectories = true
+        panel.directoryURL = URL(fileURLWithPath: path, isDirectory: true)
+        panel.prompt = "Allow"
+        panel.message = "AirSCP from the App Store opens only the folders you choose. Click Allow to let it open "
+            + "“\(displayName(path))” (choose your home folder to allow everything in it)."
+        Panels.run(panel, on: view.window) { [weak self] urls in
+            guard let url = urls.first else { return }
+            Task { await self?.open(url.path, select: select, record: record) }
+        }
+    }
+    #endif
 
     /// Lists the folder again, keeping the selection.
     func reload() async {
@@ -517,7 +541,7 @@ final class FilePane: NSViewController, NSTableViewDataSource, NSTableViewDelega
     }
 
     var home: String {
-        session.map { $0.capabilities.home } ?? NSHomeDirectory()
+        session.map { $0.capabilities.home } ?? FolderAccess.home
     }
 
     @objc func refresh(_ sender: Any?) {
@@ -1189,8 +1213,13 @@ final class FilePane: NSViewController, NSTableViewDataSource, NSTableViewDelega
         guard row < rows.count, isConnected else { return nil }
         let item = rows[row]
         guard let session else { return NSURL(fileURLWithPath: item.path) }
-        // To Finder (and other apps): a file promise, kept by downloading the item where it was dropped. AppKit takes a
-        // file's or a folder's type only (a link's or a special file's raises): those promise plain data.
+        return filePromise(for: item, on: session)
+    }
+
+    /// To Finder (and other apps): a file promise of `session`'s item, kept by downloading it where it was dropped (the
+    /// Terminal tab's paths drag out the same way). AppKit takes a file's or a folder's type only (a link's or a special
+    /// file's raises): those promise plain data.
+    func filePromise(for item: FileItem, on session: Session) -> NSFilePromiseProvider {
         let type: UTType = item.kind == .directory ? .folder : item.kind == .file ? FileList.type(of: item) : .data
         let provider = NSFilePromiseProvider(fileType: type.identifier, delegate: self)
         provider.userInfo = PromisedFile(session: session, path: item.path, name: item.name, isFolder: item.kind != .file,
