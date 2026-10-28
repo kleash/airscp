@@ -64,7 +64,7 @@ The App Store version is the same code built with `./build.sh --appstore`: Swift
 differences (users see them in `docs/getting-started/install.md`'s table), and `Resources/AirSCP-AppStore.entitlements`
 puts it in the App Sandbox (network client and server, folders the person chooses, their bookmarks, Downloads; no
 temporary exceptions). It comes out as `build/appstore/AirSCP.app` with `Resources/PrivacyInfo.xcprivacy`,
-`ITSAppUsesNonExemptEncryption` and no Apple Events. `scripts/check-private-api.sh` (CI runs it) keeps private API out:
+no Apple Events and no `ITSAppUsesNonExemptEncryption`. `scripts/check-private-api.sh` (CI runs it) keeps private API out:
 the Developer ID version's AXEnhancedUserInterface and key-appearance calls aren't in it.
 
 ### One-time setup
@@ -87,12 +87,13 @@ AIRSCP_APPSTORE_PROFILE=~/Downloads/AirSCP_App_Store.provisionprofile APPSTORE_K
 The script signs with the profile embedded and its application and team identifiers added to the entitlements (as
 Xcode does), checks the entitlements, the private API scan, the Info.plist, the privacy manifest, the icon (1024 ×
 1024) and the package, then runs `xcrun altool --validate-app` and `--upload-package`. `--no-upload` stops after the
-validation. App Store Connect takes each build number once: `AIRSCP_BUILD_NUMBER=1.3.0.1` (CFBundleVersion) for a
-second upload of the same version. The build then shows in App Store Connect ▸ TestFlight; add it to the version, with
+validation. App Store Connect takes each build number once, and at most three numbers (CFBundleVersion): a
+second upload of 1.3.0 goes up as `AIRSCP_BUILD_NUMBER=1.3.1`, and the next release must then be higher than that. The build then shows in App Store Connect ▸ TestFlight; add it to the version, with
 its texts and screenshots, and submit it for review.
 
-**Export compliance.** `ITSAppUsesNonExemptEncryption` is YES: ssh, scp and sftp are macOS's own, but AirSCP adds
-standard encryption the OS doesn't provide (FreeRDP's OpenSSL for Remote Desktop and the Certificate Manager). For each
+**Export compliance.** AirSCP uses non-exempt encryption: ssh, scp and sftp are macOS's own, but it adds standard
+encryption the OS doesn't provide (FreeRDP's OpenSSL for Remote Desktop and the Certificate Manager). The Info.plist
+leaves `ITSAppUsesNonExemptEncryption` out (YES without a compliance code fails validation, error 90592), so for each
 build App Store Connect asks: answer "Standard encryption algorithms instead of, or in addition to, the encryption
 within Apple's operating system" and "not available in France"; no documents are then needed. Leave France out under
 Pricing and Availability. To sell there, file France's encryption declaration (ANSSI) and upload it in App Store
