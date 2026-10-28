@@ -9,6 +9,9 @@ pid_t cpty_spawn(const char *path, char *const argv[], char *const envp[], int s
                  unsigned short columns, unsigned short rows, int *master) {
     struct winsize size = { .ws_row = rows, .ws_col = columns };
     pid_t pid = forkpty(master, NULL, NULL, &size);
+    // The size again from the master's side: forkpty sets it on the terminal's side, which the App Store version's
+    // sandbox refuses (its program would see 0 × 0).
+    if (pid > 0) ioctl(*master, TIOCSWINSZ, &size);
     if (pid != 0) return pid;
 
     // The child of a multithreaded process: only async-signal-safe calls until execve.

@@ -873,7 +873,7 @@ enum MonitorText {
             "CPU: " + (snapshot.cpu.map { String(format: "%.0f%%", $0) } ?? "unknown"),
             "Load (1, 5, 15 min): " + snapshot.load.map { String(format: "%.2f", $0) }.joined(separator: ", "),
             "Memory: \(FileList.size(snapshot.memoryUsed)) of \(FileList.size(snapshot.memoryTotal)) in use",
-            "Swap: " + (snapshot.swapTotal == 0 ? "none" : "\(FileList.size(snapshot.swapUsed)) of \(FileList.size(snapshot.swapTotal))"),
+            "Swap: " + (snapshot.swapTotal == 0 ? "none" : "\(FileList.size(snapshot.swapUsed)) of \(FileList.size(snapshot.swapTotal)) in use"),
             "Up: " + uptime(snapshot.uptime), "System: " + snapshot.system,
         ]
         lines += snapshot.disks.map { "Disk \($0.mountPoint): \(FileList.size($0.available)) free of \(FileList.size($0.size))" }

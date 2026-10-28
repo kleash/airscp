@@ -14,6 +14,34 @@ public enum Quote {
         return shell(text)
     }
 
+    /// The last word of a command line being typed, as a POSIX shell reads it (quotes and backslashes taken away, a quote
+    /// left open running to the end), and how many characters (Unicode scalars, as line editors erase them) it takes in
+    /// the line. Words end at blanks and at ; | & < > ( ) and = (as bash's completion has it: --file=/var/log).
+    public static func lastWord(in line: String) -> (word: String, typed: Int) {
+        var word = String.UnicodeScalarView(), typed = 0, quote: Unicode.Scalar?, escaped = false
+        for scalar in line.unicodeScalars {
+            typed += 1
+            if escaped {
+                // In double quotes a backslash escapes only $ ` " and \ (and stays before anything else).
+                if quote == "\"" && !"$`\"\\".unicodeScalars.contains(scalar) { word.append("\\") }
+                word.append(scalar)
+                escaped = false
+            } else if let open = quote {
+                if scalar == open { quote = nil } else if scalar == "\\" && open == "\"" { escaped = true } else { word.append(scalar) }
+            } else if " \t\n;|&<>()=".unicodeScalars.contains(scalar) {
+                word = String.UnicodeScalarView()
+                typed = 0
+            } else if scalar == "'" || scalar == "\"" {
+                quote = scalar
+            } else if scalar == "\\" {
+                escaped = true
+            } else {
+                word.append(scalar)
+            }
+        }
+        return (String(word), typed)
+    }
+
     /// An argument in an sftp batch line: "text", with \ and " backslash-escaped. Inside quotes sftp treats
     /// * ? [ ] literally by itself, so they are left alone. A line break can't be written in a batch line: it would end
     /// the line, and sftp would read what follows as a command of its own. It is written as ?, which matches no name.

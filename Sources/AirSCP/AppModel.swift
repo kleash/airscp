@@ -7,8 +7,9 @@ let log = Logger(subsystem: "com.kleash.airscp", category: "app")
 
 /// The folder AirSCP treats as ~/.ssh: the Keys window's key pairs, the host editor's key menu, and the config that
 /// Import reads. $AIRSCP_SSH_DIR replaces it for testing; every ssh command then also gets `-F $AIRSCP_SSH_DIR/config`
-/// (AppDelegate), so nothing reads the real ~/.ssh/config.
-let sshDirectory: String = {
+/// (AppDelegate), so nothing reads the real ~/.ssh/config. The App Store version sets it at launch and when the person
+/// gives it another SSH folder (`AppDelegate.useSSHFolder`): until then it is the container's own .ssh.
+var sshDirectory: String = {
     if let dir = Env.value("SSH_DIR"), !dir.isEmpty { return dir }
     return NSHomeDirectory() + "/.ssh"
 }()
@@ -175,9 +176,10 @@ final class AppModel: ObservableObject {
             return tunnel
         }
         data.hosts.insert(copy, at: index + 1)
-        if original.auth == .password, let password = savedPassword(original.id.uuidString) {
+        if original.auth == .password || original.s3 != nil, let password = savedPassword(original.id.uuidString) {
             setSavedPassword(copy.id.uuidString, password)
         }
+        if let token = savedPassword(S3Settings.tokenKey(original.id)) { setSavedPassword(S3Settings.tokenKey(copy.id), token) }
         return copy
     }
 
@@ -192,17 +194,19 @@ final class AppModel: ObservableObject {
         hostsJumping(through: id).map(\.displayName) + data.rdpEntries.filter { $0.viaHostID == id }.map(\.displayName)
     }
 
-    /// Deletes the host and its saved password. (Check `dependents(of:)` first.)
+    /// Deletes the host, its saved password and its Terminal tab's history. (Check `dependents(of:)` first.)
     func delete(_ id: UUID) {
         data.hosts.removeAll { $0.id == id }
         forgetPassword(id.uuidString)
+        forgetPassword(S3Settings.tokenKey(id))
+        CommandHistory(host: id).clear()
     }
 
     /// The hosts `host` may go through (one hop only): the others that have no jump host of their own, plus the
     /// one it already uses. Only that one when other hosts go through `host`: anything else would make a chain.
     func jumpCandidates(for host: SSHHost) -> [SSHHost] {
         let open = hostsJumping(through: host.id).isEmpty
-        return data.hosts.filter { $0.id == host.jumpHostID || (open && $0.id != host.id && $0.jumpHostID == nil) }
+        return data.hosts.filter { $0.id == host.jumpHostID || (open && $0.id != host.id && $0.jumpHostID == nil && $0.s3 == nil) }
             .sorted { $0.displayName.localizedStandardCompare($1.displayName) == .orderedAscending }
     }
 
@@ -309,8 +313,11 @@ final class AppModel: ObservableObject {
         /// nil: the hosts in no group.
         let group: HostGroup?
         let hosts: [SSHHost]
-        var id: UUID? { group?.id }
-        var title: String { group?.name ?? "Hosts" }
+        /// The S3 connections in no group (they have a section of their own).
+        var storage = false
+        var id: UUID? { group?.id ?? (storage ? Self.storageID : nil) }
+        var title: String { group?.name ?? (storage ? "S3 Storage" : "Hosts") }
+        private static let storageID = UUID(uuidString: "00000000-0000-0000-0000-0000000053F3")!
     }
 
     /// The sidebar: hosts without a group first, then the groups by name, each sorted by name. A search keeps the
@@ -324,7 +331,10 @@ final class AppModel: ObservableObject {
         let groupIDs = Set(data.groups.map(\.id))
         var sections: [Section] = []
         let loose = hosts.filter { $0.groupID.map { !groupIDs.contains($0) } ?? true }
-        if !loose.isEmpty { sections.append(Section(group: nil, hosts: loose)) }
+        if loose.contains(where: { $0.s3 == nil }) { sections.append(Section(group: nil, hosts: loose.filter { $0.s3 == nil })) }
+        if loose.contains(where: { $0.s3 != nil }) {
+            sections.append(Section(group: nil, hosts: loose.filter { $0.s3 != nil }, storage: true))
+        }
         for group in data.groups.sorted(by: { $0.name.localizedStandardCompare($1.name) == .orderedAscending }) {
             let members = hosts.filter { $0.groupID == group.id }
             if !members.isEmpty || term.isEmpty { sections.append(Section(group: group, hosts: members)) }
@@ -392,9 +402,10 @@ final class AppModel: ObservableObject {
 }
 
 extension SSHHost {
-    /// "user@host:port" as the sidebar shows it (no user or port when the host has none).
+    /// "user@host:port" as the sidebar shows it (no user or port when the host has none); an S3 connection's storage.
     var address: String {
-        (username.isEmpty ? "" : username + "@") + hostname + (port.map { ":\($0)" } ?? "")
+        if let s3 { return s3.address }
+        return (username.isEmpty ? "" : username + "@") + hostname + (port.map { ":\($0)" } ?? "")
     }
 }
 

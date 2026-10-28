@@ -8,7 +8,15 @@ import Foundation
 /// The tool list lives here, so that an MCP client sees the tools even when AirSCP starts after it.
 public enum AgentBridge {
     /// `<support dir>/agent` (0700): the socket and the token file. AIRSCP_SUPPORT_DIR gives each instance its own.
-    public static var directory: URL { Store.directory.appendingPathComponent("agent", isDirectory: true) }
+    /// The App Store version keeps them in its temporary folder: its settings folder lies so deep in its container that
+    /// a socket there would be too long a path for most user names. `--mcp` runs in the same container, so it finds them.
+    public static var directory: URL {
+        #if APPSTORE
+        return URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent("agent", isDirectory: true)
+        #else
+        return Store.directory.appendingPathComponent("agent", isDirectory: true)
+        #endif
+    }
     static let offMessage = "AirSCP isn't running, or agent control is off (AirSCP ▸ Settings ▸ Allow AI agents to control AirSCP)."
     static let busyMessage = "AirSCP didn't answer: it may be busy with many calls at once, or quitting. Check with snapshot, "
         + "then try again."
@@ -321,7 +329,7 @@ public enum AgentBridge {
             rest.remove(at: index)
         }
         guard let name = rest.first, !name.hasPrefix("-") else {
-            print("usage: AirSCP --agent <tool> [key=value …] [--json] [--out image.png]\n"
+            print("usage: AirSCP --agent <tool> [key=value …] [--json] [--out image.png | --out -]\n"
                   + "  e.g. AirSCP --agent menu path='Host > Connect'; AirSCP --agent screenshot --out shot.png\ntools:")
             for tool in tools { print("  \(tool["name"]!): \(tool["description"]!)") }
             return 2
@@ -350,11 +358,15 @@ public enum AgentBridge {
         clientLock.locked { client = "AirSCP --agent" }
         let reply = call(name, parameters)
         if raw, let data = try? JSONSerialization.data(withJSONObject: reply) { print(String(decoding: data, as: UTF8.self)) }
+        // --out -: the image to standard output, the text to standard error (the App Store version's sandbox lets
+        // this helper write files only in AirSCP's own container).
         for item in reply["content"] as? [[String: Any]] ?? [] {
             if let text = item["text"] as? String {
-                if !raw { print(text) }
+                if out == "-" { FileHandle.standardError.write(Data((text + "\n").utf8)) } else if !raw { print(text) }
             } else if let base64 = item["data"] as? String, let data = Data(base64Encoded: base64) {
-                if let out {
+                if out == "-" {
+                    FileHandle.standardOutput.write(data)
+                } else if let out {
                     do { try data.write(to: URL(fileURLWithPath: out)) } catch {
                         FileHandle.standardError.write(Data("Can't write \(out): \(error.localizedDescription)\n".utf8))
                         return 1

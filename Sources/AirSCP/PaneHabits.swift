@@ -179,7 +179,7 @@ extension FilePane {
         // name contains.
         let command = snippet.expanded(paths: targets(sender).map(\.path), folder: dir)
         if snippet.runInTerminal {
-            workspace.openTerminal(command: OpenSSH.viaSh(command))
+            workspace.openTerminal(command: command, sh: true)
         } else {
             workspace.showRunCommand(command, run: true, sh: true) { [weak self] in
                 Task { @MainActor in if self?.dir == dir { await self?.reload() } }
@@ -286,11 +286,12 @@ extension FilePane {
             return need(listed && !targets.isEmpty, "Select server items first.")
         case #selector(copyTo(_:)):
             guard isRemote else { return (false, "Works on a server's items: on this Mac, use Finder.") }
-            if !hasShell { return (false, session?.capabilities.noShellReason ?? "This server can't copy files within itself.") }
+            if !hasShell && !isS3 { return (false, session?.capabilities.noShellReason ?? "This server can't copy files within itself.") }
             return need(listed && !targets.isEmpty, "Select server items first.")
         case #selector(newSymbolicLink(_:)):
             guard isRemote else { return (false, "Works in a server pane: on this Mac, use Finder or Terminal.") }
             if isWindows { return (false, "A Windows server's OpenSSH can't make symbolic links.") }
+            if isS3 { return (false, "S3 storage has no symbolic links.") }
             return need(listed && targets.count <= 1, "Select one item (or none) to link to.")
         case #selector(copyNames(_:)):
             return need(listed && !targets.isEmpty, "Select something first.")

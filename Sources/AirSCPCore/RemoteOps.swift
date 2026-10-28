@@ -23,6 +23,8 @@ public struct RemoteInfo: Equatable {
     public var linkTarget: String?
     /// Some of a folder couldn't be read: `size` counts only what could, and `itemCount` is nil.
     public var incomplete = false
+    /// An S3 object's own facts.
+    public var s3: S3Info?
 }
 
 /// What Find Files found.
@@ -102,6 +104,7 @@ extension Session {
     /// Copies a file or folder to `newPath` (cp -R), across folders. Nothing may be at `newPath`: for Replace, delete
     /// what is there first (`delete`); for Keep both, use `Names.unique`. Shell hosts only (else `.sftpOnly`).
     public func copy(_ path: String, to newPath: String) async throws {
+        if s3 != nil { return try await copyS3(path, to: newPath, keep: true) }
         do {
             try await unlessExists(newPath, "cp -R -- \(Quote.shell(path)) \(Quote.shell(newPath))")
         } catch let error as AirSCPError where error.kind != .failure && error.kind != .disconnected && error.kind != .cancelled {
@@ -114,6 +117,7 @@ extension Session {
     /// which takes its place once complete, so that a copy that fails leaves the old item as it was. `folder`: either
     /// of them is a folder.
     public func copy(_ path: String, replacing newPath: String, folder: Bool, move: Bool) async throws {
+        if s3 != nil { return try await replaceS3(newPath, with: path, move: move) }
         let part = RemotePath.join(RemotePath.parent(newPath), TransferQueue.partName(UUID()))
         if move { try await self.move(path, to: part) } else { try await copy(path, to: part) }
         do {
@@ -154,8 +158,12 @@ extension Session {
         }
         let copy = FileManager.default.temporaryDirectory.appendingPathComponent("AirSCP-checksum-" + UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: copy) }
-        _ = try await cancellable { cancellation in
-            try await self.sftp(["get \(Quote.sftp(path)) \(Quote.sftp(copy.path))"], slot: .transfer, cancellation: cancellation)
+        if s3 != nil {
+            try await fetchS3(path, to: copy, limit: nil, tooLarge: "")
+        } else {
+            _ = try await cancellable { cancellation in
+                try await self.sftp(["get \(Quote.sftp(path)) \(Quote.sftp(copy.path))"], slot: .transfer, cancellation: cancellation)
+            }
         }
         guard let file = FileHandle(forReadingAtPath: copy.path) else {
             throw AirSCPError(.other, "Can't read the temporary copy of \(RemotePath.name(path)).")
@@ -189,6 +197,7 @@ extension Session {
     /// file systems), sftp rename on sftp-only ones, where the server's "Failure" for another file system becomes
     /// "can't move across file systems".
     public func move(_ path: String, to newPath: String) async throws {
+        if s3 != nil { return try await copyS3(path, to: newPath, keep: false) }
         if capabilities.shell {
             try await unlessExists(newPath, "mv -- \(Quote.shell(path)) \(Quote.shell(newPath))")
             return
@@ -213,6 +222,7 @@ extension Session {
     /// folders `du -sk` and `find | wc -l`, for links `readlink`; sftp-only hosts: the entry's listing details.
     /// Cancelling the calling task stops it.
     public func info(_ entry: RemoteEntry) async throws -> RemoteInfo {
+        if s3 != nil { return try await infoS3(entry) }
         guard capabilities.shell else {
             return RemoteInfo(path: entry.path, kind: nil, size: entry.kind == .directory ? nil : entry.size, itemCount: nil,
                               mode: entry.mode, owner: entry.owner, group: entry.group, modified: entry.modified,

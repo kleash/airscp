@@ -1,23 +1,36 @@
 import AirSCPCore
 import AppKit
 
-/// The workspace's Terminal tab: a shell on the host inside AirSCP, riding its connection (no second login), that
-/// knows files and commands. Paths in the output are taken by a right-click (Show in Files, Download, Edit in AirSCP,
-/// Get Info, Copy Path); with bash and zsh each command is marked: its exit status and time beside it, Copy Output,
-/// Copy Command and Run Again on a right-click, ⌘↑ ⌘↓ between them. ⌘F finds text, Follow in Files keeps the Files
-/// tab's server pane in the shell's folder, snippets are typed at the prompt, and Finder files dropped on it are
-/// uploaded into the shell's folder through the transfer queue, their names typed at the prompt. The shell starts when
-/// the tab is first shown on a connected host, and again with Return after it ended.
+/// The workspace's Terminal tab: shells on the host inside AirSCP, one per tab of its strip, each riding the host's
+/// connection (no second login), that know files and commands. Paths in the output are taken by a right-click (Show in
+/// Files, Download, Edit in AirSCP, Get Info, Copy Path) or dragged to Finder once selected; with bash and zsh each
+/// command is marked: its exit status and time beside it, Copy Output, Copy Command and Run Again on a right-click,
+/// ⌘↑ ⌘↓ between them, and it goes into the host's history (History…). ⌘F finds text, Follow in Files keeps the Files
+/// tab's server pane in the shell's folder, snippets are typed at the prompt, Insert Path… (⌥⇥) types a name from the
+/// server's folder, and Finder files dropped on it are uploaded into the shell's folder through the transfer queue,
+/// their names typed at the prompt. The first shell starts when the tab is first shown on a connected host, and a
+/// tab's shell again with Return after it ended.
 @MainActor
-final class TerminalController: NSViewController, NSMenuDelegate, NSSearchFieldDelegate {
+final class TerminalController: NSViewController, NSMenuDelegate, NSSearchFieldDelegate, NSMenuItemValidation {
     weak var workspace: HostWorkspace?
-    private(set) var session: TerminalSession?
+    /// The tabs' shells, left to right, and the tab shown.
+    private(set) var sessions: [TerminalSession] = []
+    private(set) var current = 0
+    /// The shell of the tab shown.
+    var session: TerminalSession? { sessions.indices.contains(current) ? sessions[current] : nil }
     let terminal = TerminalView()
     private let note = NSTextField(wrappingLabelWithString: "")
     /// The shell may start (the tab has been shown).
     private var wanted = false
-    // The bar above the terminal.
+    /// The host's command history, read when first needed.
+    private(set) lazy var history = CommandHistory(host: hostID)
+    private let hostID: UUID
+    // The strip of tabs, and the bar above the terminal.
+    let tabStrip = NSSegmentedControl()
+    private let newTabButton = NSButton(), closeTabButton = NSButton()
     let snippetButton = NSPopUpButton(frame: .zero, pullsDown: true)
+    let historyButton = NSButton(title: "History…", target: nil, action: nil)
+    let pathButton = NSButton(title: "Insert Path…", target: nil, action: nil)
     let followBox = NSButton(checkboxWithTitle: "Follow in Files", target: nil, action: nil)
     private let previousButton = NSButton(), nextButton = NSButton(), findButton = NSButton()
     // The find bar (⌘F), shown when asked for.
@@ -32,6 +45,7 @@ final class TerminalController: NSViewController, NSMenuDelegate, NSSearchFieldD
 
     init(workspace: HostWorkspace) {
         self.workspace = workspace
+        hostID = workspace.connection.hostID
         super.init(nibName: nil, bundle: nil)
     }
 
@@ -39,18 +53,37 @@ final class TerminalController: NSViewController, NSMenuDelegate, NSSearchFieldD
 
     override func loadView() {
         let small = NSFont.systemFont(ofSize: NSFont.smallSystemFontSize)
+        tabStrip.controlSize = .small
+        tabStrip.font = small
+        tabStrip.trackingMode = .selectOne
+        tabStrip.selectedSegmentBezelColor = .pill  // as the workspace's own tabs above
+        tabStrip.target = self
+        tabStrip.action = #selector(tabChosen(_:))
+        tabStrip.toolTip = "The shells open on this host: click one to show it (⇧⌘[ and ⇧⌘] go through them)"
+        tabStrip.setAccessibilityIdentifier("terminal.tabs")
         snippetButton.controlSize = .small
         snippetButton.font = small
         snippetButton.addItem(withTitle: "Insert Snippet")
         snippetButton.menu?.delegate = self  // the snippets, as they are when it opens
         snippetButton.autoenablesItems = false
         snippetButton.setAccessibilityIdentifier("terminal.snippets")
+        for (button, action, id) in [(historyButton, #selector(showHistory(_:)), "terminal.history"),
+                                     (pathButton, #selector(insertPath(_:)), "terminal.insertPath")] {
+            button.controlSize = .small
+            button.font = small
+            button.bezelStyle = .recessed
+            button.target = self
+            button.action = action
+            button.setAccessibilityIdentifier(id)
+        }
         followBox.controlSize = .small
         followBox.font = small
         followBox.target = self
         followBox.action = #selector(followChanged(_:))
         followBox.setAccessibilityIdentifier("terminal.follow")
         for (button, symbol, label, action, id) in [
+            (newTabButton, "plus", "New Terminal Tab", #selector(newTab(_:)), "terminal.newTab"),
+            (closeTabButton, "xmark", "Close Terminal Tab", #selector(closeTab(_:)), "terminal.closeTab"),
             (previousButton, "chevron.up", "Previous prompt", #selector(TerminalView.previousPrompt(_:)), "terminal.previousPrompt"),
             (nextButton, "chevron.down", "Next prompt", #selector(TerminalView.nextPrompt(_:)), "terminal.nextPrompt"),
             (findButton, "magnifyingglass", "Find", #selector(find(_:)), "terminal.find"),
@@ -59,13 +92,18 @@ final class TerminalController: NSViewController, NSMenuDelegate, NSSearchFieldD
             button.bezelStyle = .recessed
             button.controlSize = .small
             button.action = action
-            button.target = button === findButton ? self : terminal
+            button.target = [previousButton, nextButton].contains(button) ? terminal : self
             button.setAccessibilityIdentifier(id)
         }
         findButton.toolTip = "Find text in the terminal (⌘F)"
-        let spacer = NSView()
+        let tabSpacer = NSView(), spacer = NSView()
+        tabSpacer.setContentHuggingPriority(.init(1), for: .horizontal)
         spacer.setContentHuggingPriority(.init(1), for: .horizontal)
-        let controls = NSStackView(views: [snippetButton, followBox, spacer, previousButton, nextButton, findButton])
+        let tabs = NSStackView(views: [tabStrip, newTabButton, closeTabButton, tabSpacer])
+        tabs.spacing = 6
+        tabs.edgeInsets = NSEdgeInsets(top: 0, left: 8, bottom: 0, right: 8)
+        let controls = NSStackView(views: [snippetButton, historyButton, pathButton, followBox, spacer, previousButton, nextButton,
+                                           findButton])
         controls.spacing = 8
         controls.edgeInsets = NSEdgeInsets(top: 0, left: 8, bottom: 0, right: 8)
 
@@ -117,7 +155,8 @@ final class TerminalController: NSViewController, NSMenuDelegate, NSSearchFieldD
 
         terminal.controller = self
         terminal.setContentHuggingPriority(.init(1), for: .vertical)
-        let stack = NSStackView(views: [FilePane.bar(controls), FilePane.separator(), findBar, terminal])
+        let stack = NSStackView(views: [FilePane.bar(tabs), FilePane.separator(), FilePane.bar(controls), FilePane.separator(), findBar,
+                                        terminal])
         stack.orientation = .vertical
         stack.alignment = .width
         stack.distribution = .fill  // the terminal takes the room the bars leave
@@ -172,75 +211,216 @@ final class TerminalController: NSViewController, NSMenuDelegate, NSSearchFieldD
         start(in: nil)
     }
 
-    /// A new shell, in `directory` (else the login folder).
-    func start(in directory: String?) {
+    /// A new shell in `directory` (else the login folder), or `command` with a terminal (Run in Terminal), in a new tab
+    /// or in place of the tab shown's.
+    func start(in directory: String?, command: String? = nil, newTab: Bool = false) {
         guard let workspace else { return }
-        session?.close()
         let size = terminal.gridSize
         let screen = TerminalScreen(columns: size.columns, rows: size.rows)
         // A new token for each shell: its marks are told from output that imitates them.
         let token = UUID().uuidString.replacingOccurrences(of: "-", with: "").lowercased()
         screen.markToken = token
+        screen.onCommand = { [weak self] in self?.history.add($0) }
         let host = workspace.session.host
         let argv = OpenSSH.terminal(host, jump: workspace.model.jump(for: host), socket: workspace.session.socketPath,
-                                    command: OpenSSH.terminalShell(in: directory, token: token))
+                                    command: command ?? OpenSSH.terminalShell(in: directory, token: token))
         do {
             let session = try TerminalSession(argv, environment: workspace.connection.askpass.terminalEnvironment, screen: screen)
-            session.onChange = { [weak self] in self?.screenChanged() }
-            session.onExit = { [weak self] status in self?.ended(status) }
-            self.session = session
-            terminal.session = session
-            followed = nil
-            screenChanged()
+            session.onChange = { [weak self, weak session] in session.map { self?.changed($0) } }
+            session.onExit = { [weak self, weak session] status in session.map { self?.ended($0, status) } }
+            if newTab || sessions.isEmpty {
+                sessions.append(session)
+                showTab(sessions.count - 1)
+            } else {
+                sessions[current].close()
+                sessions[current] = session
+                showTab(current)
+            }
         } catch {
             showError(error, title: "Can't open a shell", on: workspace.window)
         }
         showNote()
     }
 
-    private func ended(_ status: Int32) {
-        guard let screen = session?.screen else { return }
-        screen.feed("\r\n\u{1B}[0;2m[The shell ended" + (status == 0 ? "" : " (exit status \(status))")
-                    + ". Press Return for a new one.]\u{1B}[0m\r\n")
-        screenChanged()
+    private func ended(_ session: TerminalSession, _ status: Int32) {
+        session.screen.feed("\r\n\u{1B}[0;2m[The shell ended" + (status == 0 ? "" : " (exit status \(status))")
+                            + ". Press Return for a new one.]\u{1B}[0m\r\n")
+        changed(session)
         showNote()
     }
 
-    /// Return after the shell ended: a new one, if the host is connected.
+    /// Return after the shell ended: a new one in its tab, if the host is connected.
     func restartIfEnded() -> Bool {
         guard session?.running != true else { return false }
         if workspace?.session.state == .connected { start(in: nil) }
         return true
     }
 
-    /// Opens a shell in `directory` here (the Files pane's Open Terminal Here, when Settings sends it to this tab): a new
-    /// one, or `cd` typed into the one running. That waits at its prompt (bash and zsh say so), else the user says when.
-    func openShell(in directory: String) {
-        wanted = true
-        guard let session, session.running else { return start(in: directory) }
-        // cd goes in as keys: a control character in a server's folder name (⌃U, ⌃C…) would act as that key, and a shell
-        // that doesn't mark its commands isn't bash or zsh, whose quoting cd is written in (fish reads a \ inside quotes,
-        // csh a !). Such a path isn't typed: the rest of the name could run as commands there.
-        if directory.unicodeScalars.contains(where: { $0.value < 0x20 || $0.value == 0x7F })
-            || !session.screen.marksCommands && directory.contains(where: { $0 == "\\" || $0 == "!" }) {
-            return showError(AirSCPError(.other, "The path of “\(RemotePath.name(directory))” has characters this shell may "
-                                         + "not read as part of a name: type cd yourself."),
-                             title: "Can't type cd into the Terminal tab", on: workspace?.window)
-        }
-        // A space first: shells that keep such lines out of their history do so (HISTCONTROL=ignorespace).
-        let cd = " cd " + Quote.shell(directory) + "\r"
+    /// Types `line` and Return into the tab shown when its shell waits at an empty prompt (bash and zsh say so; a line
+    /// typed into an editor or a running command could do harm there), unless the line holds a control character, which
+    /// would act as its key (⌃C, a line break). False when it isn't typed.
+    private func typeAtPrompt(_ line: String) -> Bool {
+        guard let session, session.running, session.screen.waitsAtPrompt,
+              !line.unicodeScalars.contains(where: { $0.value < 0x20 || $0.value == 0x7F }) else { return false }
         terminal.showLive()
-        if session.screen.waitsAtPrompt { return session.send(cd) }
-        // Typed into an editor or a running command, cd may do harm there: destructive, so an agent's press waits for
-        // the person at the Mac too.
-        confirm("Type cd into the Terminal tab?", info: "Its shell may be busy: make sure it waits at a prompt (not in an "
-                + "editor or a running command), then continue.", button: "Type cd", destructive: true,
-                on: workspace?.window) { [weak self] in
-            self?.session?.send(cd)
-        }
+        session.send(line + "\r")
+        return true
     }
 
-    /// What the shell printed changed.
+    /// Open Terminal Here, when Settings sends it to this tab: `cd` typed at the shown tab's empty prompt, else a new
+    /// shell in `directory`, in a new tab while the shown one's shell runs (busy, or not one that says it waits).
+    func openShell(in directory: String) {
+        wanted = true
+        // A space first: shells that keep such lines out of their history do so (HISTCONTROL=ignorespace), as AirSCP's does.
+        if typeAtPrompt(" cd " + Quote.shell(directory)) { return }
+        start(in: directory, newTab: session?.running == true)
+    }
+
+    /// Run in Terminal, when Settings sends it to this tab: `command` typed at the shown tab's empty prompt, else run with a
+    /// terminal in a new tab (in place of a shell that ended). `sh`: written for sh (AirSCP's own, with a server's names in
+    /// it), typed only into bash and zsh, which read it alike; on its own it goes to sh unread by the login shell
+    /// (`OpenSSH.viaSh`).
+    func run(_ command: String, sh: Bool) {
+        wanted = true
+        if typeAtPrompt(command) { return }
+        start(in: nil, command: sh ? OpenSSH.viaSh(command) : command, newTab: session?.running == true)
+    }
+
+    // MARK: Tabs
+
+    /// Shows tab `index`: its shell in the terminal, with the bar, Follow in Files and find going with it.
+    func showTab(_ index: Int) {
+        guard sessions.indices.contains(index) else { return }
+        current = index
+        terminal.session = session
+        followed = nil
+        updateStrip()
+        screenChanged()
+        if !findBar.isHidden { runFind(keep: false) }
+        showNote()
+    }
+
+    @objc private func tabChosen(_ sender: NSSegmentedControl) {
+        showTab(sender.selectedSegment)
+        view.window?.makeFirstResponder(terminal)
+    }
+
+    /// The tab before or after the one shown (`step` -1 or 1), round at the ends: ⌘{ ⌘}.
+    func showTab(step: Int) {
+        guard !sessions.isEmpty else { return }
+        showTab((current + step + sessions.count) % sessions.count)
+        view.window?.makeFirstResponder(terminal)
+    }
+
+    /// New Terminal Tab (⇧⌘T, +): another shell on the host, in the folder the shown one said it is in (else the login
+    /// folder).
+    @objc func newTab(_ sender: Any?) {
+        wanted = true
+        guard workspace?.session.state == .connected else { return }
+        start(in: session?.screen.directory, newTab: true)
+        view.window?.makeFirstResponder(terminal)
+    }
+
+    /// Close Terminal Tab (×): the tab shown and its shell, after asking while a command runs there. The last tab stays.
+    @objc func closeTab(_ sender: Any?) {
+        guard sessions.count > 1, let session else { return }
+        let close = { [weak self, weak session] in
+            guard let self, let session, let index = self.sessions.firstIndex(where: { $0 === session }) else { return }
+            session.close()
+            self.sessions.remove(at: index)
+            self.showTab(min(index, self.sessions.count - 1))
+        }
+        guard let running = Self.running(in: session) else { return close() }
+        confirm("Close this terminal tab?", info: running + " is still running in it: closing the tab ends it.",
+                button: "Close Tab", destructive: true, on: view.window, action: close)
+    }
+
+    /// What runs in `session`'s shell, as far as AirSCP can see: the command it marked (bash, zsh), a full-screen program.
+    static func running(in session: TerminalSession) -> String? {
+        guard session.running else { return nil }
+        if let block = session.screen.blocks.last, block.running { return "“\(block.text)”" }
+        return session.screen.alternateScreen ? "A full-screen program" : nil
+    }
+
+    /// A tab's title: what the shell or a program set (OSC 0 or 2), else the name of the shell's folder (~ for the home
+    /// folder), else "Shell".
+    func title(of session: TerminalSession) -> String {
+        let screen = session.screen
+        if !screen.title.isEmpty { return screen.title }
+        guard let directory = screen.directory else { return "Shell" }
+        return directory == workspace?.session.capabilities.home ? "~" : RemotePath.name(directory)
+    }
+
+    /// The strip as the tabs are now: each one's title (cut short) and, in its tooltip, its folder or that its shell ended.
+    private func updateStrip() {
+        guard isViewLoaded else { return }
+        let labels = sessions.map { session -> String in
+            let title = title(of: session)
+            return title.count > 24 ? String(title.prefix(23)) + "…" : title
+        }
+        let tips = sessions.enumerated().map { index, session in
+            session.running ? "Show shell \(index + 1)" + (session.screen.directory.map { ", in " + $0 } ?? "")
+                : "Show tab \(index + 1): its shell ended (press Return in it for a new one)"
+        }
+        // Only when something changed: this runs for every piece of output.
+        let segments = 0..<tabStrip.segmentCount
+        guard labels != segments.map({ tabStrip.label(forSegment: $0) ?? "" }) || tips != segments.map({ tabStrip.toolTip(forSegment: $0) ?? "" })
+                || tabStrip.selectedSegment != current else { return }
+        tabStrip.segmentCount = sessions.count
+        for index in sessions.indices {
+            tabStrip.setLabel(labels[index], forSegment: index)
+            tabStrip.setWidth(0, forSegment: index)  // as wide as its label
+            tabStrip.setToolTip(tips[index], forSegment: index)
+        }
+        tabStrip.selectedSegment = current
+        updateBar()
+    }
+
+    /// What the bar showed last: the shell running, Follow in Files usable, commands marked, connected, tabs.
+    private var barState: (Bool, Bool, Bool, Bool, Int)?
+
+    /// The bar's controls as the shell is now; a control that can't be used says why.
+    private func updateBar() {
+        let running = session?.running == true, screen = session?.screen
+        let following = screen?.directory != nil || followBox.state == .on, marks = screen?.marksCommands == true
+        let connected = workspace?.session.state == .connected
+        // Only when something changed: this runs for every piece of output.
+        guard isViewLoaded, barState.map({ $0 != (running, following, marks, connected, sessions.count) }) ?? true else { return }
+        barState = (running, following, marks, connected, sessions.count)
+        newTabButton.isEnabled = connected
+        newTabButton.toolTip = connected ? "Open another shell on this host in a new tab (⇧⌘T)" : Self.notConnected
+        closeTabButton.isEnabled = sessions.count > 1
+        closeTabButton.toolTip = sessions.count > 1 ? "Close this tab and its shell; it asks first while a command runs in it"
+            : Self.lastTab
+        let notRunning = "The shell isn't running: connect, or press Return in the terminal for a new one"
+        snippetButton.isEnabled = running
+        snippetButton.toolTip = running ? "Type a saved snippet at the prompt; it runs when you press Return" : notRunning
+        historyButton.isEnabled = running
+        historyButton.toolTip = running ? "Type a command you ran on this host before at the prompt, from a list you can search"
+            : notRunning
+        pathButton.isEnabled = running
+        pathButton.toolTip = running ? "Type a file or folder name from the server at the prompt, picked from a list (⌥⇥)"
+            : notRunning
+        followBox.isEnabled = following
+        followBox.toolTip = following ? "Move the Files tab's server pane to the shell's folder each time the shell changes folder"
+            : "Works with bash and zsh, which say their folder at each prompt: this shell doesn't"
+        previousButton.isEnabled = marks
+        nextButton.isEnabled = marks
+        previousButton.toolTip = marks ? "Scroll up to the prompt of the command before (⌘↑)" : Self.noMarks
+        nextButton.toolTip = marks ? "Scroll down to the next command's prompt (⌘↓)" : Self.noMarks
+    }
+
+    static let noMarks = "Works with bash and zsh, which mark their commands: this shell doesn't"
+    static let notConnected = "Connect to the host first: each tab is a shell on its connection"
+    static let lastTab = "The last tab stays: type exit in it to end its shell"
+
+    /// What a shell printed changed: its tab's title may have, and the terminal shows it when its tab is the one shown.
+    private func changed(_ session: TerminalSession) {
+        updateStrip()
+        if session === self.session { screenChanged() }
+    }
+
+    /// What the shown shell printed changed.
     private func screenChanged() {
         terminal.screenChanged()
         updateBar()
@@ -254,30 +434,6 @@ final class TerminalController: NSViewController, NSMenuDelegate, NSSearchFieldD
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.3, execute: work)
         }
     }
-
-    /// The bar's controls as the shell is now; a control that can't be used says why.
-    private func updateBar() {
-        let running = session?.running == true, screen = session?.screen
-        let following = screen?.directory != nil || followBox.state == .on, marks = screen?.marksCommands == true
-        // Only when something changed: this runs for every piece of output.
-        guard isViewLoaded, barState.map({ $0 != (running, following, marks) }) ?? true else { return }
-        barState = (running, following, marks)
-        snippetButton.isEnabled = running
-        snippetButton.toolTip = running ? "Type a saved snippet at the prompt; it runs when you press Return"
-            : "The shell isn't running: connect, or press Return in the terminal for a new one"
-        followBox.isEnabled = following
-        followBox.toolTip = following ? "Move the Files tab's server pane to the shell's folder each time the shell changes folder"
-            : "Works with bash and zsh, which say their folder at each prompt: this shell doesn't"
-        previousButton.isEnabled = marks
-        nextButton.isEnabled = marks
-        previousButton.toolTip = marks ? "Scroll up to the prompt of the command before (⌘↑)" : Self.noMarks
-        nextButton.toolTip = marks ? "Scroll down to the next command's prompt (⌘↓)" : Self.noMarks
-    }
-
-    /// What the bar showed last: the shell running, Follow in Files usable, commands marked.
-    private var barState: (Bool, Bool, Bool)?
-
-    static let noMarks = "Works with bash and zsh, which mark their commands: this shell doesn't"
 
     // MARK: Follow in Files
 
@@ -341,6 +497,81 @@ final class TerminalController: NSViewController, NSMenuDelegate, NSSearchFieldD
         terminal.showLive()
         session.paste(command.trimmingCharacters(in: .newlines))
         view.window?.makeFirstResponder(terminal)
+    }
+
+    // MARK: History and Insert Path
+
+    /// History…: the host's commands, newest first, filtered as you type; the one chosen is typed at the prompt (not run).
+    @objc func showHistory(_ sender: Any?) {
+        guard let workspace, let window = workspace.window, let session, session.running else { return }
+        let history = self.history
+        TerminalPicker.present("Commands run on \(workspace.host.displayName)",
+                               items: history.commands.map { ($0.replacingOccurrences(of: "\n", with: " ⏎ "), $0) },
+                               empty: "None yet. The commands you run here in bash or zsh are kept for this host, newest "
+                                   + "first (not those typed after a space).",
+                               clear: { history.clear() }, on: window) { [weak self, weak session] command in
+            if let session { self?.insert(command, into: session) }
+        }
+    }
+
+    /// Insert Path… (⌥⇥): the names in the folder of the word before the cursor (from /, ~ or the shell's folder), as the
+    /// Files pane lists them (over sftp too), filtered as you type; the one chosen takes the word's place, quoted for the
+    /// shell where it needs it. For shells that complete nothing, and long names.
+    @objc func insertPath(_ sender: Any?) {
+        guard let workspace, let window = workspace.window, let session, session.running else { return }
+        let (word, typed) = Quote.lastWord(in: session.screen.typedBeforeCursor)
+        let folder = word.lastIndex(of: "/").map { String(word[...$0]) } ?? ""
+        Task { [self, session] in
+            guard let path = await resolve(folder.isEmpty ? "." : folder) else {
+                return showError(AirSCPError(.other, "AirSCP can't tell which folder the shell is in: type a path that "
+                                             + "starts with / or ~/ first."), title: "Can't list the folder", on: window)
+            }
+            let entries: [RemoteEntry]
+            do {
+                entries = try await workspace.session.list(path)
+            } catch {
+                return workspace.show(error, title: "Can't list “\(path)”")
+            }
+            // A control character would act as its key at the prompt (a line feed runs the line): such names aren't offered.
+            let items = entries.filter { !$0.name.unicodeScalars.contains { $0.value < 0x20 || $0.value == 0x7F } }
+                .sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
+                .map { entry -> TerminalPicker.Item in
+                    let name = entry.name + (entry.kind == .directory ? "/" : "")
+                    return (name, Self.typed(folder + name))
+                }
+            TerminalPicker.present("Insert a name from \(path)", items: items, filter: String(word.dropFirst(folder.count)),
+                                   empty: "This folder is empty.", on: window) { [weak self, weak session] text in
+                if let session { self?.insert(text, erasing: typed, into: session) }
+            }
+        }
+    }
+
+    /// A path as Insert Path types it: bare where no shell misreads it, else quoted; a ~/ in front stays bare (quoted it
+    /// isn't the home folder), and a name with = in front is quoted (zsh would take it for a program's path).
+    static func typed(_ path: String) -> String {
+        let home = path.hasPrefix("~/") ? "~/" : "", rest = String(path.dropFirst(home.count))
+        return home + (rest.hasPrefix("=") ? Quote.shell(rest) : Quote.shellWord(rest))
+    }
+
+    /// Types `text` at `session`'s prompt as a paste, in place of the `erasing` characters before the cursor (Delete keys).
+    /// A line break or other control character only where the shell takes pastes as such: else it would act as its key.
+    private func insert(_ text: String, erasing: Int = 0, into session: TerminalSession) {
+        guard session.running else { return }
+        guard session.screen.bracketedPaste || !text.unicodeScalars.contains(where: { $0.value < 0x20 || $0.value == 0x7F }) else {
+            return showError(AirSCPError(.other, "It has several lines, and this shell would run each one as it comes: type it "
+                                         + "yourself."), title: "Can't type it at the prompt", on: workspace?.window)
+        }
+        if session === self.session { terminal.showLive() }
+        session.send(String(repeating: "\u{7F}", count: erasing))
+        session.paste(text)
+        view.window?.makeFirstResponder(terminal)
+    }
+
+    /// History… and Insert Path… in the context menu: while the shell runs.
+    func validateMenuItem(_ item: NSMenuItem) -> Bool {
+        guard item.action == #selector(showHistory(_:)) || item.action == #selector(insertPath(_:)) else { return true }
+        if session?.running != true { item.toolTip = "The shell isn't running: connect, or press Return in the terminal for a new one" }
+        return session?.running == true
     }
 
     // MARK: Find
@@ -423,6 +654,12 @@ final class TerminalController: NSViewController, NSMenuDelegate, NSSearchFieldD
         return entries?.first { $0.name == RemotePath.name(path) }.map(FileItem.init)
     }
 
+    /// The server's item that `word` (from the output) names, nil when there is none.
+    func item(named word: String) async -> FileItem? {
+        guard let path = await resolve(word) else { return nil }
+        return await item(at: path)
+    }
+
     enum Action { case show, download, edit, info, copy }
 
     /// A right-click's action on a path from the output.
@@ -478,9 +715,9 @@ final class TerminalController: NSViewController, NSMenuDelegate, NSSearchFieldD
 
 /// The terminal's text, drawn cell by cell in a monospaced font, with the cursor, a selection, scrollback (the scroll
 /// wheel) and the keyboard going to the shell. Over the text: find's matches, and beside each command the shell marked,
-/// its exit status and time (a failed one in red, with a red bar along it).
+/// its exit status and time (a failed one in red, with a red bar along it). A selected path dragged out goes to Finder.
 @MainActor
-final class TerminalView: NSView, NSMenuItemValidation, NSMenuDelegate {
+final class TerminalView: NSView, NSMenuItemValidation, NSMenuDelegate, NSDraggingSource {
     typealias Match = (start: TerminalScreen.Position, end: TerminalScreen.Position)
 
     weak var controller: TerminalController?
@@ -492,6 +729,11 @@ final class TerminalView: NSView, NSMenuItemValidation, NSMenuDelegate {
             currentMatch = nil
             highlight = nil
             jumped = nil
+            pressed = nil
+            // A tab's shell kept its size while another was shown.
+            let size = gridSize
+            session?.resize(columns: size.columns, rows: size.rows)
+            needsDisplay = true
         }
     }
     let font = NSFont.monospacedSystemFont(ofSize: 12, weight: .regular)
@@ -750,6 +992,11 @@ final class TerminalView: NSView, NSMenuItemValidation, NSMenuDelegate {
             return
         }
         let flags = event.modifierFlags
+        // ⌥⇥: Insert Path… (Tab alone is the shell's own completion).
+        if event.keyCode == 48, flags.intersection([.command, .control, .option, .shift]) == .option {
+            controller?.insertPath(nil)
+            return
+        }
         guard let keys = TerminalSession.keys(keyCode: event.keyCode, characters: event.characters,
                                               control: flags.contains(.control), option: flags.contains(.option),
                                               shift: flags.contains(.shift), applicationCursor: session.screen.applicationCursorKeys)
@@ -911,9 +1158,23 @@ final class TerminalView: NSView, NSMenuItemValidation, NSMenuDelegate {
         return (visibleLines.first + row, column)
     }
 
+    /// A press in the selection: dragged, the server item named there (as a right-click takes it) goes to Finder, which
+    /// downloads it. The item is looked up as the press begins (`item` is nil until then, and when it names none).
+    private var pressed: (word: String, item: FileItem?)?
+
     override func mouseDown(with event: NSEvent) {
         window?.makeFirstResponder(self)
         let at = position(of: event)
+        pressed = nil
+        if event.clickCount == 1, isSelected(line: at.line, from: at.column, to: at.column), let controller,
+           let word = session?.screen.path(atLine: at.line, column: at.column) {
+            pressed = (word, nil)
+            Task {
+                let item = await controller.item(named: word)
+                if pressed?.word == word { pressed?.item = item }
+            }
+            return
+        }
         if event.clickCount == 2, let screen = session?.screen, at.line < screen.allLines.count {
             // A word.
             let cells = screen.allLines[at.line].cells
@@ -930,11 +1191,42 @@ final class TerminalView: NSView, NSMenuItemValidation, NSMenuDelegate {
     }
 
     override func mouseDragged(with event: NSEvent) {
+        if let pressed {
+            // Once the item is known (a moment): a selection that names none stays as it is.
+            if let item = pressed.item {
+                self.pressed = nil
+                drag(item, with: event)
+            }
+            return
+        }
         let at = position(of: event)
         let start = selection?.start ?? at
         selection = (start, at)
         autoscroll(with: event)
         needsDisplay = true
+    }
+
+    /// A click in the selection that didn't drag: the selection goes, as for any click.
+    override func mouseUp(with event: NSEvent) {
+        guard pressed != nil else { return }
+        pressed = nil
+        selection = nil
+        needsDisplay = true
+    }
+
+    /// Drags `item` out as the Files pane drags a row: a file promise, kept by downloading the item through the transfer
+    /// queue where it is dropped.
+    private func drag(_ item: FileItem, with event: NSEvent) {
+        guard let workspace = controller?.workspace, let pane = workspace.browser?.right else { return }
+        let dragged = NSDraggingItem(pasteboardWriter: pane.filePromise(for: item, on: workspace.session))
+        let point = convert(event.locationInWindow, from: nil)
+        dragged.setDraggingFrame(NSRect(x: point.x - 16, y: point.y - 16, width: 32, height: 32),
+                                 contents: NSWorkspace.shared.icon(for: FileList.type(of: item)))
+        beginDraggingSession(with: [dragged], event: event, source: self)
+    }
+
+    func draggingSession(_ session: NSDraggingSession, sourceOperationMaskFor context: NSDraggingContext) -> NSDragOperation {
+        context == .outsideApplication ? .copy : []
     }
 
     override func scrollWheel(with event: NSEvent) {
@@ -987,7 +1279,7 @@ final class TerminalView: NSView, NSMenuItemValidation, NSMenuDelegate {
             menu.addItem(title)
             TerminalMenuTarget.shared.controller = controller
             for (label, action, tip) in [("Show in Files", TerminalController.Action.show, "Show it in the Files tab's server pane"),
-                                         ("Download", .download, "Download it to the Files tab's Mac folder, through the transfer queue"),
+                                         ("Download", .download, "Download it to the Files tab's Mac folder (or select it and drag it to Finder)"),
                                          ("Edit in AirSCP", .edit, "Open it in AirSCP's text editor; Save puts it back on the server"),
                                          ("Get Info", .info, "Its size, owner, permissions and dates"),
                                          ("Copy Path", .copy, "Copy its full path on the server")] {
@@ -1021,6 +1313,11 @@ final class TerminalView: NSView, NSMenuItemValidation, NSMenuDelegate {
             snippets.submenu?.autoenablesItems = false
             controller.addSnippets(to: snippets.submenu!)
             menu.addItem(snippets)
+            add("Insert Path…", #selector(TerminalController.insertPath(_:)),
+                "Type a file or folder name from the server at the prompt, picked from a list", key: "\t", target: controller)
+            menu.items.last?.keyEquivalentModifierMask = .option
+            add("History…", #selector(TerminalController.showHistory(_:)), "Type a command you ran on this host before at the "
+                + "prompt, from a list you can search", target: controller)
         }
         menu.addItem(.separator())
         add("Find…", #selector(TerminalController.find(_:)), "Find text in the terminal (⌘F)", key: "f", target: controller)
@@ -1084,5 +1381,168 @@ final class TerminalMenuTarget: NSObject {
     @objc func act(_ sender: NSMenuItem) {
         guard let choice = sender.representedObject as? Choice else { return }
         controller?.act(choice.action, on: choice.word)
+    }
+}
+
+/// A list to choose from in a sheet, filtered as you type (↑ ↓ choose, Return types the entry, Escape closes): the
+/// Terminal tab's History… and Insert Path…. `choose` gets the entry's value.
+@MainActor
+final class TerminalPicker: NSViewController, NSTableViewDataSource, NSTableViewDelegate, NSSearchFieldDelegate {
+    /// What a row shows, and what choosing it types.
+    typealias Item = (title: String, value: String)
+    private var items: [Item]
+    private(set) var shown: [Item] = []
+    private let heading: String, empty: String
+    private let clear: (() -> Void)?
+    private let choose: (String) -> Void
+    let filter = NSSearchField()
+    let table = NSTableView()
+    private let note = NSTextField(wrappingLabelWithString: "")
+    private let insertButton = NSButton(title: "Insert", target: nil, action: nil)
+
+    /// Shows the list as a sheet on `window`, filtered by `filter` at first. `clear`: a Clear History button.
+    static func present(_ heading: String, items: [Item], filter: String = "", empty: String, clear: (() -> Void)? = nil,
+                        on window: NSWindow, choose: @escaping (String) -> Void) {
+        let picker = TerminalPicker(heading: heading, items: items, empty: empty, clear: clear, choose: choose)
+        let sheet = NSWindow(contentViewController: picker)
+        sheet.isReleasedWhenClosed = false  // held by ARC, as presentSheet's
+        picker.filter.stringValue = filter
+        picker.refilter()
+        window.beginSheet(sheet)
+        sheet.makeFirstResponder(picker.filter)
+    }
+
+    private init(heading: String, items: [Item], empty: String, clear: (() -> Void)?, choose: @escaping (String) -> Void) {
+        self.heading = heading
+        self.items = items
+        self.empty = empty
+        self.clear = clear
+        self.choose = choose
+        super.init(nibName: nil, bundle: nil)
+    }
+
+    required init?(coder: NSCoder) { fatalError("not used") }
+
+    /// What Insert types: the value of the entry chosen.
+    var chosen: String? { shown.indices.contains(table.selectedRow) ? shown[table.selectedRow].value : nil }
+
+    override func loadView() {
+        let title = NSTextField(labelWithString: heading)
+        title.font = .boldSystemFont(ofSize: NSFont.systemFontSize)
+        title.lineBreakMode = .byTruncatingMiddle
+        title.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)  // a long path is cut short in the middle
+        filter.placeholderString = "Filter"
+        filter.toolTip = "Show only the entries with this text in them; ↑ and ↓ choose one, Return types it"
+        filter.sendsSearchStringImmediately = true
+        filter.target = self
+        filter.action = #selector(filterChanged(_:))
+        filter.delegate = self
+        filter.setAccessibilityIdentifier("terminal.pickFilter")
+        table.addTableColumn(NSTableColumn(identifier: .init("entry")))
+        table.headerView = nil
+        table.rowHeight = 20
+        table.dataSource = self
+        table.delegate = self
+        let scroll = NSScrollView()
+        scroll.documentView = table
+        scroll.hasVerticalScroller = true
+        scroll.borderType = .bezelBorder
+        scroll.heightAnchor.constraint(equalToConstant: 260).isActive = true
+        note.textColor = .secondaryLabelColor
+        let clearButton = NSButton(title: "Clear History", target: self, action: #selector(clearHistory(_:)))
+        clearButton.toolTip = "Forget every command kept for this host (the server's own shell history stays)"
+        clearButton.setAccessibilityIdentifier("terminal.clearHistory")
+        clearButton.isHidden = clear == nil
+        let cancel = NSButton(title: "Cancel", target: self, action: #selector(cancel(_:)))
+        cancel.keyEquivalent = "\u{1b}"
+        cancel.toolTip = "Close without typing anything"
+        insertButton.target = self
+        insertButton.action = #selector(insert(_:))
+        insertButton.keyEquivalent = "\r"
+        insertButton.setAccessibilityIdentifier("terminal.pickInsert")
+        let spacer = NSView()
+        spacer.setContentHuggingPriority(.init(1), for: .horizontal)
+        let buttons = NSStackView(views: [clearButton, spacer, cancel, insertButton])
+        let stack = NSStackView(views: [title, filter, scroll, note, buttons])
+        stack.orientation = .vertical
+        stack.alignment = .width
+        stack.spacing = 10
+        stack.translatesAutoresizingMaskIntoConstraints = false
+        let view = NSView()
+        view.addSubview(stack)
+        NSLayoutConstraint.activate([
+            stack.topAnchor.constraint(equalTo: view.topAnchor, constant: 20),
+            stack.bottomAnchor.constraint(equalTo: view.bottomAnchor, constant: -20),
+            stack.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 20),
+            stack.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -20),
+            stack.widthAnchor.constraint(equalToConstant: 440),
+            title.widthAnchor.constraint(equalTo: stack.widthAnchor),
+        ])
+        self.view = view
+    }
+
+    /// The entries with the filter's text in them, the first one chosen.
+    func refilter() {
+        _ = view
+        let text = filter.stringValue
+        shown = text.isEmpty ? items : items.filter { $0.title.localizedCaseInsensitiveContains(text) }
+        table.reloadData()
+        if !shown.isEmpty {
+            table.selectRowIndexes([0], byExtendingSelection: false)
+            table.scrollRowToVisible(0)
+        }
+        note.stringValue = items.isEmpty ? empty : shown.isEmpty ? "Nothing here has “\(text)” in it." : ""
+        note.isHidden = note.stringValue.isEmpty
+        insertButton.isEnabled = !shown.isEmpty
+        insertButton.toolTip = shown.isEmpty ? "There is nothing to choose: change the filter" : "Type the entry chosen at the prompt (Return)"
+    }
+
+    @objc private func filterChanged(_ sender: NSSearchField) { refilter() }
+
+    @objc func insert(_ sender: Any?) {
+        guard let value = chosen else { return }
+        close()
+        choose(value)
+    }
+
+    @objc private func cancel(_ sender: Any?) { close() }
+
+    @objc private func clearHistory(_ sender: Any?) {
+        clear?()
+        items = []
+        refilter()
+    }
+
+    private func close() {
+        if let sheet = view.window { sheet.sheetParent?.endSheet(sheet) }
+    }
+
+    /// The filter keeps the keyboard: ↑ and ↓ move through the list, Return types the entry, Escape closes.
+    func control(_ control: NSControl, textView: NSTextView, doCommandBy selector: Selector) -> Bool {
+        switch selector {
+        case #selector(NSResponder.moveUp(_:)), #selector(NSResponder.moveDown(_:)):
+            guard !shown.isEmpty else { return true }
+            let row = min(max(table.selectedRow + (selector == #selector(NSResponder.moveUp(_:)) ? -1 : 1), 0), shown.count - 1)
+            table.selectRowIndexes([row], byExtendingSelection: false)
+            table.scrollRowToVisible(row)
+        case #selector(NSResponder.insertNewline(_:)): insert(nil)
+        case #selector(NSResponder.cancelOperation(_:)): close()
+        default: return false
+        }
+        return true
+    }
+
+    func numberOfRows(in tableView: NSTableView) -> Int { shown.count }
+
+    func tableView(_ tableView: NSTableView, viewFor tableColumn: NSTableColumn?, row: Int) -> NSView? {
+        let label = tableView.makeView(withIdentifier: .init("entry"), owner: nil) as? NSTextField ?? {
+            let label = NSTextField(labelWithString: "")
+            label.identifier = .init("entry")
+            label.font = .monospacedSystemFont(ofSize: 12, weight: .regular)
+            label.lineBreakMode = .byTruncatingMiddle
+            return label
+        }()
+        label.stringValue = shown[row].title
+        return label
     }
 }

@@ -100,7 +100,7 @@ final class HostWorkspace: NSViewController {
     // The header's pulse strip samples the server while the workspace is on screen.
     override func viewDidAppear() {
         super.viewDidAppear()
-        monitor.showsPulse = true
+        monitor.showsPulse = session.s3 == nil
         // The tabs' segmented control (the tab view controller adds it as the view first appears): the accent in Night
         // Harbor, Paper's black pill.
         tabs.view.subviews.lazy.compactMap { $0 as? NSSegmentedControl }.first?.selectedSegmentBezelColor = .pill
@@ -144,19 +144,36 @@ final class HostWorkspace: NSViewController {
     }
 
     /// Opens Terminal (or iTerm) with ssh riding this host's connection; `directory`: "Open Terminal Here", which goes
-    /// to the Terminal tab instead when Settings says so.
+    /// to the Terminal tab instead when Settings says so. The App Store version's sandbox can't open another app's
+    /// window with a command: it always uses the Terminal tab.
     func openTerminal(in directory: String? = nil) {
+        #if APPSTORE
+        if let directory { terminal.openShell(in: directory) }
+        showTerminal()
+        #else
         if let directory, model.data.settings.openTerminalHereInTab {
             terminal.openShell(in: directory)
             return showTerminal()
         }
         openTerminal(command: directory.map(OpenSSH.shellIn))
+        #endif
     }
 
-    /// Opens Terminal running `command` with a tty (Run in Terminal), or a login shell when nil.
-    func openTerminal(command: String?) {
-        let host = self.host
-        Task {
+    /// Opens Terminal running `command` with a tty (Run in Terminal), or a login shell when nil; with Settings' Terminal
+    /// tab option, the command runs in the Terminal tab instead, as everything does in the App Store version, whose
+    /// sandbox can't open another app's window with a command. `sh`: a command for sh (AirSCP's own, with a server's
+    /// names in it), which the login shell hands to sh unread (`OpenSSH.viaSh`).
+    func openTerminal(command: String?, sh: Bool = false) {
+        #if APPSTORE
+        if let command { terminal.run(command, sh: sh) }
+        showTerminal()
+        #else
+        if let command, model.data.settings.openTerminalHereInTab {
+            terminal.run(command, sh: sh)
+            return showTerminal()
+        }
+        let host = self.host, command = sh ? command.map(OpenSSH.viaSh) : command
+        Task { [self] in
             do {
                 try await TerminalLauncher.open(host, jump: model.jump(for: host), command: command,
                                                 app: model.data.settings.terminalApp,
@@ -166,6 +183,7 @@ final class HostWorkspace: NSViewController {
                 show(error)
             }
         }
+        #endif
     }
 
     /// The Run Command sheet, with `command` filled in (and run at once when `run`); `sh`: AirSCP's own command, run
@@ -175,7 +193,7 @@ final class HostWorkspace: NSViewController {
         let runner = RunCommandModel(connection: connection, command: command, sh: sh)
         runner.finished = finished
         presentSheet(on: window) { close in
-            RunCommandView(model: runner, app: model, runInTerminal: { [weak self] in self?.openTerminal(command: $0) },
+            RunCommandView(model: runner, app: model, runInTerminal: { [weak self] in self?.openTerminal(command: $0, sh: $1) },
                            close: close)
         }
         if run { runner.run() }
@@ -252,12 +270,20 @@ final class HostWorkspace: NSViewController {
     }
 
     func showTunnels() {
+        guard tabs.tabViewItems.count > 2 else { return }  // S3 storage has the Files tab only
         tabs.selectedTabViewItemIndex = 2
     }
 
     func showTerminal() {
+        guard tabs.tabViewItems.count > 3 else { return }
         tabs.selectedTabViewItemIndex = 3
         view.window?.makeFirstResponder(terminal.terminal)
+    }
+
+    /// Host ▸ New Terminal Tab: another shell in the Terminal tab (its first, if it has none yet).
+    func newTerminalTab() {
+        terminal.newTab(nil)
+        showTerminal()
     }
 
     var showsCommandLog: Bool { logPane != nil }
@@ -305,8 +331,12 @@ final class HostWorkspace: NSViewController {
             return item
         }
         if tabs.tabViewItems.isEmpty {
-            tabs.tabViewItems = [item(browser, "Files"), item(monitor, "Monitor"), item(tunnels, "Tunnels"),
-                                 item(terminal, "Terminal")]
+            // S3 storage has files only: no system to monitor, no shell, no tunnels.
+            tabs.tabViewItems = session.s3 != nil ? [item(browser, "Files")]
+                : [item(browser, "Files"), item(monitor, "Monitor"), item(tunnels, "Tunnels"), item(terminal, "Terminal")]
+        } else if session.s3 != nil {
+            tabs.removeTabViewItem(tabs.tabViewItems[0])
+            tabs.insertTabViewItem(item(browser, "Files"), at: 0)
         } else {
             // A new Session: only the Files and Monitor tabs are replaced. The Tunnels tab keeps its item (a second item
             // for the same controller makes NSTabViewController throw when that tab is the selected one).
@@ -320,7 +350,7 @@ final class HostWorkspace: NSViewController {
         }
         browser.stateChanged(session.state)
         monitor.stateChanged(session.state)
-        monitor.showsPulse = pulse
+        monitor.showsPulse = pulse && session.s3 == nil
     }
 
     private func stateChanged(_ state: Session.State) {
@@ -533,6 +563,7 @@ struct ConnectionBanner: View {
 
     /// The strip's text while not connected (agents read it too).
     static func idleText(_ host: SSHHost?) -> String {
+        if host?.s3 != nil { return "Not connected. Connect to browse this storage's buckets." }
         guard let key = host.flatMap(missingKeyFile) else { return "Not connected. Connect to browse this host's files." }
         return "Not connected. The key file \(key) no longer exists: edit the host to choose another."
     }
@@ -555,7 +586,8 @@ struct WorkspaceHeader: View {
                     StatusPill(text: MainWindowController.describe(connection.state), style: state)
                 }
                 (Text(host.address).fontWeight(.medium).foregroundColor(.primary)
-                    + Text(host.serverAliveInterval > 0 ? " · keep-alive \(host.serverAliveInterval) s" : "").foregroundColor(.secondary))
+                    + Text(host.serverAliveInterval > 0 && host.s3 == nil ? " · keep-alive \(host.serverAliveInterval) s" : "")
+                        .foregroundColor(.secondary))
                     .font(.system(size: 11.5)).monospacedDigit().lineLimit(1).truncationMode(.tail)
                 // The route on a line of its own: beside the address, the pulse strip's room cut both in the middle.
                 if let route {
@@ -567,7 +599,7 @@ struct WorkspaceHeader: View {
             .help(route?.full ?? "Connects to \(host.address) directly")
             Spacer(minLength: 0)
             // Offered the room first: it shows as many figures as fit beside the name's 240 points.
-            if connection.state == .connected { PulseStrip(monitor: monitor).layoutPriority(1) }
+            if connection.state == .connected && host.s3 == nil { PulseStrip(monitor: monitor).layoutPriority(1) }
         }
         .padding(.horizontal, 18)
         .padding(.top, 10)

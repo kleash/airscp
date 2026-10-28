@@ -176,6 +176,82 @@ public enum ErrorMapping {
         return error(.other, firstLine ?? "The command failed (exit status \(status)).")
     }
 
+    /// An S3 answer's error code (with the storage's own message under Details, and the request).
+    public static func s3(status: Int, code: String, message: String, details: String) -> AirSCPError {
+        func error(_ kind: AirSCPError.Kind, _ text: String) -> AirSCPError { AirSCPError(kind, text, details: details) }
+        switch code {
+        case "SignatureDoesNotMatch":
+            return error(.authFailed(methods: ""), "The secret key doesn't match the access key. Edit the connection and type "
+                + "the secret access key again.")
+        case "InvalidAccessKeyId":
+            return error(.authFailed(methods: ""), "The storage doesn't know this access key ID. Check it in the connection's "
+                + "settings (Edit…).")
+        case "ExpiredToken", "InvalidToken", "TokenRefreshRequired":
+            return error(.authFailed(methods: ""), "The session token has expired or isn't valid. Edit the connection: paste a "
+                + "new one, or leave it empty for a permanent key.")
+        case "RequestTimeTooSkewed":
+            return error(.other, "This Mac's clock is too far off for the storage to accept the request. Turn on “Set time and "
+                + "date automatically” in System Settings ▸ General ▸ Date & Time.")
+        case "AccessDenied", "AllAccessDisabled", "AccountProblem":
+            return error(.permissionDenied, "The storage didn't allow it: this access key may not do that here. Ask whoever "
+                + "manages the keys to allow it (its policy).")
+        case "NoSuchBucket":
+            return error(.noSuchFile, "The bucket doesn't exist (any more), or it belongs to another account.")
+        case "NoSuchKey", "NoSuchUpload":
+            return error(.noSuchFile, "The file or folder doesn't exist (any more). Refresh the list (⌘R) to see what is there now.")
+        case "PermanentRedirect", "AuthorizationHeaderMalformed", "IllegalLocationConstraintException":
+            return error(.other, "The bucket is in another region than the connection's. Check Region in the connection's "
+                + "settings (Amazon S3 needs no endpoint and finds the region by itself).")
+        case "PreconditionFailed":
+            return error(.failure, "The file changed on the storage meanwhile.")
+        case "EntityTooLarge":
+            return error(.other, "The storage doesn't take a file this large in one piece.")
+        case "BucketNotEmpty":
+            return error(.failure, "The bucket isn't empty.")
+        case "InvalidObjectState":
+            return error(.other, "The file is archived (a Glacier storage class): restore it in your provider's console before "
+                + "downloading it.")
+        case "SlowDown", "ServiceUnavailable", "InternalError", "RequestTimeout":
+            return error(.busy, "The storage is busy or didn't answer in time. Try again in a moment.")
+        case "XAmzContentSHA256Mismatch", "BadDigest", "InvalidDigest":
+            return error(.other, "The storage received the file damaged (its checksum didn't match). Try again.")
+        default:
+            if status == 403 { return s3(status: status, code: "AccessDenied", message: message, details: details) }
+            if status == 404 { return s3(status: status, code: "NoSuchKey", message: message, details: details) }
+            let words = message.isEmpty ? "" : ": " + message
+            return error(status >= 500 ? .busy : .other, "The storage refused (\(code.isEmpty ? "HTTP \(status)" : code))\(words)")
+        }
+    }
+
+    /// A failed S3 request that got no answer (URLSession's error), in plain words.
+    static func s3(_ error: Error) -> AirSCPError {
+        let details = error.localizedDescription
+        guard let error = error as? URLError else { return AirSCPError(.other, details) }
+        switch error.code {
+        case .cancelled: return AirSCPError.cancelled
+        case .cannotFindHost, .dnsLookupFailed:
+            return AirSCPError(.unknownHost, "Can't find the storage. Check the endpoint's address and your network connection.",
+                               details: details)
+        case .cannotConnectToHost:
+            return AirSCPError(.refused, "The storage refused the connection. Check the endpoint's address and port.", details: details)
+        case .timedOut:
+            return AirSCPError(.timeout, "The storage didn't answer in time. Check the endpoint and your network.", details: details)
+        case .notConnectedToInternet, .networkConnectionLost, .internationalRoamingOff, .dataNotAllowed:
+            return AirSCPError(.noRoute, "The storage can't be reached from this network. Check Wi-Fi or VPN.", details: details)
+        case .secureConnectionFailed, .serverCertificateUntrusted, .serverCertificateHasBadDate, .serverCertificateHasUnknownRoot,
+             .serverCertificateNotYetValid, .clientCertificateRejected:
+            return AirSCPError(.other, "The storage's certificate isn't trusted by this Mac, so AirSCP didn't connect.", details: details)
+        case .appTransportSecurityRequiresSecureConnection:
+            // macOS's App Transport Security: plain http only to an IP address or a local name (nas, nas.local).
+            return AirSCPError(.other, "macOS allows a plain http:// endpoint only at an IP address or a local name. Edit the "
+                               + "connection: make the endpoint https://, or use the storage's IP address.", details: details)
+        case .userAuthenticationRequired:
+            return AirSCPError(.authFailed(methods: ""), "The proxy rejected the user name or password.", details: details)
+        default:
+            return AirSCPError(.other, "The request to the storage failed: \(details)", details: details)
+        }
+    }
+
     /// `map`, for a command that ran on this Mac (the tar unpacking a download): a full disk or a refusal is this Mac's.
     static func mapLocal(_ stderr: String, status: Int32) -> AirSCPError {
         let error = map(stderr, status: status)

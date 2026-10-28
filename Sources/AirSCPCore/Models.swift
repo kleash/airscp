@@ -74,6 +74,9 @@ public struct SSHHost: Codable, Identifiable, Hashable {
     /// Browse and transfer as this user with sudo (no password: NOPASSWD), e.g. root; empty: as the
     /// login user. Typed commands and the Terminal tab stay the login user's.
     public var sudoUser = ""
+    /// Set for an S3 connection (Amazon S3 or an S3-compatible service): a saved "host" whose files are a storage's
+    /// buckets, without ssh (its secret key is this host's Keychain password; `S3Settings`).
+    public var s3: S3Settings?
 
     public init(id: UUID = UUID(), label: String = "", hostname: String = "", port: Int? = nil, username: String = "",
                 auth: Auth = .agent, keyFile: String = "") {
@@ -116,13 +119,58 @@ public struct SSHHost: Codable, Identifiable, Hashable {
         leaveOut = try value(.leaveOut, defaults.leaveOut)
         hostKeyCheck = try value(.hostKeyCheck, defaults.hostKeyCheck)
         sudoUser = try value(.sudoUser, defaults.sudoUser)
+        s3 = try container.decodeIfPresent(S3Settings.self, forKey: .s3)
     }
 
-    /// The label, else user@host:port.
+    /// The label, else user@host:port (an S3 connection's: its bucket or endpoint).
     public var displayName: String {
         if !label.isEmpty { return label }
+        if let s3 { return s3.address }
         return (username.isEmpty ? "" : username + "@") + hostname + (port.map { ":\($0)" } ?? "")
     }
+}
+
+/// Where an S3 connection's files are: Amazon S3 (no endpoint), or an S3-compatible service (MinIO, Cloudflare R2,
+/// Backblaze B2, Wasabi, Ceph…). The secret access key is the host's Keychain password; a session token is under
+/// `tokenKey`.
+public struct S3Settings: Codable, Hashable {
+    /// The service's address, e.g. https://s3.example.com:9000; empty: Amazon S3.
+    public var endpoint = ""
+    /// The region requests are signed for; empty: us-east-1 (Amazon S3 finds each bucket's own region by itself).
+    public var region = ""
+    public var accessKeyID = ""
+    /// https://host/bucket/key instead of https://bucket.host/key: most S3-compatible servers want it.
+    public var pathStyle = false
+    /// The bucket shown first; for keys that may not list the buckets.
+    public var bucket = ""
+
+    public init(endpoint: String = "", region: String = "", accessKeyID: String = "", pathStyle: Bool = false, bucket: String = "") {
+        self.endpoint = endpoint
+        self.region = region
+        self.accessKeyID = accessKeyID
+        self.pathStyle = pathStyle
+        self.bucket = bucket
+    }
+
+    /// Settings saved by another version may lack keys; those keep their defaults.
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        endpoint = try container.decodeIfPresent(String.self, forKey: .endpoint) ?? ""
+        region = try container.decodeIfPresent(String.self, forKey: .region) ?? ""
+        accessKeyID = try container.decodeIfPresent(String.self, forKey: .accessKeyID) ?? ""
+        pathStyle = try container.decodeIfPresent(Bool.self, forKey: .pathStyle) ?? false
+        bucket = try container.decodeIfPresent(String.self, forKey: .bucket) ?? ""
+    }
+
+    /// "s3://photos" or "minio.example.com", as the sidebar shows it.
+    public var address: String {
+        let address = URLComponents(string: endpoint.contains("://") ? endpoint : "https://" + endpoint)
+        let service = endpoint.isEmpty ? "Amazon S3" : (address?.host).map { $0 + (address?.port.map { ":\($0)" } ?? "") } ?? endpoint
+        return bucket.isEmpty ? service : "s3://" + bucket + (endpoint.isEmpty ? "" : " on " + service)
+    }
+
+    /// The Keychain key of a connection's session token (temporary keys), if it has one.
+    public static func tokenKey(_ id: UUID) -> String { "s3token:" + id.uuidString }
 }
 
 public struct HostGroup: Codable, Identifiable, Hashable {

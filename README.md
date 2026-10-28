@@ -17,6 +17,8 @@
 </p>
 
 - **Two panes**: your Mac on the left, a server on the right. Drag to copy, also server to server.
+- **Amazon S3 and S3-compatible storage** (MinIO, Cloudflare R2, Backblaze B2, Wasabi, Ceph) in the same panes: big
+  files in parts that survive a pause, presigned links, zips. Import your `~/.aws` profiles.
 - **A transfer queue** that runs in the background: pause and resume, go on after a dropped connection, check copies
   with SHA-256, limit the speed.
 - **Folders as one fast stream**, with compression and "leave out" patterns (`node_modules, *.log`).
@@ -24,6 +26,8 @@
 - **Every way in**: keys, passwords, 2FA codes, jump hosts, HTTP and SOCKS5 proxies. Your `~/.ssh/config` just works.
 - **Remote Desktop for Windows** built in, with the clipboard and files both ways.
 - **Monitor** a Linux server (CPU, memory, disks, processes, ports), open **tunnels**, run commands and snippets.
+- **Terminal tabs** inside AirSCP: several shells on one connection, a command history, server paths typed for you,
+  file names dragged out to Finder.
 - **Keys**: make any key type, put it on a server, import and export PuTTY `.ppk`.
 - **AI agents can drive it** over MCP when you allow it: their changes wait for your OK, and they never see your
   passwords.
@@ -47,8 +51,7 @@ brew install --cask kleash/tap/airscp
 ```
 
 Or download the zip from [Releases](https://github.com/kleash/airscp/releases).
-The first time you open AirSCP, macOS says it can't check the app for malware (AirSCP isn't notarized yet): click **Done**,
-then **System Settings ▸ Privacy & Security ▸ Open Anyway**. On macOS 14 or earlier, right-click AirSCP ▸ **Open** works too.
+AirSCP is signed and notarized by Apple, so it opens like any app.
 Every file has its SHA-256, and the ones GitHub built have signed build provenance: [check a download](SECURITY.md#check-a-download).
 
 ## Use it from AI agents

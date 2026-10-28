@@ -28,7 +28,8 @@ unusual file name can't be misread.
 ## Tips
 
 - The command runs in your account's login shell, without a terminal.
-- For `sudo`, `top`, editors and anything that asks questions, click **Run in Terminal**.
+- For `sudo`, `top`, editors and anything that asks questions, click **Run in Terminal**. It opens Terminal, or the
+  [Terminal tab](terminal-tab.md) when Settings says so.
 - The output shows while the command runs. **Stop** ends a running command on the server too; what it printed stays.
 - AirSCP keeps the last thousand lines of output and of error output.
 - File-transfer-only (sftp) accounts can't run commands: the menu item is greyed out and says why.

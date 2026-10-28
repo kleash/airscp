@@ -13,8 +13,12 @@ AirSCP keeps your servers, files and passwords on your Mac.
 
 - **No account, no tracking**: AirSCP sends nothing about you or your use anywhere. It connects only to the servers and
   computers you choose.
-- **Hosts and settings**: in `~/Library/Application Support/AirSCP/airscp.json`.
-- **Passwords**: in your login Keychain, one item named `com.kleash.airscp`, and only when you tick **Remember**.
+- **Hosts and settings**: in `~/Library/Application Support/AirSCP/airscp.json` (the App Store version keeps them in
+  its own folder, `~/Library/Containers/com.kleash.airscp`).
+- **Passwords**: in your login Keychain, one item named `com.kleash.airscp`, and only when you tick **Remember**. An S3
+  connection's secret key is always kept there.
+- **Terminal history**: the commands you ran in a host's Terminal tab, in the `history` folder next to `airscp.json`,
+  which only you can read. **Clear History** or deleting the host removes it.
 - **Exports** (File ▸ Export Hosts…) never contain passwords or private keys.
 
 ## How connections are protected

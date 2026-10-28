@@ -30,12 +30,19 @@ jobs:
       actions: read            # CodeQL reads its own run's details (needed on a private repository)
       contents: read
       security-events: write   # to upload the results to the Security tab
-    env:
-      DEVELOPER_DIR: /Library/Developer/CommandLineTools
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+
+      # CodeQL's tracer runs xcrun as x86_64, and the runner's newest Command Line Tools (macOS 27) are Apple silicon
+      # only: it builds with the newest Xcode 26, which still has both.
+      - name: Use the newest Xcode 26
+        run: |
+          xcode=$(ls -d /Applications/Xcode_26*.app | sort -V | tail -n 1)
+          [ -n "$xcode" ] || { echo "::error::No Xcode 26 on this runner"; exit 1; }
+          echo "DEVELOPER_DIR=$xcode/Contents/Developer" >> "$GITHUB_ENV"
+          echo "Using $xcode"
 
       - name: Restore FreeRDP and OpenSSL
         id: freerdp

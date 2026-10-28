@@ -682,7 +682,7 @@ final class RDPWorkspaceController: NSViewController {
                                          + "copied into it."), title: "Can't upload", on: view.window)
         }
         bar.message = "Copying \(urls.count == 1 ? "“\(urls[0].lastPathComponent)”" : "\(urls.count) items") to the shared folder…"
-        DispatchQueue.global(qos: .userInitiated).async {
+        DispatchQueue.global(qos: .userInitiated).async { [self] in
             var copied: [String] = [], failure: Error?, hidden = 0
             for url in urls {
                 let existing = (try? FileManager.default.contentsOfDirectory(atPath: folder.path)) ?? []

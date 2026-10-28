@@ -69,13 +69,15 @@ asks). Turning the setting off removes the socket and token at once; quitting re
 
 **Changes wait for the person at the Mac** (Settings ▸ Ask before agents change things, on by default). Each tool
 works out, where it acts, what it would change outside AirSCP's own windows (`AgentServer.ask`, worked out only while
-the setting is on): a button that a question marks as destructive (`hasDestructiveAction`; Type cd and Run passwd
-too, which type into a Terminal tab that may be busy), a control in `changingControls` (by id), a command in
-`changingCommands` (by selector, for menus, context menus, shortcuts and buttons with that action; Delete, Disconnect
-and Quit only when they don't ask their own question, whose destructive button asks then), keys and text for a
-Terminal tab (a snippet chosen in its Insert Snippet too), keys, text and clicks for a Windows desktop, drops, opening
-a file in its app, and a Save panel that would replace a file. Open Terminal Here's `cd` at an empty prompt goes to
-a folder and doesn't ask. The Certificate Manager's saves ask only that way, through the Save panel when they would
+the setting is on): a button that a question marks as destructive (`hasDestructiveAction`; Run passwd too, which
+types into a Terminal tab that may be busy, and Close Tab, which ends a running command), a control in
+`changingControls` (by id), a command in `changingCommands` (by selector, for menus, context menus, shortcuts and
+buttons with that action; Delete, Disconnect and Quit only when they don't ask their own question, whose destructive
+button asks then), one in `s3Commands` in a pane that shows S3 storage (Compress and Extract, which copy through this
+Mac there, and Copy Presigned Link), keys and text for a Terminal tab (a snippet chosen in its Insert Snippet too, and the Insert of
+History… and Insert Path…, `terminal.pickInsert`), keys, text and clicks for a Windows desktop, drops, opening a file
+in its app, and a Save panel that would replace a file. Open Terminal Here's `cd` at an empty prompt goes to a folder
+and doesn't ask; a busy shell gets a new tab instead, which doesn't either. The Certificate Manager's saves ask only that way, through the Save panel when they would
 replace a file (New… never replaces one: it saves nothing then). `approve` shows `AgentQuestionPanel` (floating, on
 every Space, not modal, Deny the default) for up to 45 s; Allow for 15 Minutes lets every change through until then.
 What was allowed is worked out again before it happens: a selection that changed meanwhile fails the request. The
@@ -97,6 +99,14 @@ tool descriptions. Tests, scripts and throwaway instances that nobody answers tu
 5. A control or command that changes something outside AirSCP without a question of its own (deletes, runs, copies,
    disconnects…): its id in `AgentServer.changingControls`, or its selector in `changingCommands`, so that it waits
    for the person at the Mac. A button a question marks as destructive asks by itself.
+
+## The App Store version
+
+It has no private API: SwiftUI builds its accessibility nodes after AirSCP asks for its own windows through the
+public accessibility API (`AXUIElementCopyAttributeValue` on its own pid, off the main thread), which works sandboxed and
+without Accessibility permission; and screenshots draw a window behind other apps as inactive (no lent key
+appearance). Its agent socket is in the container's `tmp`; `--mcp` and `--agent` run in the same container, so they
+find it, and `--agent … --out` can write only there (`--out -` sends the image to standard output).
 
 ## Known limits
 

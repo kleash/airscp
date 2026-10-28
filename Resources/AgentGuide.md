@@ -1,9 +1,9 @@
 # AirSCP agent guide
 
 AirSCP is a Mac app for SSH servers (saved hosts, a two-pane file browser with Find Files and Synchronize, transfers,
-remote file operations, a Linux monitor, tunnels, HTTP proxies and jump hosts) and Windows desktops (a built-in Remote
-Desktop client). These tools drive the running AirSCP the way its user does. `guide topic=<name>` gives the details:
-tools, hosts, proxies, transfers, files, monitor, tunnels, keys, settings, rdp, troubleshooting.
+remote file operations, a Linux monitor, tunnels, HTTP proxies and jump hosts), S3 storage and Windows desktops (a
+built-in Remote Desktop client). These tools drive the running AirSCP the way its user does. `guide topic=<name>` gives
+the details: tools, hosts, proxies, transfers, files, monitor, tunnels, keys, settings, rdp, troubleshooting.
 
 ## overview
 How to work with AirSCP:
@@ -50,7 +50,7 @@ How to work with AirSCP:
 ## tools
 Each tool takes a JSON object. From a shell: `AirSCP --agent <tool> key=value …` (values are text, except for
 arguments the tool takes as numbers, true/false or lists: `timeout=60`, `names=["a.txt"]`), `--json` for the raw
-reply, `--out shot.png` for an image. The binary is `/Applications/AirSCP.app/Contents/MacOS/AirSCP` (in `~/Applications` when
+reply, `--out shot.png` for an image (`--out -` writes it to standard output). The binary is `/Applications/AirSCP.app/Contents/MacOS/AirSCP` (in `~/Applications` when
 AirSCP was installed with `./install.sh`).
 
 - `snapshot {include?, rows?, log?, in?}` — AirSCP's state. Default sections: windows, selection, sidebar, workspace
@@ -158,6 +158,16 @@ AirSCP was installed with `./install.sh`).
   sheet's text (and Add is off). `press title=Add` (Save when editing; disabled while the sheet's text names a
   problem). `press title="Test Connection"` logs in and out with the fields as typed: its questions come as sheets on
   the editor, and the result is in the editor's text (`wait until=sheet text="Logged in"`).
+- S3 storage (Amazon S3, MinIO, Cloudflare R2, Backblaze B2, Wasabi, Ceph): `menu path="File > New S3 Connection…"` →
+  a sheet. Fields: `s3Editor.name`, `s3Editor.endpoint` (empty: Amazon S3), `s3Editor.region`, `s3Editor.accessKey`,
+  `s3Editor.secret` (from a shell: `value=-`), `s3Editor.bucket` (the bucket to open at; needed for a key that may not
+  list the buckets), `s3Editor.group`; under Advanced (`press id=s3Editor.advanced`): `s3Editor.pathStyle`,
+  `s3Editor.token`, `s3Editor.proxy`. `press id=s3Editor.test` checks the keys (its result is in the sheet's text:
+  "Connected: 3 buckets."), `press id=s3Editor.save`. `menu path="File > Import from ~/.aws…"` makes connections from
+  the AWS CLI's profiles (its sheet names the profiles left out, with why). In the sidebar such an entry has
+  `"kind": "s3"`; it connects and disconnects as a host does, with the Files tab only: Terminal, Monitor, Tunnels, Run
+  Command, Server Info and Copy ssh Command are refused with the reason. `menu path="Host > Copy Link"` copies its
+  s3://bucket/folder/ link.
 - A host's route: `snapshot` → sidebar hosts' `route` ("via bastion", "via proxy corp-proxy", "via corp-proxy →
   bastion"; a jump host or proxy that no longer exists: "via a missing jump host" with a `warning`). The window's
   subtitle shows it too ("Connected · via bastion"), and the sidebar's search finds hosts by it.
@@ -198,8 +208,21 @@ AirSCP was installed with `./install.sh`).
   id=terminal.snippets value=<snippet name>` (typed at the prompt, not run; as any text for the terminal, it waits for
   the person at the Mac), `press id=terminal.find` then `set id=terminal.findText value=<text>` (find;
   `terminal.findCount` reads "2 of 5" in `snapshot include=["elements"]`), `press id=terminal.findDone`. Settings'
-  `settings.openTerminalHereInTab` sends Open Terminal Here to this tab: `cd` typed at an empty prompt, else a question
-  "Type cd into the Terminal tab?" first (its Type cd waits for the person at the Mac).
+  `settings.openTerminalHereInTab` sends Open Terminal Here and Run in Terminal to this tab: the `cd` or the command typed
+  at an empty prompt, else a new tab (nothing is typed into a busy shell).
+  Tabs: each tab is its own shell on the same connection. `snapshot` → terminal: `tabs` lists them (`index` from 1,
+  `title`, `directory`, `running`, `atPrompt` with bash and zsh, `shown`), `tab` is the index of the one shown, and the
+  rest of the section (lines, commands) is that tab's; `type` and `key` with target terminal go to it. `press
+  id=terminal.newTab` (or `menu path="Host > New Terminal Tab"`) opens one in the shown tab's folder; `set
+  id=terminal.tabs value=2` shows tab 2 (by its index, or its title on the strip);
+  `menu path="Host > Show Next Terminal Tab"` and `menu path="Host > Show Previous Terminal Tab"` go through them; `press
+  id=terminal.closeTab` closes the tab shown (a sheet "Close this terminal tab?" first while a command runs; the last tab
+  stays). History: `press id=terminal.history` → a sheet listing
+  the host's commands, newest first; `set id=terminal.pickFilter value=<text>` filters it, `select in=sheet
+  names=["<command>"]` chooses one, `press title=Insert` types it at the prompt without running it (as typing, it waits
+  for the person at the Mac), `press id=terminal.clearHistory` forgets them. Insert Path: `press id=terminal.insertPath`
+  → the same sheet with the names in the folder of the word before the cursor (relative to the shell's folder);
+  `press title=Insert` types the name chosen in place of that word, quoted for the shell.
 - Certificate Manager: `menu path="Tools > Certificate Manager…"` (its controls `in="window:Certificate Manager"`);
   open files with `press id=certificates.open files=[…]` (a password sheet: `set id=certificates.password`, `press
   title=Open`); `select in="window:Certificate Manager" names=["Certificate: web.example.com"]` (rows read "Certificate: …",
@@ -378,6 +401,15 @@ AirSCP was installed with `./install.sh`).
   `wait until=transfers_done`, then `wait until=listed` for each pane. `press title=Cancel` closes the sheet, also
   while it compares. A folder that can't be listed is named in the failure: add it to Leave out to compare without it.
 - A command the server can't run (sftp-only account, no zip) is refused with the reason.
+- S3 storage in a pane: "/" lists the buckets; `go path=/bucket/folder` (or `open name=bucket`) shows a folder.
+  Uploads, downloads, drops, New Folder…, New File…, Rename…, Move To…, Copy To…, Delete…, Edit in AirSCP, Get Info
+  (content type, storage class, ETag, SHA-256, metadata), Find Files… and Synchronize… (by size and date) work as on a
+  server. `menu path="context > Download as .zip…"`, `menu path="File > Compress…"` (press Compress: a .zip next to
+  the items) and Extract Here / Extract to New Folder are jobs in the Transfers list ("Zip on S3 storage…", "Extract on
+  S3 storage…"); each waits for the person at the Mac first, as copies do. `menu path="context > Copy S3 Link"` copies
+  s3://bucket/key; `menu path="context > Copy Presigned Link…"` waits for the person too (anyone with the link can
+  download the file), then asks how long it works (`set id=presign.expiry value="For 1 day"`): press "Copy Link".
+  Permissions, symbolic links, Run and the terminal are refused with the reason.
 
 ## monitor
 - `press title=Monitor` (the host's tab) → `wait until=monitor` (or `wait until=monitor text=<a process name>`) →
@@ -452,6 +484,8 @@ AirSCP was installed with `./install.sh`).
   hostEditor.hostKey), `settings.certificate` (new desktops' certificate, as rdpEditor.certificate; with a company
   certificate authority: `settings.caFile`, or `press id=settings.chooseCA in="window:Settings" file=/path/ca.pem`),
   the folder for new keys (`press id=settings.keyFolder in="window:Settings" file=/folder`; "Use ~/.ssh" goes back),
+  in the App Store version the SSH folder (`press id=settings.sshFolder in="window:Settings" file=/Users/me/.ssh`: only
+  a folder the user allowed already; see troubleshooting),
   `settings.agentControl` (turning it off ends
   agent control at once; `settings.mcpCommand` is the `claude mcp add` command it shows, `settings.copyMCPCommand`
   copies it), `settings.askBeforeAgentChanges` (changes wait for the person at the Mac, see overview: only they can
@@ -542,11 +576,12 @@ AirSCP was installed with `./install.sh`).
 - Questions to the person at the Mac (Settings ▸ "Ask before agents change things", on unless they turned it off).
   These wait up to 45 s for their Allow Once, Allow for 15 Minutes (no more questions until then) or Deny: a request
   that deletes, replaces or renames files (Rename's button), copies them (`drop`, Upload…, Download…, Paste,
-  Synchronize), opens a file in its app, changes permissions or owners (Permissions' Apply, Make Executable), puts a
-  key on a server (Keys' Install) or in the ssh agent (Add to Agent), switches a tunnel on or off, runs a command, a
-  file or a snippet, kills a process, disconnects, quits, cancels, retries or resumes transfers, types text (a snippet
-  too) or presses keys in a Terminal tab, types, presses keys or clicks on a Windows desktop, or presses a button that
-  a question marks as destructive (Delete, Replace, Kill, Type cd…). A question AirSCP asks itself (Delete's) comes
+  Synchronize; on S3 storage also Compress…, Extract Here and Extract to New Folder), makes an S3 presigned link, opens
+  a file in its app, changes permissions or owners (Permissions' Apply, Make Executable), puts a key on a server (Keys'
+  Install) or in the ssh agent (Add to Agent), switches a tunnel on or off, runs a command, a file or a snippet, kills a
+  process, disconnects, quits, cancels, retries or resumes transfers, types text (a snippet, a History or Insert Path
+  entry too) or presses keys in a Terminal tab, types, presses keys or clicks on a Windows desktop, or presses a button
+  that a question marks as destructive (Delete, Replace, Kill, Close Tab…). A question AirSCP asks itself (Delete's) comes
   first, as always: its Delete button is what waits. Looking, selecting, going to folders, opening AirSCP's own sheets
   and typing into its fields never wait, and only the person can turn the setting off.
   "The person at the Mac declined: <what>": they said no; nothing was done. Don't try it another way (another tool or
@@ -578,5 +613,13 @@ AirSCP was installed with `./install.sh`).
   wait until it is unlocked, though the reply says ok; the Monitor refreshes only while you are at work (a `wait`).
 - Screenshots draw AirSCP's own windows: a table's header can show the rows scrolled under it, the toolbar and the
   sidebar have no glass, and menus are never in them. A host's state is in `snapshot` (sidebar).
+- The App Store version (its Settings window has `settings.sshFolder`) runs in Apple's sandbox. It opens only the
+  folders of this Mac the user allowed, and `file=` can't allow one: only the user's own choice in an Open panel does.
+  A Mac folder it may not open yet fails with "Operation not permitted": ask the user to open it once in this Mac's pane
+  (AirSCP then asks them to allow it), or to choose their SSH folder in Settings ▸ Keys. Import from ~/.aws asks them
+  to allow their .aws folder the first time. Open Terminal, Open Terminal Here, Run in Terminal and Kill with sudo use
+  the host's Terminal tab (as `settings.openTerminalHereInTab` does in the other version, which this one doesn't have).
+  From a shell, `--out file.png` saves only in AirSCP's own container: use `--out -`. Its screenshots draw a window
+  behind other apps as inactive.
 - Quit (`menu path="AirSCP > Quit AirSCP"`): refused while a sheet is open; it asks first while transfers run or an
   editor has unsaved changes (the reply is that question), else it answers `quitting` and AirSCP quits.

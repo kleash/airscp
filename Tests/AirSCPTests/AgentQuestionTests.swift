@@ -293,8 +293,20 @@ extension FeatureRoundAppTests {
             #expect(await inserting.value.error == AgentBridge.declined + insert.change + ".")
             #expect(!screen.text.contains("rm -rf build") && screen.waitsAtPrompt)
 
-            // Open Terminal Here in the tab: cd at the empty prompt goes to a folder, which doesn't ask. Into a shell that
-            // may be busy, AirSCP asks first, and its Type cd button asks the person.
+            // History… types its entry at the prompt: its Insert asks, showing the command.
+            main.selectedWorkspace?.terminal.history.add("rm -rf cache")
+            #expect(await call(agent, "press", ["id": "terminal.history"]).error == nil && agent.question == nil)
+            #expect(await call(agent, "wait", ["until": "sheet", "timeout": 10]).error == nil)
+            let inserting2 = Task { await call(agent, "press", ["title": "Insert"]) }
+            let history = try #require(await waitForQuestion(agent))
+            #expect(history.change == "type into the Terminal tab of “lab”" && history.detail == "rm -rf cache" && history.code)
+            history.answer = .deny
+            #expect(await inserting2.value.error == AgentBridge.declined + history.change + ".")
+            #expect(await call(agent, "press", ["title": "Cancel"]).error == nil)
+            #expect(!screen.text.contains("rm -rf cache") && screen.waitsAtPrompt)
+
+            // Open Terminal Here in the tab: cd at the empty prompt goes to a folder, which doesn't ask. A shell that may
+            // be busy gets nothing typed: a new tab opens there, which doesn't ask either.
             model.data.settings.openTerminalHereInTab = true
             _ = await call(agent, "press", ["title": "Files"])
             #expect(await call(agent, "select", ["pane": "right", "names": ["folder"]]).error == nil)
@@ -307,17 +319,88 @@ extension FeatureRoundAppTests {
             #expect(await call(agent, "go", ["pane": "right", "path": server.home]).error == nil)
             #expect(await call(agent, "select", ["pane": "right", "names": ["folder"]]).error == nil)
             #expect(await call(agent, "menu", ["path": "File > Open Terminal Here"]).error == nil && agent.question == nil)
-            #expect(await call(agent, "wait", ["until": "sheet", "timeout": 10]).error == nil)
-            let typingCd = Task { await call(agent, "press", ["title": "Type cd"]) }
-            let cd = try #require(await waitForQuestion(agent))
-            #expect(cd.change == "press “Type cd”" && cd.detail.contains("Type cd into the Terminal tab?"))
-            cd.answer = .deny
-            #expect(await typingCd.value.error == AgentBridge.declined + "press “Type cd”.")
-            #expect(await call(agent, "press", ["title": "Cancel"]).error == nil && agent.question == nil)
+            #expect(main.selectedWorkspace?.terminal.sessions.count == 2 && !screen.waitsAtPrompt)
+            #expect(await eventually(timeout: 20) { main.selectedWorkspace?.terminal.session?.screen.directory == server.path("folder") })
 
-            main.selectedWorkspace?.terminal.session?.close()
+            // Closing a tab whose command still runs: AirSCP's own question, whose Close Tab asks the person.
+            let terminal = try #require(main.selectedWorkspace?.terminal)
+            let busy = try #require(terminal.session?.screen)
+            #expect(await eventually(timeout: 20) { busy.waitsAtPrompt })
+            terminal.session?.send("sleep 30\r")
+            #expect(await eventually(timeout: 20) { busy.blocks.last?.running == true })
+            let closing = await call(agent, "press", ["id": "terminal.closeTab"])
+            #expect(closing.error == nil && agent.question == nil && sheet(closing) != nil, "\(closing.json)")
+            let closed = Task { await call(agent, "press", ["title": "Close Tab"]) }
+            let close = try #require(await waitForQuestion(agent))
+            #expect(close.change == "press “Close Tab”" && close.detail.contains("sleep 30"), "\(close.detail)")
+            close.answer = .deny
+            #expect(await closed.value.error == AgentBridge.declined + "press “Close Tab”.")
+            #expect(terminal.sessions.count == 2 && terminal.session?.screen === busy)
+            #expect(await call(agent, "press", ["title": "Cancel"]).error == nil)
+
+            terminal.sessions.forEach { $0.close() }
             await main.selectedWorkspace?.connection.disconnect()
         }
+    }
+
+    /// On S3 storage, what changes it asks as on a server (Move To…, a drop, Rename's and Delete's buttons); so do Compress
+    /// and Extract, which copy through this Mac there, and a presigned link, which lets anyone download the file. Allowed,
+    /// Compress's own question doesn't ask again.
+    @MainActor @Test func s3ChangesZipsAndPresignedLinksAsk() async throws {
+        _ = NSApplication.shared
+        let storage = try TestS3()
+        defer { storage.stop() }
+        storage.put("bucket", "a.txt", Data("a".utf8))
+        storage.put("bucket", "b.zip", Data("not opened".utf8))
+        let local = try scratch()
+        try write("up", to: local + "/up.txt")
+        let model = testModel([storage.host()])
+        let askpass = try AskpassServer(helperPath: TestEnvironment.airscpBinary)
+        defer { askpass.close() }
+        let (main, agent, _) = try agentWindow(model, askpass)
+        defer {
+            agent.close()
+            main.window?.orderOut(nil)
+        }
+        model.data.settings.askBeforeAgentChanges = true
+        _ = await call(agent, "select", ["pane": "sidebar", "names": ["Test storage"]])
+        #expect(await call(agent, "menu", ["path": "Host > Connect"]).error == nil)
+        #expect(await call(agent, "wait", ["until": "connected", "timeout": 20]).error == nil)
+        #expect(await call(agent, "wait", ["until": "listed", "pane": "right", "text": "bucket", "timeout": 20]).error == nil)
+        #expect(await call(agent, "open", ["name": "bucket"]).error == nil && agent.question == nil)
+        for (name, path) in [("a.txt", "File > Move To…"), ("a.txt", "File > Compress…"), ("b.zip", "File > Extract Here"),
+                             ("b.zip", "File > Extract to New Folder"), ("a.txt", "context > Copy Presigned Link…")] {
+            #expect(await call(agent, "select", ["pane": "right", "names": [name]]).error == nil)
+            let asking = Task { await call(agent, "menu", ["path": path, "pane": "right"]) }
+            let question = try #require(await waitForQuestion(agent), "\(path)")
+            #expect(question.detail.contains("“\(name)” in /bucket on “Test storage”"), "\(path): \(question.detail)")
+            question.answer = .deny
+            #expect(await asking.value.error?.hasPrefix(AgentBridge.declined) == true, "\(path)")
+        }
+        let dropping = Task { await call(agent, "drop", ["files": [local + "/up.txt"], "pane": "right"]) }
+        try #require(await waitForQuestion(agent)).answer = .deny
+        #expect(await dropping.value.error?.hasPrefix(AgentBridge.declined) == true)
+        for (menu, field, button) in [("File > Rename…", "renamed.txt", "Rename"), ("File > Delete…", nil, "Delete")] {
+            #expect(await call(agent, "select", ["pane": "right", "names": ["a.txt"]]).error == nil)
+            #expect(await call(agent, "menu", ["path": menu]).error == nil && agent.question == nil)
+            if let field { #expect(await call(agent, "set", ["id": "prompt.name", "value": field]).error == nil) }
+            let pressing = Task { await call(agent, "press", ["title": button]) }
+            let question = try #require(await waitForQuestion(agent), "\(menu)")
+            #expect(question.change == "press “\(button)”")
+            question.answer = .deny
+            #expect(await pressing.value.error == AgentBridge.declined + "press “\(button)”.")
+            #expect(await call(agent, "press", ["title": "Cancel"]).error == nil)
+        }
+        #expect(storage.keys("bucket") == ["a.txt", "b.zip"])
+        #expect(main.selectedWorkspace?.session.transfers.jobs.isEmpty == true && main.window?.attachedSheet == nil)
+
+        _ = await call(agent, "select", ["pane": "right", "names": ["a.txt"]])
+        let compressing = Task { await call(agent, "menu", ["path": "File > Compress…"]) }
+        try #require(await waitForQuestion(agent)).answer = .once
+        #expect(await compressing.value.error == nil)
+        #expect(await call(agent, "press", ["title": "Compress"]).error == nil && agent.question == nil)
+        #expect(await eventually(timeout: 30) { storage.keys("bucket").contains("a.txt.zip") }, "\(storage.keys("bucket"))")
+        await main.selectedWorkspace?.connection.disconnect()
     }
 }
 

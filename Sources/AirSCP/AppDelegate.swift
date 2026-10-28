@@ -44,6 +44,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSMenu
     func applicationDidFinishLaunching(_ notification: Notification) {
         Store.migrateFromPorter()  // the first start after the rename, before any window or setting is read
         if Env.value("SSH_DIR") != nil { useTestSSHDirectory() }
+        #if APPSTORE
+        FolderAccess.restore()  // the folders the person chose before, for as long as AirSCP runs
+        if Env.value("SSH_DIR") == nil { useSSHFolder() }
+        #endif
         model = AppModel(data: Store.load())
         // Once until a save works again: every change (a folder opened, a key typed in a snippet) tries to save.
         model.onSaveError = { [weak self] error in
@@ -241,6 +245,45 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSMenu
         log.log("AIRSCP_SSH_DIR: using \(sshDirectory, privacy: .public)")
     }
 
+    #if APPSTORE
+    /// The App Store version's SSH folder (`sshDirectory`): the one the person chose (Settings, the welcome sheet), else
+    /// the real ~/.ssh when a folder they allowed holds it (their home folder, say), else AirSCP's own in its container.
+    /// ssh finds the real ~/.ssh by itself; any other is named in its options (`OpenSSH.sshFolder`).
+    func useSSHFolder() {
+        let real = FolderAccess.home + "/.ssh", own = NSHomeDirectory() + "/.ssh"
+        let chosen = UserDefaults.standard.string(forKey: "sshFolder").flatMap { FolderAccess.covers($0) ? $0 : nil }
+        sshDirectory = chosen ?? (FolderAccess.covers(real, in: FolderAccess.folders) ? real : own)
+        if sshDirectory == own {
+            try? FileManager.default.createDirectory(atPath: own, withIntermediateDirectories: true,
+                                                     attributes: [.posixPermissions: 0o700])
+        }
+        OpenSSH.sshFolder = sshDirectory == real ? nil : sshDirectory
+        keys?.close()  // it lists the folder it was opened with
+        keys = nil
+        model?.objectWillChange.send()  // Settings shows the folder
+    }
+
+    /// Give Access to Your SSH Folder…: an Open panel at ~/.ssh; the folder chosen becomes the SSH folder, then `done`.
+    @objc func chooseSSHFolder(_ sender: Any?) { chooseSSHFolder(on: nil) }
+
+    func chooseSSHFolder(on window: NSWindow?, then done: (() -> Void)? = nil) {
+        let panel = NSOpenPanel()
+        panel.canChooseFiles = false
+        panel.canChooseDirectories = true
+        panel.showsHiddenFiles = true
+        panel.directoryURL = URL(fileURLWithPath: FolderAccess.home + "/.ssh", isDirectory: true)
+        panel.prompt = "Allow"
+        panel.message = "Choose your SSH folder (.ssh in your home folder): ssh then uses your keys, known hosts and "
+            + "config. The App Store version of AirSCP opens only the folders you choose."
+        Panels.run(panel, on: window ?? main.window) { [self] urls in
+            guard let url = urls.first else { return }
+            UserDefaults.standard.set(url.path, forKey: "sshFolder")
+            useSSHFolder()
+            done?()
+        }
+    }
+    #endif
+
     func run(_ snippet: Snippet, on id: UUID) {
         // A sheet on the main window is about the host it shows: switching hosts under it would put it over another.
         if main.window?.attachedSheet != nil {
@@ -264,6 +307,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSMenu
     @objc func newHost(_ sender: Any?) { main.newHost() }
 
     @objc func newRemoteDesktop(_ sender: Any?) { main.newRemoteDesktop() }
+
+    @objc func newS3Connection(_ sender: Any?) { main.newS3Connection() }
 
     @objc func newGroup(_ sender: Any?) { main.newGroup() }
 
@@ -292,6 +337,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSMenu
                     case .importConfig: self.importSSHConfig(nil)
                     case .newHost: self.newHost(nil)
                     case .newDesktop: self.newRemoteDesktop(nil)
+                    #if APPSTORE
+                    case .sshFolder: self.chooseSSHFolder(nil)
+                    #endif
                     }
                 }
             }
@@ -465,6 +513,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSMenu
     @objc func importSSHConfig(_ sender: Any?) {
         main.showWindow(nil)
         guard let window = main.window else { return }
+        #if APPSTORE
+        // The sandbox opens ~/.ssh only once the person allows it: while AirSCP has only its own folder, ask first.
+        if sshDirectory == NSHomeDirectory() + "/.ssh" && Env.value("SSH_DIR") == nil {
+            return chooseSSHFolder(on: window) { [weak self] in self?.importSSHConfig(nil) }
+        }
+        #endif
         let text = (try? String(contentsOfFile: sshDirectory + "/config", encoding: .utf8)) ?? ""
         let aliases = SSHConfig.aliases(in: text, folder: sshDirectory)
         guard !aliases.isEmpty else {
@@ -483,6 +537,57 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSMenu
                 if let first = self.model.importAliases(chosen).first { self.main.sidebar.selection = .host(first.id) }
             }, close: close)
         }
+    }
+
+    /// File ▸ Import from ~/.aws…: an S3 connection for each AWS CLI profile with a key of its own (not one AirSCP has
+    /// already: the same key at the same endpoint), its secret and token in the Keychain. Profiles that can't be used
+    /// are named with why.
+    @objc func importAWSProfiles(_ sender: Any?) {
+        main.showWindow(nil)
+        #if APPSTORE
+        // The sandbox opens ~/.aws only once the person allows it (Panels.run keeps it for the next time).
+        if !FolderAccess.covers(AWSProfiles.folder) {
+            let panel = NSOpenPanel()
+            panel.canChooseFiles = false
+            panel.canChooseDirectories = true
+            panel.showsHiddenFiles = true
+            panel.directoryURL = URL(fileURLWithPath: AWSProfiles.folder, isDirectory: true)
+            panel.prompt = "Allow"
+            panel.message = "Choose your AWS folder (.aws in your home folder) to import its profiles. The App Store version "
+                + "of AirSCP opens only the folders you choose."
+            return Panels.run(panel, on: main.window) { [weak self] urls in
+                guard let url = urls.first else { return }
+                self?.importAWSProfiles(from: FolderAccess.covers(AWSProfiles.folder) ? AWSProfiles.folder : url.path)
+            }
+        }
+        #endif
+        importAWSProfiles(from: AWSProfiles.folder)
+    }
+
+    private func importAWSProfiles(from folder: String) {
+        let profiles = AWSProfiles.profiles(in: folder)
+        var added: [SSHHost] = []
+        for profile in profiles where profile.problem == nil {
+            guard !model.data.hosts.contains(where: { $0.s3?.accessKeyID == profile.accessKeyID && $0.s3?.endpoint == profile.endpoint })
+            else { continue }
+            var host = SSHHost(label: profile.name == "default" ? "AWS" : profile.name)
+            host.s3 = S3Settings(endpoint: profile.endpoint, region: profile.region, accessKeyID: profile.accessKeyID,
+                                 pathStyle: profile.pathStyle)
+            model.save(host)
+            model.setSavedPassword(host.id.uuidString, profile.secret)
+            if !profile.token.isEmpty { model.setSavedPassword(S3Settings.tokenKey(host.id), profile.token) }
+            added.append(host)
+        }
+        if let first = added.first { main.sidebar.selection = .host(first.id) }
+        let alert = NSAlert()
+        alert.messageText = added.isEmpty ? "No new S3 connections from ~/.aws"
+            : added.count == 1 ? "Imported 1 S3 connection" : "Imported \(added.count) S3 connections"
+        let left = profiles.compactMap { profile in profile.problem.map { "“\(profile.name)” \($0)." } }
+        alert.informativeText = (profiles.isEmpty ? "AirSCP found no profiles in ~/.aws/credentials or ~/.aws/config."
+            : added.isEmpty && left.isEmpty ? "Every profile with an access key is in AirSCP already." : "The secret keys are in "
+                + "your Keychain now; the files in ~/.aws stay as they are.") + (left.isEmpty ? "" : "\n\nLeft out:\n" + left.joined(separator: "\n"))
+        alert.addOK()
+        if let window = main.window { alert.beginSheetModal(for: window) }
     }
 
     /// File ▸ Import Hosts…: a file from Export Hosts (on this Mac or another).
@@ -538,9 +643,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSMenu
         let panel = NSOpenPanel()
         panel.allowedContentTypes = [UTType(filenameExtension: "ini") ?? .plainText, .plainText]
         panel.message = "Choose WinSCP.ini (in WinSCP: Tools ▸ Export/Backup Configuration). Put its .ppk keys beside it."
+        #if APPSTORE
+        // The sandbox opens only what is chosen: the keys beside the file are chosen with it.
+        panel.allowsMultipleSelection = true
+        panel.allowedContentTypes.append(UTType(filenameExtension: "ppk") ?? .data)
+        panel.message = "Choose WinSCP.ini (in WinSCP: Tools ▸ Export/Backup Configuration) and the .ppk keys beside it."
+        #endif
         main.showWindow(nil)
         Panels.run(panel, on: main.window) { [self] urls in
-            guard let url = urls.first else { return }
+            guard let url = urls.first(where: { $0.pathExtension.lowercased() != "ppk" }) else { return }
             Task { await importWinSCP(from: url) }
         }
     }
@@ -607,7 +718,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSMenu
         // a sheet behind it.
         let underSheet: Set<Selector?> = [#selector(selectConnected(_:)), #selector(newHost(_:)), #selector(newRemoteDesktop(_:)),
                                           #selector(newGroup(_:)), #selector(importSSHConfig(_:)), #selector(importHosts(_:)),
-                                          #selector(importWinSCP(_:)),
+                                          #selector(importWinSCP(_:)), #selector(newS3Connection(_:)), #selector(importAWSProfiles(_:)),
                                           #selector(showWelcome(_:))]
         var enabled = true, reason = "A sheet is open in AirSCP's window: answer or close it first."
         if underSheet.contains(item.action), main?.window?.attachedSheet != nil {
@@ -668,7 +779,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSMenu
 
     // MARK: Menu bar
 
-    /// Shortcuts taken here: ⌘N New Host, ⌘K Connect, ⌘T Open Terminal, ⌃⌘T Terminal Tab, ⌘E Disconnect, ⇧⌘R Run Command,
+    /// Shortcuts taken here: ⌘N New Host, ⌘K Connect, ⌘T Open Terminal, ⌃⌘T Terminal Tab, ⇧⌘T New Terminal Tab, ⌘{ ⌘}
+    /// the terminal tab before and after, ⌘E Disconnect, ⇧⌘R Run Command,
     /// ⇧⌘C Copy ssh Command, ⌥⌘L Command Log, ⌃⌘S Sidebar, ⌘0 AirSCP (the main window), ⌘1…⌘9 the connected hosts,
     /// ⌘, Settings, ⌘F Find. The browser's file commands (BrowserContentController) keep Finder's: ⇧⌘N, ⌘D, ⌘I, ⌘⌫, ⌘[ and so on.
     func mainMenu() -> NSMenu {
@@ -754,9 +866,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSMenu
             menu("File", [
                 item("New Host…", #selector(newHost(_:)), "n"),
                 item("New Remote Desktop…", #selector(newRemoteDesktop(_:))),
+                item("New S3 Connection…", #selector(newS3Connection(_:))),
                 item("New Group…", #selector(newGroup(_:))),
                 .separator(),
                 item("Import from ~/.ssh/config…", #selector(importSSHConfig(_:))),
+                item("Import from ~/.aws…", #selector(importAWSProfiles(_:))),
                 item("Import from WinSCP…", #selector(importWinSCP(_:))),
                 item("Import Hosts…", #selector(importHosts(_:))),
                 item("Export Hosts…", #selector(exportHosts(_:))),
@@ -787,6 +901,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSMenu
                 item("Run Command…", #selector(MainWindowController.runCommand(_:)), "R"),
                 item("Tunnels", #selector(MainWindowController.showTunnels(_:))),
                 item("Terminal Tab", #selector(MainWindowController.showTerminal(_:)), "t", [.command, .control]),
+                item("New Terminal Tab", #selector(MainWindowController.newTerminalTab(_:)), "T"),
+                item("Close Terminal Tab", #selector(MainWindowController.closeTerminalTab(_:))),
+                item("Show Previous Terminal Tab", #selector(MainWindowController.showPreviousTerminalTab(_:)), "{"),
+                item("Show Next Terminal Tab", #selector(MainWindowController.showNextTerminalTab(_:)), "}"),
                 item("Copy ssh Command", #selector(MainWindowController.copySSHCommand(_:)), "C"),
                 item("Copy Link", #selector(MainWindowController.copyLink(_:))),
                 item("Server Info…", #selector(MainWindowController.showServerInfo(_:))),

@@ -213,6 +213,10 @@ private func agent(_ arguments: [String], support: String) async -> CommandResul
     let out = try scratch() + "/shot.png"
     let shot = await agent(["screenshot", "--out", out], support: app.support)
     #expect(shot.status == 0 && read(out) == "PNG!" && shot.output.contains("\"tool\":\"screenshot\""))
+    // --out -: the image on standard output, the text on standard error (the App Store version's helper may write files
+    // only in its container).
+    let piped = await agent(["screenshot", "--out", "-"], support: app.support)
+    #expect(piped.status == 0 && piped.stdout == Data("PNG!".utf8) && piped.stderr.contains("\"tool\":\"screenshot\""))
     // A failed tool: exit status 1. A bad argument: 2, and nothing is sent.
     #expect(await agent(["fail"], support: app.support).status == 1)
     let before = app.requests.all.count
@@ -322,7 +326,7 @@ private func agent(_ arguments: [String], support: String) async -> CommandResul
     // Control ids (hostEditor.hostname and the like) are written somewhere in the app's sources.
     let sources = try FileManager.default.contentsOfDirectory(atPath: sourceFolder).filter { $0.hasSuffix(".swift") }
         .map { try String(contentsOfFile: sourceFolder + "/" + $0, encoding: .utf8) }.joined()
-    let id = #"((?:hostEditor|rdpEditor|proxyEditor|tunnelEditor|runCommand|monitor|newKey|importKey|exportKey|keyResult|keys|permissions|prompt|rdpLogin|settings|editor|run|compress|transfers|transfer|find|sync|snippet|snippets|terminal|certificates)\.[a-zA-Z]+)"#
+    let id = #"((?:hostEditor|rdpEditor|proxyEditor|tunnelEditor|runCommand|monitor|newKey|importKey|exportKey|keyResult|keys|permissions|prompt|rdpLogin|settings|editor|run|compress|transfers|transfer|find|sync|snippet|snippets|terminal|certificates|s3Editor|presign)\.[a-zA-Z]+)"#
     func found(_ pattern: String, in text: String) throws -> Set<String> {
         let regex = try NSRegularExpression(pattern: pattern)
         return Set(regex.matches(in: text, range: NSRange(text.startIndex..., in: text))
@@ -496,10 +500,10 @@ struct AgentLabTests {
         let menus = try await app.call("snapshot", ["include": ["menus"]])["menus"] as? [[String: Any]] ?? []
         let paths = menus.compactMap { $0["path"] as? String }
         #expect(paths.contains("Host > Delete Group > Lab Servers…") && paths.contains("View > Columns > Owner"))
-        // AppKit's window tabs (Show Tab Bar, Move Tab to New Window…), not AirSCP's own Host > Terminal Tab.
-        // (macOS's own Writing Tools submenu has "Make Table".)
+        // AppKit's window tabs (Show Tab Bar, Move Tab to New Window…), not AirSCP's own terminal tab commands (Host >
+        // Terminal Tab, New Terminal Tab…). (macOS's own Writing Tools submenu has "Make Table".)
         let tabbing = paths.filter {
-            ($0.contains("Tab") && $0 != "Host > Terminal Tab" && !$0.hasPrefix("Edit > Writing Tools")) || $0.contains("Merge All Windows")
+            ($0.contains("Tab") && !$0.contains("Terminal Tab") && !$0.hasPrefix("Edit > Writing Tools")) || $0.contains("Merge All Windows")
         }
         #expect(tabbing.isEmpty, "\(tabbing)")
         // The main window once: AirSCP's own Window ▸ AirSCP (⌘0), not also AppKit's entry for it under its title.

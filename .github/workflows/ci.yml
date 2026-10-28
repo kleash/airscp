@@ -33,10 +33,24 @@ jobs:
     env:
       # AirSCP builds with the Command Line Tools alone (no Xcode project); the runner has them next to Xcode.
       DEVELOPER_DIR: /Library/Developer/CommandLineTools
+      # The linker's note that SwiftPM's own search paths under the Command Line Tools don't exist: not the code's.
+      TOOLCHAIN_NOISE: "ld: warning: search path '/Library/Developer/CommandLineTools/Developer/"
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+
+      # The runner's newest Command Line Tools default to macOS 27's SDK, whose SwiftUI needs a macro plugin that only
+      # Xcode has (@State: "plugin for module 'SwiftUIMacros' not found"). Build with the macOS 26 SDK they also ship.
+      - name: macOS 26 SDK (and Xcode 26 for the tests)
+        run: |
+          ls /Library/Developer/CommandLineTools/SDKs
+          sdk=$(ls -d /Library/Developer/CommandLineTools/SDKs/MacOSX26*.sdk 2>/dev/null | sort -V | tail -n 1)
+          [ -n "$sdk" ] || { echo "::error::no macOS 26 SDK in the Command Line Tools (listed above)"; exit 1; }
+          echo "SDKROOT=$sdk" >> "$GITHUB_ENV"
+          xcode=$(ls -d /Applications/Xcode_26*.app | sort -V | tail -n 1)
+          [ -n "$xcode" ] || { echo "::error::No Xcode 26 on this runner"; exit 1; }
+          echo "XCODE26=$xcode/Contents/Developer" >> "$GITHUB_ENV"
 
       - name: Versions agree with VERSION
         run: |
@@ -76,16 +90,30 @@ jobs:
         run: |
           mkdir -p build
           swift build 2>&1 | tee build/swift-build.log
-          if grep -q 'warning:' build/swift-build.log; then
+          if grep 'warning:' build/swift-build.log | grep -qv "$TOOLCHAIN_NOISE"; then
             echo "::error::swift build has warnings (above)"
             exit 1
           fi
 
+      # The Mac App Store version: the same sources with Swift's APPSTORE condition (./build.sh --appstore). Compiled
+      # without warnings and scanned for private API, which App Review rejects; scripts/release-appstore.sh does the rest.
+      - name: App Store version (compiles, public API only)
+        run: |
+          swift build -Xswiftc -DAPPSTORE --scratch-path .build/appstore 2>&1 | tee build/swift-build-appstore.log
+          if grep 'warning:' build/swift-build-appstore.log | grep -qv "$TOOLCHAIN_NOISE"; then
+            echo "::error::the App Store version has warnings (above)"
+            exit 1
+          fi
+          scripts/check-private-api.sh "$(swift build -Xswiftc -DAPPSTORE --scratch-path .build/appstore --show-bin-path)/AirSCP"
+
       # The tests wait on conditions, not timings, so the suite passes as it is on a busy 3-core runner. A test that
       # fails anyway is run once more on its own, with a warning (a timing bug to fix); one that fails again fails the run.
       # Only after a full run, though: one that ended before Swift Testing's summary left tests unrun, and fails here.
+      # With Xcode 26's Swift: these Command Line Tools also lack Swift Testing's macro plugin ('TestingMacros').
       - name: Tests (./test.sh)
         run: |
+          export DEVELOPER_DIR=$XCODE26
+          unset SDKROOT
           if ./test.sh 2>&1 | tee build/test.log; then exit 0; fi
           grep -qE '^. Test run with [0-9]+ tests? ' build/test.log || exit 1
           failed=$(sed -n -E 's/^✘ Test ([A-Za-z0-9_]+)\(.*/\1/p' build/test.log | sort -u | paste -sd '|' -)

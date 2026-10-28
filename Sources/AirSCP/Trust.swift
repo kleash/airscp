@@ -114,7 +114,7 @@ struct CertificateCheckFields: View {
         if !caFile.isEmpty {
             panel.directoryURL = URL(fileURLWithPath: (caFile as NSString).expandingTildeInPath).deletingLastPathComponent()
         }
-        Panels.run(panel, on: window()) { urls in
+        Panels.run(panel, on: window(), keep: true) { urls in
             if let url = urls.first { caFile = url.path }
         }
     }

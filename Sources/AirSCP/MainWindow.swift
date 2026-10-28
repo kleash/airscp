@@ -192,9 +192,16 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
         } })
     }
 
-    /// Opens Terminal (or iTerm) with ssh to the host, riding its connection when it has one.
+    /// Opens Terminal (or iTerm) with ssh to the host, riding its connection when it has one; a command goes to the
+    /// host's Terminal tab instead when Settings says so (connecting first). The App Store version always opens the
+    /// host's Terminal tab, connecting first (`HostWorkspace.openTerminal(command:)`).
     func openTerminal(for id: UUID, command: String? = nil) {
+        guard model.host(id)?.s3 == nil else { return }
+        #if APPSTORE
+        open(id) { $0.openTerminal(command: command) }
+        #else
         if let workspace = workspaces[id] { return workspace.openTerminal(command: command) }
+        if command != nil, model.data.settings.openTerminalHereInTab { return open(id) { $0.openTerminal(command: command) } }
         guard let host = model.host(id) else { return }
         let model = self.model, askpass = self.askpass
         Task {
@@ -205,6 +212,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
                 showError(error, title: "Can't open a terminal for “\(host.displayName)”", on: window)
             }
         }
+        #endif
     }
 
     /// Shows the RDP entry's desktop (selecting it) and connects it.
@@ -255,6 +263,12 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
         }
     }
 
+    func newS3Connection() {
+        var host = SSHHost()
+        host.s3 = S3Settings()
+        editS3(host, isNew: true)
+    }
+
     func newRemoteDesktop() {
         var entry = RDPEntry()
         entry.certificateCheck = model.data.settings.certificateCheck
@@ -278,7 +292,9 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
     }
 
     func edit(_ item: SidebarItem) {
-        if let host = model.host(item.id) {
+        if let host = model.host(item.id), host.s3 != nil {
+            editS3(host)
+        } else if let host = model.host(item.id) {
             editHost(host)
         } else if let entry = model.rdpEntry(item.id) {
             editEntry(entry)
@@ -308,7 +324,8 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
                 return
             }
             let running = workspaces[host.id]?.runningTransferCount ?? 0
-            confirm("Delete “\(host.displayName)”?", info: "AirSCP forgets its settings, tunnels and saved password."
+            confirm("Delete “\(host.displayName)”?", info: (host.s3 != nil ? "AirSCP forgets its settings and keys (the storage keeps its files)."
+                                                             : "AirSCP forgets its settings, tunnels and saved password.")
                     + (running > 0 ? " Its \(transfers(running)) are cancelled." : ""),
                     button: "Delete", destructive: true, on: window) { [weak self] in self?.remove(item) }
         } else if let entry = model.rdpEntry(item.id) {
@@ -377,6 +394,18 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
         }
     }
 
+    /// The S3 connection editor.
+    private func editS3(_ host: SSHHost, isNew: Bool = false) {
+        guard let window else { return }
+        showWindow(nil)
+        presentSheet(on: window) { close in
+            S3EditorView(model: model, host: host, isNew: isNew, askpass: askpass) { [weak self] saved in
+                close()
+                if isNew, let saved { self?.sidebar.selection = .host(saved) }
+            }
+        }
+    }
+
     /// The RDP entry editor. Its Test Connection goes through the entry's SSH host, connecting it first as Connect does
     /// (the host's questions are sheets on the editor then: `HostWorkspace.ask`).
     private func editEntry(_ entry: RDPEntry, isNew: Bool = false) {
@@ -403,14 +432,33 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
     @objc func runCommand(_ sender: Any?) { selectedHost.map { open($0.id) { $0.showRunCommand() } } }
     @objc func showTunnels(_ sender: Any?) { selectedWorkspace?.showTunnels() }
     @objc func showTerminal(_ sender: Any?) { selectedWorkspace?.showTerminal() }
+    @objc func newTerminalTab(_ sender: Any?) { selectedWorkspace?.newTerminalTab() }
+    @objc func closeTerminalTab(_ sender: Any?) {
+        selectedWorkspace?.showTerminal()
+        selectedWorkspace?.terminal.closeTab(sender)
+    }
+    @objc func showPreviousTerminalTab(_ sender: Any?) {
+        selectedWorkspace?.showTerminal()
+        selectedWorkspace?.terminal.showTab(step: -1)
+    }
+    @objc func showNextTerminalTab(_ sender: Any?) {
+        selectedWorkspace?.showTerminal()
+        selectedWorkspace?.terminal.showTab(step: 1)
+    }
     @objc func copySSHCommand(_ sender: Any?) { selectedHost.map { copyCommand($0, in: model.data) } }
     @objc func showServerInfo(_ sender: Any?) { selectedWorkspace?.showServerInfo() }
     @objc func changePassword(_ sender: Any?) { selectedWorkspace?.changePassword() }
 
     /// Host ▸ Copy Link: sftp://user@host:port/<the folder shown> (ssh:// when no server folder is shown); no password.
+    /// An S3 connection's: s3://bucket/folder/ of the folder shown.
     @objc func copyLink(_ sender: Any?) {
         guard let host = selectedHost else { return }
         let path = selectedWorkspace.flatMap { $0.session.state == .connected ? $0.browser.right.dir : nil }
+        if let s3 = host.s3 {
+            NSPasteboard.general.clearContents()
+            NSPasteboard.general.setString(Session.s3URI(path ?? "/" + s3.bucket, folder: true), forType: .string)
+            return
+        }
         NSPasteboard.general.clearContents()
         NSPasteboard.general.setString(HostLink.string(for: host, path: path ?? (host.defaultRemoteDir.isEmpty ? nil : host.defaultRemoteDir)),
                                        forType: .string)
@@ -465,6 +513,12 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
         let desktopActive = desktop == .connected || desktop == .connecting
         let nothing = "Nothing is selected in the sidebar: select a host or desktop first."
         let noHost = selectedEntry != nil ? "This is for SSH hosts: a Remote Desktop has no shell." : nothing
+        let sshOnly: [Selector?] = [#selector(openTerminal(_:)), #selector(showTunnels(_:)), #selector(showTerminal(_:)),
+                                    #selector(newTerminalTab(_:)), #selector(closeTerminalTab(_:)),
+                                    #selector(showPreviousTerminalTab(_:)), #selector(showNextTerminalTab(_:)),
+                                    #selector(runCommand(_:)), #selector(copySSHCommand(_:)), #selector(showServerInfo(_:)),
+                                    #selector(changePassword(_:))]
+        if selectedHost?.s3 != nil, sshOnly.contains(action) { return (false, Session.s3NoShell) }
         switch action {
         case #selector(connectHost(_:)):
             if selectedEntry != nil { return (!desktopActive, desktopActive ? "Already connected." : nil) }
@@ -489,6 +543,16 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
             guard state == .connected else { return (false, "Connect to the host first: passwd runs in its Terminal tab.") }
             let capabilities = selectedWorkspace?.session.capabilities
             return (capabilities?.shell == true, capabilities?.noShellReason ?? "This server doesn't run commands.")
+        case #selector(newTerminalTab(_:)):
+            guard selectedHost != nil else { return (false, noHost) }
+            return (state == .connected, TerminalController.notConnected + ".")
+        case #selector(closeTerminalTab(_:)):
+            guard selectedHost != nil else { return (false, noHost) }
+            return ((selectedWorkspace?.terminal.sessions.count ?? 0) > 1, TerminalController.lastTab + ".")
+        case #selector(showPreviousTerminalTab(_:)), #selector(showNextTerminalTab(_:)):
+            guard selectedHost != nil else { return (false, noHost) }
+            return ((selectedWorkspace?.terminal.sessions.count ?? 0) > 1,
+                    "The Terminal tab has one shell: New Terminal Tab (⇧⌘T) opens another.")
         case #selector(copySSHCommand(_:)):
             guard let host = selectedHost else { return (false, noHost) }
             let problem = copyCommandProblem(host, in: model.data)
@@ -514,12 +578,18 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
         toolbarDefaultItemIdentifiers(toolbar)
     }
 
+    #if APPSTORE
+    private static let terminalTip = "Open a shell on this host in its Terminal tab (⌘T)"
+    #else
+    private static let terminalTip = "Open an ssh session to this host in Terminal (⌘T)"
+    #endif
+
     /// The toolbar items' tooltips (while one is off: why).
     static let toolbarTips: [NSToolbarItem.Identifier: String] = [
         .toggleSidebar: "Hide or show the list of hosts (⌃⌘S)",
-        .add: "Add a server (SSH), a Windows desktop, or a group for the sidebar",
+        .add: "Add a server (SSH), a Windows desktop, S3 storage, or a group for the sidebar",
         .connect: "Connect to the selected host or desktop (⌘K)",
-        .terminal: "Open an ssh session to this host in Terminal (⌘T)",
+        .terminal: terminalTip,
         .runCommand: "Run one command on this host and read its output here (⇧⌘R)",
         .commandLog: "Show or hide the commands AirSCP ran on this host, with their results (⌥⌘L)",
         .disconnect: "Close the connection to this host or desktop (⌘E)",
@@ -557,6 +627,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
             item.menu.addItem(withTitle: "", action: nil, keyEquivalent: "")
             for (title, action) in [("New Host…", #selector(AppDelegate.newHost(_:))),
                                     ("New Remote Desktop…", #selector(AppDelegate.newRemoteDesktop(_:))),
+                                    ("New S3 Connection…", #selector(AppDelegate.newS3Connection(_:))),
                                     ("New Group…", #selector(AppDelegate.newGroup(_:)))] {
                 item.menu.addItem(withTitle: title, action: action, keyEquivalent: "").toolTip = MenuHelp.tips[action]
             }

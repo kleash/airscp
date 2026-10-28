@@ -5,6 +5,40 @@ nav_order: 18
 
 # What's new
 
+## AirSCP 1.3.0
+
+- **Amazon S3 and S3-compatible storage**: **File ▸ New S3 Connection…** saves an Amazon S3, MinIO, Cloudflare R2,
+  Backblaze B2, Wasabi or Ceph account. Its buckets open in the Files tab like a server's folders: browse, drag files
+  in and out, rename, move, copy, delete, edit, Get Info, Find Files and Synchronize. Big files go in parts that
+  survive a pause. The secret key stays in your Keychain. See [S3 storage](s3/index.md).
+- **Import from ~/.aws**: **File ▸ Import from ~/.aws…** makes S3 connections from the AWS command line tool's
+  profiles.
+- **Links to files on S3**: right-click ▸ **Copy S3 Link** or **Copy Presigned Link…** (an `https` link anyone can open
+  until it expires).
+- **Zips on S3**: **Download as .zip…**, **Compress…** in the bucket and **Extract Here**, made on your Mac. See
+  [Zip and extract](s3/zip-and-extract.md).
+- **Terminal tabs**: open several shells on one host in the Terminal tab, each in a tab of its own, all on the same
+  connection (no second login). Click **+** or choose **Host ▸ New Terminal Tab** (<kbd>⇧⌘T</kbd>); <kbd>⇧⌘[</kbd> and
+  <kbd>⇧⌘]</kbd> go through them, and closing a tab asks first while a command still runs in it. See
+  [The Terminal tab](commands/terminal-tab.md).
+- **Command history**: **History…** lists the commands you ran on a host (bash and zsh), newest first. Type to filter,
+  and AirSCP types the one you choose at the prompt without running it. It stays on this Mac; **Clear History** forgets it.
+- **Insert Path…** (<kbd>⌥⇥</kbd>): pick a file or folder name from the server's folder you are typing, and AirSCP types
+  it at the prompt, quoted where it needs it. Handy for long names and shells that can't complete names.
+- **Drag to Finder**: select a file name in the Terminal tab's output and drag it to Finder to download it.
+- **Open Terminal Here and Run in Terminal** can both go to the Terminal tab (Settings): at an empty prompt AirSCP types
+  the `cd` or the command there; while the shell is busy, it opens a new tab instead of typing into it.
+- **In the Mac App Store**: the same AirSCP, in Apple's sandbox. You choose the folders it may open, starting with your
+  SSH folder, and terminals open in the Terminal tab. See [The App Store version](getting-started/install.md#the-app-store-version).
+- **Apple Intelligence** gives shorter answers that stick closer to AirSCP's real menus and buttons. The Command
+  Log's **Summarize…** now sees which commands failed, and **Do It…** keeps closer to the steps you ask for.
+- **AI agents** work with S3 storage and terminal tabs too. They ask you first before they zip or unpack files on S3
+  or make a presigned link, as they do before they copy or delete. **`AirSCP --agent … --out -`** writes a screenshot to
+  standard output.
+- **Security**: Remote Desktop now uses FreeRDP 3.32.2, which fixes 40 problems found in 3.32.1 (10 of them rated
+  high). None has a CVE number yet; they are listed in
+  [FreeRDP's security advisories](https://github.com/FreeRDP/FreeRDP/security/advisories).
+
 ## AirSCP 1.2.0
 
 - **AI agents ask before they change things**: before an agent deletes, copies or runs something, types into a

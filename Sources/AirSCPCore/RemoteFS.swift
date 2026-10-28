@@ -307,6 +307,7 @@ extension Session {
     }
 
     func list(_ dir: String, slot: Slot) async throws -> [RemoteEntry] {
+        if s3 != nil { return try await listS3(dir) }
         if capabilities.shell {
             do {
                 if let entries = try await listWithShell(dir, slot: slot) { return entries }
@@ -369,6 +370,11 @@ extension Session {
     /// it alone, which says why (or, with a shell, uses sftp).
     public func listings(_ dirs: [String]) async throws -> [[RemoteEntry]?] {
         guard dirs.count > 1 else { return dirs.map { _ in nil } }
+        if s3 != nil {
+            var listed: [[RemoteEntry]?] = []
+            for dir in dirs { listed.append(try? await listS3(dir)) }
+            return listed
+        }
         guard capabilities.shell else { return try await sftpListings(dirs) }
         var result: [[RemoteEntry]?] = []
         let marker = "__AIRSCP_LISTED_\(UUID().uuidString.prefix(8))__"
@@ -458,12 +464,14 @@ extension Session {
     }
 
     public func makeDirectory(_ path: String) async throws {
+        if s3 != nil { return try await makeDirectoryS3(path) }
         try await sftp(["mkdir \(Quote.sftp(path))"])
     }
 
     /// Renames or moves. An existing file at `to` is replaced (check with `exists` first). sftp cuts a batch line at
     /// 2 048 bytes: a rename within a folder whose path is longer goes there first and renames by the names alone.
     public func rename(_ path: String, to newPath: String) async throws {
+        if s3 != nil { return try await copyS3(path, to: newPath, keep: false) }
         let line = "rename \(Quote.sftp(path)) \(Quote.sftp(newPath))"
         let dir = RemotePath.parent(path)
         guard line.utf8.count > 2000, RemotePath.parent(newPath) == dir else {
@@ -477,6 +485,7 @@ extension Session {
     /// Whether the server has something (a file, folder or link) at `path` now: a folder's listing may be older. With
     /// a shell one test; without, a listing of its folder (sftp has no stat).
     public func exists(_ path: String) async throws -> Bool {
+        if s3 != nil { return try await existsS3(path) }
         if capabilities.shell {
             let name = Quote.shell(path)
             return try await shell("if [ -e \(name) ] || [ -L \(name) ]; then echo yes; fi").contains("yes")
@@ -492,6 +501,7 @@ extension Session {
     }
 
     func delete(_ entries: [RemoteEntry], slot: Slot) async throws {
+        if s3 != nil { return try await deleteS3(entries) }
         let others = entries.filter { $0.kind != .directory }
         if !others.isEmpty && capabilities.shell {
             // One command for them all: sftp's rm takes two round trips a file (50 files, half a minute over a slow
@@ -684,6 +694,7 @@ extension Session {
     /// Creates an empty file, only where nothing has the name (made since the folder was listed, perhaps): with a
     /// shell in one step (noclobber: the shell creates it exclusively), else after checking (then puts an empty file).
     public func createFile(_ path: String) async throws {
+        if s3 != nil { return try await createFileS3(path) }
         let exists = AirSCPError(.failure, "“\(RemotePath.name(path))” already exists in that folder (it was made after "
                                  + "the folder was listed). Choose another name.")
         if capabilities.shell {
@@ -723,6 +734,8 @@ extension Session {
 
     /// Why `format` can't be made on this server, or nil when it can.
     public func compressUnavailableReason(_ format: ArchiveFormat) -> String? {
+        // S3 storage zips through this Mac (a queued job); it can't unpack a stream.
+        if s3 != nil { return format == .zip ? nil : "S3 storage can't unpack a stream: its files are copied one by one." }
         let capabilities = self.capabilities
         if !capabilities.shell { return capabilities.noShellReason ?? "This server doesn't run shell commands." }
         let tool = format == .zip ? "zip" : "tar"
@@ -732,6 +745,7 @@ extension Session {
     /// Why the named archive can't be extracted on this server (nil when it can, or when it is no archive AirSCP
     /// knows: check `isArchive`).
     public func extractUnavailableReason(_ name: String) -> String? {
+        if s3 != nil { return nil }  // unpacked on this Mac
         let capabilities = self.capabilities
         if !capabilities.shell { return capabilities.noShellReason }
         switch ArchiveKind(name: name) {
@@ -869,6 +883,7 @@ extension Session {
     /// into it, which keeps everything about it) when renaming would change more than its contents: for a symbolic
     /// link (`isLink`: sftp can't tell), a file of another owner, or one in a folder AirSCP may not write in.
     public func writeText(_ text: String, to path: String, isLink: Bool = false) async throws {
+        if s3 != nil { return try await putS3(Data(text.utf8), to: path) }
         let local = try temporaryFile(Data(text.utf8))
         defer { try? FileManager.default.removeItem(at: local) }
         guard !isLink, let old = try? await item(path), old.kind == .file else { return try await store(local, to: path) }
@@ -899,6 +914,7 @@ extension Session {
     /// `limit`, the download stops once more bytes than that have arrived and `.notText` with `tooLarge` is thrown.
     public func fetch(_ path: String, to local: URL, limit: Int64? = nil, tooLarge: String = "The file is too large.")
         async throws {
+        if s3 != nil { return try await fetchS3(path, to: local, limit: limit, tooLarge: tooLarge) }
         if let tooLong = TransferQueue.tooLong(path) { throw tooLong }
         let get = "get \(Quote.sftp(path)) \(Quote.sftp(local.path))"
         guard let limit else {
@@ -927,6 +943,7 @@ extension Session {
 
     /// Uploads one file with sftp ("Upload changes" after editing in another app).
     public func store(_ local: URL, to path: String) async throws {
+        if s3 != nil { return try await storeS3(local, to: path) }
         try await sftp(["put \(Quote.sftp(local.path)) \(Quote.sftp(path))"])
     }
 

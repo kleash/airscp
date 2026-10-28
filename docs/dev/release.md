@@ -58,6 +58,61 @@ release.yml then warns "not notarized" in the run summary but goes on. Put the "
 `scripts/release-local.sh --adhoc` makes such a build with the hardened runtime, to try the hardened runtime before a
 Developer ID exists.
 
+## Mac App Store
+
+The App Store version is the same code built with `./build.sh --appstore`: Swift's `APPSTORE` condition picks its
+differences (users see them in `docs/getting-started/install.md`'s table), and `Resources/AirSCP-AppStore.entitlements`
+puts it in the App Sandbox (network client and server, folders the person chooses, their bookmarks, Downloads; no
+temporary exceptions). It comes out as `build/appstore/AirSCP.app` with `Resources/PrivacyInfo.xcprivacy`,
+`ITSAppUsesNonExemptEncryption` and no Apple Events. `scripts/check-private-api.sh` (CI runs it) keeps private API out:
+the Developer ID version's AXEnhancedUserInterface and key-appearance calls aren't in it.
+
+### One-time setup
+
+| What | How |
+|---|---|
+| Identities | Xcode ▸ Settings ▸ Accounts ▸ Manage Certificates ▸ + ▸ **Apple Distribution** (signs the app) and **Mac Installer Distribution** (shown in the Keychain as "3rd Party Mac Developer Installer"; signs the package). |
+| App ID and record | developer.apple.com ▸ Identifiers ▸ + ▸ App ID `com.kleash.airscp` (no extra capabilities); App Store Connect ▸ Apps ▸ + ▸ New App: macOS, AirSCP, that bundle id. |
+| Provisioning profile | developer.apple.com ▸ Profiles ▸ + ▸ Mac App Store Connect, for `com.kleash.airscp` and the Apple Distribution certificate. Download it; `AIRSCP_APPSTORE_PROFILE` names the file. |
+| API key | App Store Connect ▸ Users and Access ▸ Integrations ▸ App Store Connect API ▸ + (App Manager). `AuthKey_<id>.p8` into `~/.appstoreconnect/private_keys` (or `APPSTORE_KEY_PATH`); `APPSTORE_KEY_ID` and `APPSTORE_ISSUER` are the key's id and the issuer id shown there. Never in the repository. |
+
+### Upload
+
+```sh
+scripts/release-appstore.sh --adhoc   # any time: the build and every check that needs nothing from Apple
+AIRSCP_APPSTORE_PROFILE=~/Downloads/AirSCP_App_Store.provisionprofile APPSTORE_KEY_ID=… APPSTORE_ISSUER=… \
+    scripts/release-appstore.sh       # universal build, Apple Distribution signature, signed .pkg, validate, upload
+```
+
+The script signs with the profile embedded and its application and team identifiers added to the entitlements (as
+Xcode does), checks the entitlements, the private API scan, the Info.plist, the privacy manifest, the icon (1024 ×
+1024) and the package, then runs `xcrun altool --validate-app` and `--upload-package`. `--no-upload` stops after the
+validation. App Store Connect takes each build number once: `AIRSCP_BUILD_NUMBER=1.3.0.1` (CFBundleVersion) for a
+second upload of the same version. The build then shows in App Store Connect ▸ TestFlight; add it to the version, with
+its texts and screenshots, and submit it for review.
+
+**Export compliance.** `ITSAppUsesNonExemptEncryption` is YES: ssh, scp and sftp are macOS's own, but AirSCP adds
+standard encryption the OS doesn't provide (FreeRDP's OpenSSL for Remote Desktop and the Certificate Manager). For each
+build App Store Connect asks: answer "Standard encryption algorithms instead of, or in addition to, the encryption
+within Apple's operating system" and "not available in France"; no documents are then needed. Leave France out under
+Pricing and Availability. To sell there, file France's encryption declaration (ANSSI) and upload it in App Store
+Connect; its code then goes in `build.sh` as `ITSEncryptionExportComplianceCode`, and the question stops.
+
+**Trying it on this Mac.** Never launch an ad-hoc `--appstore` build as `com.kleash.airscp`: macOS would make AirSCP's
+App Store container owned by that ad-hoc signature, and the real App Store version would meet it. Try a copy with a
+bundle id of its own, and a new id for each new build (a container belongs to the signature that made it):
+
+```sh
+cp -R build/appstore/AirSCP.app /tmp/t/AirSCP.app
+plutil -replace CFBundleIdentifier -string com.kleash.airscp.try1 /tmp/t/AirSCP.app/Contents/Info.plist
+codesign --force --sign - --entitlements Resources/AirSCP-AppStore.entitlements /tmp/t/AirSCP.app
+open -n -a /tmp/t/AirSCP.app /tmp/t --env AIRSCP_SUPPORT_DIR=/tmp/t/support --env AIRSCP_AGENT=1
+```
+
+Opening it with a folder (`/tmp/t` above) lets the sandbox into that folder the way an Open panel does, so a throwaway
+instance can keep its settings there. Its data otherwise lives in `~/Library/Containers/<bundle id>`, which Terminal can
+read only after macOS asks you, and its agent socket is in that container's `tmp` (a short path).
+
 ## After: check it from the outside
 
 ```sh

@@ -45,12 +45,14 @@ public enum SuggestField: String, CaseIterable, Sendable {
                 + "\"no logs or temporary files\" → *.log, *.tmp; \"without node modules\" → node_modules."
         case .findPattern:
             what = "one file-name pattern with * and ? that matches the files the user describes. Names only, no folders. "
-                + "Examples: \"PDF files\" → *.pdf; \"last year's reports\" → report-2025*; \"any backup\" → *.bak."
+                + "A kind of file is its extension. Examples: \"PDF files\" → *.pdf; \"log files\" → *.log; \"last year's "
+                + "reports\" → report-2025*; \"any backup\" → *.bak."
         case .mode:
-            what = "a Unix permission mode as 3 octal digits: owner, group, others; each digit adds 4 for read, 2 for write "
-                + "and 1 for execute (run). Examples: \"everyone can read, only I can write\" → 644; \"only I can read and "
-                + "write\" → 600; \"a script everyone can run, only I can change\" → 755; \"a script only I can run\" → 700; "
-                + "\"a folder my group can change too\" → 775."
+            what = "a Unix permission mode as 3 octal digits: the owner's (the user's: \"I\", \"me\"), the group's, then "
+                + "everyone else's. Each digit adds 4 for read, 2 for write and 1 for execute (run). \"Everyone\" is all "
+                + "three. Examples: \"everyone can read, only I can write\" → 644 (me: read and write, 6; group and others: "
+                + "read, 4); \"only I can read and write\" → 600; \"a script everyone can run, only I can change\" → 755; "
+                + "\"a script only I can run\" → 700; \"a folder my group can change too\" → 775."
         }
         return "Write \(what)\n\nThe user says: \(DebugLog.redacted(String(sentence.prefix(500))))"
     }
@@ -80,12 +82,18 @@ public enum SuggestField: String, CaseIterable, Sendable {
 public enum AssistantContext {
     /// What the model is told it is and how to answer.
     public static let instructions = """
-        You are the help inside AirSCP, a Mac app for SSH servers (saved hosts, a two-pane SFTP/SCP file browser with a \
-        transfer queue, Synchronize, Find Files, a Linux monitor, tunnels, jump hosts and HTTP proxies, a Terminal tab), \
-        Windows Remote Desktop, a Certificate Manager and SSH keys. Answer in plain, short English: the likely cause first, \
-        then what to try, as numbered steps that name AirSCP's menus (File, Host, Tools, Window, Help) and buttons. Say \
-        when you aren't sure. Never ask for or repeat a password, passphrase or key. If the question isn't about AirSCP, \
-        servers, files or networking, say that you can help with those.
+        You are the help inside AirSCP, a Mac app for SSH servers and S3 storage (saved hosts, a two-pane file browser \
+        with a transfer queue, Synchronize, Find Files, a Linux monitor, tunnels, jump hosts and proxies, a Terminal tab), \
+        Windows Remote Desktop, a Certificate Manager and SSH keys. Answer only what you are asked, in plain English and \
+        at most 120 words. For an error, give the likely cause, then what to try as a few numbered steps. Say when you \
+        aren't sure. Never ask for or repeat a password, passphrase or key, and suggest no command that deletes or \
+        overwrites files. If the question isn't about AirSCP, servers, files or networking, say that you can help with \
+        those.
+        When you name AirSCP's menus and buttons, use these and never make one up: drag files between the panes (this Mac \
+        on the left, the server on the right), or select them and click Upload or Download; uploading a folder asks \
+        first, and its Leave out field skips names such as node_modules. File ▸ New Host…, Find Files…, Synchronize…, Get \
+        Info, Permissions…. Host ▸ Connect, Edit…, Run Command…, Terminal Tab. The Monitor and Tunnels tabs. View ▸ Show \
+        Command Log. Window ▸ Keys. AirSCP ▸ Settings… (Debug logging).
         """
 
     /// A summary of what the user sees, for the model: the host (name, address, route, state), the last error, the
@@ -104,7 +112,12 @@ public enum AssistantContext {
         if let state { lines.append("State: \(state)") }
         if let error, !error.isEmpty { lines.append("Last error: \(error)") }
         if let figures { lines.append("Server: \(figures)") }
-        if !commands.isEmpty { lines.append("Recent commands:\n" + commands.suffix(8).map { "  " + $0 }.joined(separator: "\n")) }
+        if !commands.isEmpty {
+            // The start of each: AirSCP's own command lines are long, and the model repeats them back. Redacted first, so
+            // a cut can't leave part of a secret.
+            let shown = DebugLog.redacted(commands.suffix(8).joined(separator: "\n")).split(separator: "\n").map { "  " + $0.prefix(150) }
+            lines.append("Recent commands:\n" + shown.joined(separator: "\n"))
+        }
         var text = DebugLog.redacted(lines.joined(separator: "\n"))
         if text.count > limit { text = String(text.prefix(limit)) + "…" }
         return text.isEmpty ? "Nothing is selected in AirSCP." : text
@@ -159,8 +172,10 @@ public struct AssistantPlan: Codable, Equatable, Sendable {
                                  "runSnippet", "setTunnel", "transferStatus"]
     public static let limit = 5
 
-    /// The model's JSON, `{"steps": […]}`, tidied: empty fields count as unsaid, a step without a host takes the one
-    /// before it, and a connect right before another step on the same host goes (every action connects by itself).
+    /// The model's JSON, `{"steps": […]}`, tidied: empty fields count as unsaid, an upload's one remote path is its
+    /// folder, a download into a Mac folder that isn't there goes to the download folder, a step without a host takes
+    /// the one before it, and a connect right before another step on the same host goes (every action connects by
+    /// itself).
     public static func decode(_ json: String) throws -> AssistantPlan {
         let plan: AssistantPlan
         do {
@@ -186,6 +201,17 @@ public struct AssistantPlan: Codable, Equatable, Sendable {
             step.localPaths = list(step.localPaths)
             step.remotePaths = list(step.remotePaths)
             step.leaveOut = list(step.leaveOut)
+            // An upload's server folder, given where a download's server paths go (the model does that).
+            if step.action == "upload", step.folder == nil, let paths = step.remotePaths, paths.count == 1 {
+                step.folder = paths[0]
+                step.remotePaths = nil
+            }
+            // A download's Mac folder that isn't there (the model makes up /Users/your_username/…): the download folder.
+            var isFolder: ObjCBool = false
+            if step.action == "download", let mac = step.folder,
+               !FileManager.default.fileExists(atPath: (mac as NSString).expandingTildeInPath, isDirectory: &isFolder) || !isFolder.boolValue {
+                step.folder = nil
+            }
             if hostActions.contains(step.action) {
                 if step.host == nil { step.host = lastHost }
                 lastHost = step.host
@@ -340,15 +366,19 @@ extension AssistantContext {
             + "look at?\n\n" + DebugLog.redacted(String(readings.prefix(2500)))
     }
 
-    /// The question Summarize asks about the command log: its last 50 command lines.
+    /// The question Summarize asks about the command log: the start of each of its last 50 entries, the newest that fit
+    /// in 2,500 characters (the on-device model reads 4,096 tokens in all). Redacted first, so a cut can't leave part of
+    /// a secret.
     public static func summarizeLog(_ commands: [String]) -> String {
-        "These are the last commands AirSCP ran for this host. Say in a few lines what it did and whether anything "
-            + "failed.\n\n" + DebugLog.redacted(commands.suffix(50).joined(separator: "\n"))
+        let lines = DebugLog.redacted(commands.suffix(50).joined(separator: "\n")).split(separator: "\n").map { $0.prefix(200) }
+        return "These are the last commands AirSCP ran for this host. Say in a few lines what it did and whether anything "
+            + "failed.\n\n" + String(lines.joined(separator: "\n").suffix(2500))
     }
 
     /// The question Explain asks about a snippet before it runs.
     public static func explainCommand(_ command: String) -> String {
-        "What does this shell command do, step by step, and is anything in it risky to run on a server?\n\n"
+        "What does this shell command do, step by step, and is anything in it risky to run on a server? Don't suggest "
+            + "other commands.\n\n"
             + DebugLog.redacted(String(command.prefix(2000)))
     }
 }

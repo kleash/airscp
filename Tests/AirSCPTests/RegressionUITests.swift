@@ -162,7 +162,7 @@ private func allViews<T: NSView>(_ type: T.Type, in view: NSView?) -> [T] {
         let runner = RunCommandModel(connection: connection, command: "yes | head -n 60000")
         runner.run()
         #expect(await eventually { runner.result != nil })
-        let view = NSHostingView(rootView: RunCommandView(model: runner, app: model, runInTerminal: { _ in }, close: {}))
+        let view = NSHostingView(rootView: RunCommandView(model: runner, app: model, runInTerminal: { _, _ in }, close: {}))
         let window = NSWindow(contentRect: NSRect(x: -30000, y: -30000, width: 640, height: 480), styleMask: [.titled],
                               backing: .buffered, defer: false)
         window.isReleasedWhenClosed = false

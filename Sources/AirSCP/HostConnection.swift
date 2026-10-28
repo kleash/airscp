@@ -60,6 +60,7 @@ final class HostConnection: ObservableObject {
         guard let host = model.host(hostID) else { throw AirSCPError(.other, "This host has been deleted.") }
         let jump = model.jump(for: host)
         let edited = OpenSSH.master(host, jump: jump, socket: "") != OpenSSH.master(session.host, jump: session.jump, socket: "")
+            || host.s3 != session.host.s3
         session.autoReconnect = host.autoReconnect
         if edited && !session.transfers.isBusy {
             session = Session(host: host, jump: jump, askpass: askpass)
@@ -68,6 +69,9 @@ final class HostConnection: ObservableObject {
         }
         adopted = false
         cancelledByUser = false
+        // S3 storage: URLSession goes through the host's proxy itself, with the proxy's saved password.
+        let proxy = model.data.proxy(host.proxyID)
+        session.s3?.useProxy(proxy, password: proxy.flatMap { model.savedPassword($0.keychainKey) })
         try await session.connect()
     }
 

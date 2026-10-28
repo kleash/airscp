@@ -29,13 +29,15 @@ still apply. With Increase contrast on, the dark look drops its blue tint.
 | Setting | What it does |
 |---|---|
 | **Open terminals in** | Terminal (default) or iTerm, for Open Terminal, Run in Terminal and Kill with sudo. |
-| **Open Terminal Here in the Terminal tab** | Off by default. On: a server folder's **Open Terminal Here** goes to the host's [Terminal tab](commands/terminal-tab.md) in AirSCP instead. |
+| **Open Terminal Here and Run in Terminal in the Terminal tab** | Off by default. On: a server folder's **Open Terminal Here** and **Run in Terminal** go to the host's [Terminal tab](commands/terminal-tab.md) in AirSCP instead: typed at an empty prompt, else in a new tab. |
 | **Downloads folder** | Where **Download To…** starts, and where **Download as .tar.gz** puts the archive when the other pane isn't this Mac. Drags and the Download button go to the folder shown. |
 | **Show hidden files in new panes** | Off by default. Each pane can still switch with <kbd>⇧⌘.</kbd>. |
 | **Copied files keep their original date** | Off by default: copies are dated now. On: they keep the file's own date (`scp -p`). |
 | **Verify transfers with SHA-256** | Off by default. On: each copied file is compared with the original once it arrives. See [Check a copy with its checksum](transfers/verify-checksums.md). |
 | **Ask before deleting on a server** | On by default. |
 | **Always calculate folder sizes** | Off by default: folders show “—” until you click **Σ**. |
+
+The App Store version has neither terminal setting: it always uses the Terminal tab.
 
 ## Security
 
@@ -46,6 +48,10 @@ How new hosts check their server's key, and new desktops their server's certific
 
 **New keys go in**: the folder where New Key Pair and Import Key save keys. `~/.ssh` by default, where ssh finds them by
 itself.
+
+**SSH folder** (the App Store version only): the folder ssh uses for your keys, known hosts and config. Click
+**Choose…** and choose `~/.ssh` (the panel opens there). Until you do, AirSCP keeps its own. See
+[The App Store version](getting-started/install.md#the-app-store-version).
 
 ## Apple Intelligence
 

@@ -77,7 +77,14 @@ public final class Session {
     }
 
     /// Where the control sockets live (checked to be private to this user). Tests point it elsewhere.
+    #if APPSTORE
+    /// The App Store version's sandbox has no /tmp: a folder at the top of its container, whose path is long already.
+    /// shortcut: fits ssh's socket path (104 bytes, with its 17-byte temporary suffix) for user names of up to 22
+    /// characters; a longer one gets ssh's "too long for Unix domain socket" (a shorter socket name would give more).
+    public static var socketDirectory = NSHomeDirectory() + "/s"
+    #else
     public static var socketDirectory = "/tmp/airscp-\(getuid())"
+    #endif
 
     /// The control socket for a saved host: keyed on its id, since %C would mix up hosts that differ only in
     /// their jump host or options, and on the settings folder: two AirSCPs with folders of their own
@@ -92,6 +99,8 @@ public final class Session {
     public let socketPath: String
     /// The transfer queue (one transfer at a time).
     public let transfers: TransferQueue
+    /// An S3 connection's storage (`SSHHost.s3`): no ssh at all, its files over HTTPS (S3Files.swift).
+    public let s3: S3Client?
 
     public var onStateChange: ((State) -> Void)?
     /// Every command run for this host, when it finishes (the master also when it starts).
@@ -101,6 +110,8 @@ public final class Session {
     /// Saved passwords. The Keychain; tests replace them.
     public var savedPassword: (SSHHost) -> String? = { Keychain.password(for: $0.id) }
     public var savePassword: (SSHHost, String) -> Void = { Keychain.setPassword($1, for: $0.id) }
+    /// An S3 connection's session token (temporary keys), if it has one: the Keychain; tests replace it.
+    public var savedS3Token: (SSHHost) -> String? = { Keychain.password(forKey: S3Settings.tokenKey($0.id)) }
 
     public var state: State { lock.locked { _state } }
     /// The masters started so far: a different number after a command than before it means the connection under it
@@ -172,6 +183,7 @@ public final class Session {
         _autoReconnect = host.autoReconnect
         socketPath = Session.socketPath(for: host.id)
         transfers = TransferQueue(hostID: host.id)
+        s3 = host.s3.map { S3Client(settings: $0, name: host.displayName) }
         transfers.session = self
         DebugLog.name(host)
         askpass.setHandler({ [weak self] request, reply in
@@ -193,8 +205,29 @@ public final class Session {
     /// for this host left by an earlier AirSCP is adopted instead. Throws a mapped error when ssh gives up.
     /// While reconnecting by itself, this stops that and tries at once, asking as usual.
     public func connect() async throws {
+        if s3 != nil { return try await connectS3() }
         await stopReconnecting()
         try await open(silent: false)
+    }
+
+    /// An S3 connection has no master: connecting reads the keys and checks them with one request.
+    private func connectS3() async throws {
+        let start = lock.locked { () -> Bool in
+            guard _state != .connecting && _state != .connected else { return false }
+            _state = .connecting
+            return true
+        }
+        guard start else { return }
+        notifyState()
+        do {
+            capabilities = try await checkS3()
+            lock.locked { _state = .connected }
+        } catch {
+            lock.locked { _state = .idle }
+            notifyState()
+            throw error
+        }
+        notifyState()
     }
 
     /// `connect`, or with `silent` one automatic attempt, which starts only while `.reconnecting`, asks nothing
@@ -322,6 +355,11 @@ public final class Session {
     /// copies kept for retrying after a lost connection) and any running command, then closes the master (ssh -O exit).
     /// Also stops reconnecting.
     public func disconnect() async {
+        if s3 != nil {
+            await transfers.cancelAll()
+            lock.locked { _state = .idle }
+            return notifyState()
+        }
         await stopReconnecting()
         let wasConnected = lock.locked { () -> Bool in
             tearingDown = true
@@ -353,6 +391,7 @@ public final class Session {
     /// master exit, but not an adopted one: call this now and then (e.g. when the window becomes active).
     public func check() async -> Bool {
         guard state == .connected else { return false }
+        if s3 != nil { return true }
         if await masterAlive() { return true }
         lost(AirSCPError.disconnected)
         return false
@@ -708,6 +747,8 @@ public final class Session {
     /// no fallback. "session request failed" means the server is out of sessions: wait and retry.
     func runMuxed(_ argv: [String], input: String? = nil, cancellation: Cancellation? = nil, terminal: ((Data) -> Void)? = nil,
                   standardOutput: ((Data) -> Void)? = nil, errorOutput: ((Data) -> Void)? = nil) async throws -> CommandResult {
+        // An S3 connection runs nothing (and has no master whose absence would read as a lost connection).
+        if s3 != nil { throw AirSCPError(.sftpOnly, capabilities.noShellReason ?? "") }
         let cancellation = cancellation ?? Cancellation()
         lock.locked { running.append(cancellation) }
         defer { lock.locked { running.removeAll { $0 === cancellation } } }
