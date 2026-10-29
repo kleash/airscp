@@ -61,11 +61,10 @@ cp Resources/AppIcon.icns "$app/Contents/Resources/"
 cp -R Resources/Licenses "$app/Contents/Resources/"  # FreeRDP's and OpenSSL's (Apache 2.0), and FreeRDP's notices
 cp Resources/AgentGuide.md "$app/Contents/Resources/"  # served by AirSCP --mcp (instructions, the guide tool)
 if $appstore; then
-    # Its privacy manifest; no Apple Events (its sandbox has no Terminal or iTerm hand-off); and the export compliance
-    # answer, which docs/dev/release.md explains.
+    # Its privacy manifest and no Apple Events (its sandbox has no Terminal or iTerm hand-off). No
+    # ITSAppUsesNonExemptEncryption: App Store Connect asks about encryption for each build (docs/dev/release.md).
     cp Resources/PrivacyInfo.xcprivacy "$app/Contents/Resources/"
     plutil -remove NSAppleEventsUsageDescription "$app/Contents/Info.plist"
-    plutil -insert ITSAppUsesNonExemptEncryption -bool YES "$app/Contents/Info.plist"
     # What an Xcode build records of the SDK and Xcode it used, which App Store Connect checks (Xcode's swift builds it).
     if xcodebuild -version >/dev/null 2>&1; then
         sdk=$(xcrun --show-sdk-version) sdk_build=$(xcrun --show-sdk-build-version)

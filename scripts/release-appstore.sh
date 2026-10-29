@@ -62,6 +62,8 @@ else
         -c "Add :com.apple.developer.team-identifier string $team" "$entitlements"
     cp "$AIRSCP_APPSTORE_PROFILE" "$app/Contents/embedded.provisionprofile"
 fi
+# No extended attributes: a downloaded profile's quarantine flag fails App Store processing (error 91109).
+xattr -cr "$app"
 codesign --force --options runtime --entitlements "$entitlements" --sign "$identity" "$app"
 codesign --verify --deep --strict --verbose=2 "$app"
 
@@ -81,7 +83,7 @@ read_plist() { /usr/libexec/PlistBuddy -c "Print :$1" "$plist" 2>/dev/null; }
 [ "$(read_plist CFBundleShortVersionString)" = "$version" ] || fail "CFBundleShortVersionString isn't $version."
 [ "$(read_plist LSApplicationCategoryType)" = public.app-category.developer-tools ] || fail "No LSApplicationCategoryType."
 [ -n "$(read_plist LSMinimumSystemVersion)" ] || fail "No LSMinimumSystemVersion."
-[ -n "$(read_plist ITSAppUsesNonExemptEncryption)" ] || fail "No ITSAppUsesNonExemptEncryption (export compliance)."
+[ -z "$(read_plist ITSAppUsesNonExemptEncryption)" ] || fail "ITSAppUsesNonExemptEncryption: App Store Connect asks for each build."
 [ -z "$(read_plist NSAppleEventsUsageDescription)" ] || fail "NSAppleEventsUsageDescription: the App Store version sends no Apple Events."
 [ "$(lipo -archs "$app/Contents/MacOS/AirSCP")" = "x86_64 arm64" ] || fail "The app isn't universal."
 iconutil -c iconset -o "$work/icon.iconset" "$app/Contents/Resources/AppIcon.icns"
