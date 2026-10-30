@@ -12,16 +12,21 @@ public final class SSH2Transport: RemoteTransport {
     let host: SSHHost
     let jump: SSHHost?
     let knownHosts: String
+    /// A `.keyFile` host's private key, by the host (this one or its jump host), when the keys aren't files: the iOS
+    /// app keeps them in the Keychain (`keyFile` is then the key's name). nil: not there. Throws to stop logging in
+    /// (Face ID cancelled). Without it, `keyFile` is a path.
+    let privateKey: ((SSHHost) throws -> Data?)?
     private let queue = DispatchQueue(label: "AirSCP libssh2")
     private let lock = NSLock()
     private var target: Connection?
     private var hop: Connection?
     private var pump: Pump?
 
-    public init(host: SSHHost, jump: SSHHost?, knownHosts: String) {
+    public init(host: SSHHost, jump: SSHHost?, knownHosts: String, privateKey: ((SSHHost) throws -> Data?)? = nil) {
         self.host = host
         self.jump = jump
         self.knownHosts = knownHosts
+        self.privateKey = privateKey
     }
 
     deinit { close() }
@@ -44,7 +49,8 @@ public final class SSH2Transport: RemoteTransport {
             }
             let fd: Int32
             if let jump {
-                let hop = try Connection(fd: Connection.connect(jump.hostname, jump.port ?? 22), host: jump, ask: asker)
+                let hop = try Connection(fd: Connection.connect(jump.hostname, jump.port ?? 22), host: jump, ask: asker,
+                                         privateKey: privateKey)
                 lock.withLock { self.hop = hop }
                 try hop.logIn(knownHosts: knownHosts)
                 let pump = try Pump(hop, to: host.hostname, port: host.port ?? 22)
@@ -53,7 +59,7 @@ public final class SSH2Transport: RemoteTransport {
             } else {
                 fd = try Connection.connect(host.hostname, host.port ?? 22)
             }
-            let target = try Connection(fd: fd, host: host, ask: asker)
+            let target = try Connection(fd: fd, host: host, ask: asker, privateKey: privateKey)
             lock.withLock { self.target = target }
             try target.logIn(knownHosts: knownHosts)
             libssh2_session_set_blocking(target.session, 0)
@@ -112,13 +118,14 @@ final class Connection {
     let fd: Int32
     let host: SSHHost
     let ask: (String) -> String?
+    let privateKey: ((SSHHost) throws -> Data?)?
     /// The connection is gone (a socket error): every later call throws `.disconnected`.
     var dead = false
     var sftp: OpaquePointer?
     /// A keyboard-interactive question was cancelled.
     private var cancelledQuestion = false
 
-    init(fd: Int32, host: SSHHost, ask: @escaping (String) -> String?) throws {
+    init(fd: Int32, host: SSHHost, ask: @escaping (String) -> String?, privateKey: ((SSHHost) throws -> Data?)? = nil) throws {
         _ = Connection.initialized
         guard let session = libssh2_session_init_ex(nil, nil, nil, nil) else {
             Darwin.close(fd)
@@ -128,6 +135,7 @@ final class Connection {
         self.fd = fd
         self.host = host
         self.ask = ask
+        self.privateKey = privateKey
         libssh2_session_abstract(session).pointee = Unmanaged.passUnretained(self).toOpaque()
         libssh2_session_set_blocking(session, 1)
         let rc = libssh2_session_handshake(session, libssh2_socket_t(fd))
@@ -261,7 +269,7 @@ final class Connection {
 
     private func logInWithKey(_ user: String, notes: inout String) throws {
         let path = host.keyFile
-        guard let key = FileManager.default.contents(atPath: path) else {
+        guard let key = try privateKey.map({ try $0(host) }) ?? FileManager.default.contents(atPath: path) else {
             notes += "no such identity: \(path): No such file or directory\n"
             return
         }

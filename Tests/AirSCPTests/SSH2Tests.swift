@@ -152,6 +152,39 @@ extension TestServer {
     }
 }
 
+@Test func aNewKeyLogsInFromMemoryWithoutAFile() async throws {
+    try await withServer { server in
+        let key = PuTTYKey.newEd25519(comment: "made on iPhone")
+        let text = try PuTTYKey.openSSH(key)
+        // ssh-keygen reads it and gets the same public key.
+        let file = server.root + "/new_key"
+        try text.write(toFile: file, atomically: true, encoding: .utf8)
+        chmod(file, 0o600)
+        #expect(try await run(["/usr/bin/ssh-keygen", "-y", "-f", file]).output.hasPrefix(
+            PuTTYKey.publicLine(key).split(separator: " ").prefix(2).joined(separator: " ")))
+        try FileManager.default.removeItem(atPath: file)
+
+        let authorized = server.root + "/authorized_keys"
+        try (String(contentsOfFile: authorized) + PuTTYKey.publicLine(key) + "\n")
+            .write(toFile: authorized, atomically: true, encoding: .utf8)
+        var asked: [String] = []
+        let host = server.host(key: "My iPhone key")  // a name, not a file
+        let ssh2 = try server.session(host, transport: SSH2Transport(host: host, jump: nil, knownHosts: server.knownHosts) {
+            asked.append($0.keyFile)
+            return Data(text.utf8)
+        })
+        try await ssh2.connect()
+        #expect(asked == ["My iPhone key"])
+        #expect(try await ssh2.run("printf ok").output == "ok")
+
+        // Face ID cancelled: the login stops there.
+        let cancelled = try server.session(host, transport: SSH2Transport(host: host, jump: nil, knownHosts: server.knownHosts) { _ in
+            throw AirSCPError.cancelled
+        })
+        await #expect(throws: AirSCPError.cancelled) { try await cancelled.connect() }
+    }
+}
+
 @Test func overLibssh2AnEncryptedKeyAsksForItsPassphrase() async throws {
     try await withServer { server in
         let ssh2 = try server.ssh2Session(server.host(key: server.encryptedKey)) { _ in

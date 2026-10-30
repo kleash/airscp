@@ -22,9 +22,13 @@ public enum KnownHosts {
             var fields = line.split(separator: " ")
             if fields.first?.hasPrefix("@") == true { fields.removeFirst() }  // @cert-authority, @revoked
             guard !line.hasPrefix("#"), fields.count >= 3, let key = Data(base64Encoded: String(fields[2])) else { return nil }
-            let digest = Data(SHA256.hash(data: key)).base64EncodedString().replacingOccurrences(of: "=", with: "")
-            return Entry(line: String(line), host: String(fields[0]), type: String(fields[1]), fingerprint: "SHA256:" + digest)
+            return Entry(line: String(line), host: String(fields[0]), type: String(fields[1]), fingerprint: fingerprint(key))
         }
+    }
+
+    /// A public key's (wire format) fingerprint as ssh-keygen -l shows it: "SHA256:…".
+    public static func fingerprint(_ key: Data) -> String {
+        "SHA256:" + Data(SHA256.hash(data: key)).base64EncodedString().replacingOccurrences(of: "=", with: "")
     }
 
     /// Removes the entry's line: the next connection to that server asks about its key again.

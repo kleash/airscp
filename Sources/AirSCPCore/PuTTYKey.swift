@@ -159,6 +159,17 @@ public enum PuTTYKey {
 
     // MARK: OpenSSH's private key format (unencrypted)
 
+    /// A new Ed25519 key (the iOS app makes keys itself: it has no ssh-keygen).
+    public static func newEd25519(comment: String) -> Key {
+        let key = Curve25519.Signing.PrivateKey()
+        var publicBlob = Wire.Writer(), privateBlob = Wire.Writer()
+        publicBlob.string(Data("ssh-ed25519".utf8))
+        publicBlob.string(key.publicKey.rawRepresentation)
+        privateBlob.string(key.rawRepresentation)  // the seed
+        return Key(algorithm: "ssh-ed25519", publicBlob: publicBlob.data, privateBlob: privateBlob.data, comment: comment)
+    }
+
+
     /// The key as an unencrypted OpenSSH private key file ("-----BEGIN OPENSSH PRIVATE KEY-----").
     public static func openSSH(_ key: Key) throws -> String {
         var fields = Wire.Reader(key.privateBlob)

@@ -9,12 +9,12 @@ enum Place: String {
 struct RootView: View {
     // The place each window was in comes back when iOS restores it (and when the Duo folds or opens).
     @SceneStorage("place") private var place = Place.servers
-    @State private var hosts = Store.load().hosts
+    @State private var app = AppState()
 
     var body: some View {
         TabView(selection: $place) {
             Tab("Servers", systemImage: "server.rack", value: .servers) {
-                ServersView(hosts: hosts)
+                ServersView()
             }
             Tab("Files", systemImage: "folder", value: .files) {
                 NothingOpen(title: "No server open", systemImage: "folder",
@@ -29,11 +29,22 @@ struct RootView: View {
                                        description: Text("Files you send or download show here with their progress."))
             }
             Tab(value: .search, role: .search) {
-                SearchView(hosts: hosts)
+                SearchView(hosts: app.data.hosts)
             }
         }
         .tabBarMinimizeBehavior(.onScrollDown)
-        .tint(.teal)
+        .environment(app)
+        // A connection's question (Trust, password, passphrase, code), whichever tab is showing.
+        .sheet(item: Binding(get: { app.questions.first }, set: { if $0 == nil, let first = app.questions.first { app.answer(first, nil) } })) {
+            QuestionSheet(question: $0).environment(app)
+        }
+        .alert("Can't connect", isPresented: Binding(get: { app.failure != nil }, set: { if !$0 { app.failure = nil } }),
+               presenting: app.failure) { _ in
+            Button("OK") {}
+        } message: { failure in
+            Text(failure.message)
+        }
+        .tint(.teal)  // after the sheet and alert, so they get it too
     }
 }
 
