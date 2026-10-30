@@ -101,6 +101,8 @@ public final class Session {
     public let transfers: TransferQueue
     /// An S3 connection's storage (`SSHHost.s3`): no ssh at all, its files over HTTPS (S3Files.swift).
     public let s3: S3Client?
+    /// SSH without a master ssh (libssh2 on iPhone and iPad): scripts, commands and sftp batches go over it.
+    public let transport: RemoteTransport?
 
     public var onStateChange: ((State) -> Void)?
     /// Every command run for this host, when it finishes (the master also when it starts).
@@ -176,10 +178,11 @@ public final class Session {
     /// Watches an adopted master's process (see `watch(adopted:)`).
     private var adoptedWatch: DispatchSourceProcess?
 
-    public init(host: SSHHost, jump: SSHHost?, askpass: AskpassServer) {
+    public init(host: SSHHost, jump: SSHHost?, askpass: AskpassServer, transport: RemoteTransport? = nil) {
         self.host = host
         self.jump = jump
         self.askpass = askpass
+        self.transport = transport
         _autoReconnect = host.autoReconnect
         socketPath = Session.socketPath(for: host.id)
         transfers = TransferQueue(hostID: host.id)
@@ -259,22 +262,27 @@ public final class Session {
             DebugLog.write((silent ? "Reconnecting by itself (attempt \(attempt)): " : "Connecting: ") + route, host: host.displayName)
         }
         do {
-            try Session.prepareSocketDirectory()
-            if access(socketPath, F_OK) == 0 {
-                if let pid = await runningMaster() {
-                    log.log("adopted the running master for \(self.host.id, privacy: .public)")
-                    try finishConnecting()
-                    watch(adopted: pid)
-                    await probe()
-                    notifyState()
-                    return
+            if let transport {
+                try await transport.open { [weak self] prompt in await self?.ask(prompt, silent: silent) }
+                try finishConnecting()
+            } else {
+                try Session.prepareSocketDirectory()
+                if access(socketPath, F_OK) == 0 {
+                    if let pid = await runningMaster() {
+                        log.log("adopted the running master for \(self.host.id, privacy: .public)")
+                        try finishConnecting()
+                        watch(adopted: pid)
+                        await probe()
+                        notifyState()
+                        return
+                    }
+                    unlink(socketPath)  // left by a master that was killed; ssh -M won't replace it
                 }
-                unlink(socketPath)  // left by a master that was killed; ssh -M won't replace it
+                if let error = OpenSSH.missingJump(host, jump: jump) { throw error }
+                try startMaster(silent: silent)
+                try await waitForMaster()
+                try finishConnecting()
             }
-            if let error = OpenSSH.missingJump(host, jump: jump) { throw error }
-            try startMaster(silent: silent)
-            try await waitForMaster()
-            try finishConnecting()
         } catch {
             if DebugLog.enabled, let error = error as? AirSCPError {
                 DebugLog.write(error.kind == .cancelled ? "Connecting was cancelled"
@@ -288,6 +296,7 @@ public final class Session {
                 return masterPID
             }
             if pid > 0 { kill(-pid, SIGTERM) }
+            transport?.close()
             if !silent { notifyState() }
             throw error
         }
@@ -369,7 +378,9 @@ public final class Session {
         let cancellations = lock.locked { running }
         cancellations.forEach { $0.cancel() }
         askpass.cancelPending(for: host.id.uuidString)
-        if wasConnected {
+        if let transport {
+            transport.close()
+        } else if wasConnected {
             _ = await Runner.run(OpenSSH.control("exit", host, jump: jump, socket: socketPath), hostID: host.id, log: emit)
         }
         let pid = lock.locked { masterPID }
@@ -391,7 +402,9 @@ public final class Session {
     /// master exit, but not an adopted one: call this now and then (e.g. when the window becomes active).
     public func check() async -> Bool {
         guard state == .connected else { return false }
-        if s3 != nil { return true }
+        // shortcut: a transport's lost connection shows at its next call; send a keepalive here when the iOS app checks
+        // its connections on coming back to the front (2.0, step 2h).
+        if s3 != nil || transport != nil { return true }
         if await masterAlive() { return true }
         lost(AirSCPError.disconnected)
         return false
@@ -567,8 +580,7 @@ public final class Session {
         // ends: the shell's pid comes first on the error output, and a cancel ends that whole group on the server too.
         // (Not under fish, whose $$ isn't the pid; sh, which the login shell becomes with exec, has its pid.)
         guard sh || capabilities.loginShell != "fish" else {
-            return try await runControl(OpenSSH.remote(command, host, jump: jump, socket: socketPath), cancellation: cancellation,
-                                        standardOutput: output, errorOutput: errorOutput)
+            return try await remote(command, cancellation: cancellation, standardOutput: output, errorOutput: errorOutput)
         }
         let cancellation = cancellation ?? Cancellation()
         let pid = RemotePID()
@@ -585,9 +597,8 @@ public final class Session {
         let marked = "echo \(RemotePID.marker)$$ >/dev/stderr; " + command
         let (remote, input) = sh ? OpenSSH.longScript(marked) : (marked, nil)
         defer { pid.end() }
-        var result = try await runControl(OpenSSH.remote(remote, host, jump: jump, socket: socketPath), input: input,
-                                          cancellation: cancellation, standardOutput: output,
-                                          errorOutput: { pid.read($0); errorOutput?($0) })
+        var result = try await self.remote(remote, input: input, cancellation: cancellation, standardOutput: output,
+                                           errorOutput: { pid.read($0); errorOutput?($0) })
         result.stderr = RemotePID.removed(from: result.stderr)
         return result
     }
@@ -681,10 +692,17 @@ public final class Session {
     @discardableResult
     func sftp(_ lines: [String], slot: Slot = .control, cancellation: Cancellation? = nil) async throws -> CommandResult {
         if let tooLong = Self.tooLongForSFTP(lines) { throw tooLong }
-        let result = try await runOver(slot, sftpArgv(),
-                                       input: lines.joined(separator: "\n") + "\n", cancellation: cancellation)
+        let result = try await sftpBatch(lines, slot: slot, cancellation: cancellation)
         guard result.status == 0 else { throw ErrorMapping.map(result.stderr, status: result.status) }
         return result
+    }
+
+    /// `sftp`, whatever the batch's exit status.
+    func sftpBatch(_ lines: [String], slot: Slot = .control, cancellation: Cancellation? = nil) async throws -> CommandResult {
+        guard let transport else {
+            return try await runOver(slot, sftpArgv(), input: lines.joined(separator: "\n") + "\n", cancellation: cancellation)
+        }
+        return try await overTransport(slot, cancellation) { try await transport.sftp(lines, cancellation: $0) }
     }
 
     /// sftp reads a batch line into 2,048 bytes and takes what doesn't fit as a line of its own: such a line isn't sent.
@@ -736,11 +754,49 @@ public final class Session {
     }
 
     private func runOver(_ slot: Slot, _ argv: [String], input: String? = nil, cancellation: Cancellation? = nil,
-                         standardOutput: ((Data) -> Void)? = nil) async throws -> CommandResult {
+                         standardOutput: ((Data) -> Void)? = nil, errorOutput: ((Data) -> Void)? = nil) async throws -> CommandResult {
         switch slot {
-        case .control: return try await runControl(argv, input: input, cancellation: cancellation, standardOutput: standardOutput)
-        case .transfer: return try await runMuxed(argv, input: input, cancellation: cancellation, standardOutput: standardOutput)
+        case .control:
+            return try await runControl(argv, input: input, cancellation: cancellation, standardOutput: standardOutput,
+                                        errorOutput: errorOutput)
+        case .transfer:
+            return try await runMuxed(argv, input: input, cancellation: cancellation, standardOutput: standardOutput,
+                                      errorOutput: errorOutput)
         }
+    }
+
+    /// `command` on the server, as `ssh host command` runs it: over the master, or the transport.
+    private func remote(_ command: String, input: String? = nil, slot: Slot = .control, cancellation: Cancellation? = nil,
+                        standardOutput: ((Data) -> Void)? = nil, errorOutput: ((Data) -> Void)? = nil) async throws -> CommandResult {
+        guard let transport else {
+            return try await runOver(slot, OpenSSH.remote(command, host, jump: jump, socket: socketPath), input: input,
+                                     cancellation: cancellation, standardOutput: standardOutput, errorOutput: errorOutput)
+        }
+        return try await overTransport(slot, cancellation) {
+            try await transport.exec(command, input: input, cancellation: $0, standardOutput: standardOutput, errorOutput: errorOutput)
+        }
+    }
+
+    /// A transport call in `slot`'s lane, as `runOver` runs a command over the master: cancelled by `disconnect`, and a
+    /// lost connection makes the session Disconnected (or reconnecting).
+    /// shortcut: the command log (`onLog`) doesn't list transport calls; add them when the iOS app shows that log.
+    private func overTransport(_ slot: Slot, _ cancellation: Cancellation?,
+                               _ body: (Cancellation) async throws -> CommandResult) async throws -> CommandResult {
+        let cancellation = cancellation ?? Cancellation()
+        lock.locked { running.append(cancellation) }
+        defer { lock.locked { running.removeAll { $0 === cancellation } } }
+        func call() async throws -> CommandResult {
+            try ensureConnected()
+            do {
+                let result = try await body(cancellation)
+                if cancellation.isCancelled { throw AirSCPError.cancelled }
+                return result
+            } catch let error as AirSCPError where error.kind == .disconnected {
+                lost(error)
+                throw error
+            }
+        }
+        return slot == .control ? try await controlLane.run { try await call() } : try await call()
     }
 
     /// Runs over the master. A missing socket or "Control socket connect" means the master is gone: Disconnected,
@@ -794,8 +850,7 @@ public final class Session {
     private func sentinelShell(_ script: String, slot: Slot = .control, cancellation: Cancellation? = nil, asLoginUser: Bool = false,
                                output: ((Data) -> Void)? = nil) async throws -> (Data, Int32, String) {
         let (command, input) = OpenSSH.longScript(OpenSSH.sentinelScript(script), sudo: asLoginUser ? "" : host.sudoUser)
-        let argv = OpenSSH.remote(command, host, jump: jump, socket: socketPath)
-        let result = try await runOver(slot, argv, input: input, cancellation: cancellation, standardOutput: output)
+        let result = try await remote(command, input: input, slot: slot, cancellation: cancellation, standardOutput: output)
         guard let (output, status) = OpenSSH.parseSentinel(result.stdout) else {
             // No shell ran it. ("This service allows sftp connections only." comes on standard output.)
             throw ErrorMapping.map(result.stderr + result.output, status: result.status == 0 ? 1 : result.status)
@@ -806,7 +861,7 @@ public final class Session {
     func ensureConnected() throws {
         switch state {
         case .connected:
-            guard access(socketPath, F_OK) == 0 else {
+            guard transport != nil || access(socketPath, F_OK) == 0 else {
                 // A master that ends removes its socket; then ssh would quietly log in afresh.
                 lost(AirSCPError.disconnected)
                 throw AirSCPError.disconnected
@@ -1123,6 +1178,15 @@ public final class Session {
                 self.lock.locked { self.rememberedPasswords[target.id] = answer.text }
             }
             reply(answer?.text)
+        }
+    }
+
+    /// A transport's question (`RemoteTransport.open`), answered as ssh's are.
+    private func ask(_ prompt: String, silent: Bool) async -> String? {
+        await withCheckedContinuation { continuation in
+            handlePrompt(AskpassRequest(id: host.id.uuidString, prompt: prompt, pid: 0, silent: silent)) {
+                continuation.resume(returning: $0)
+            }
         }
     }
 

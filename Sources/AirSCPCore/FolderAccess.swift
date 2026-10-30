@@ -6,6 +6,14 @@ import Foundation
 /// of this.
 public enum FolderAccess {
     static let key = "allowedFolders"
+    #if os(macOS)
+    private static let scope = URL.BookmarkCreationOptions.withSecurityScope
+    private static let resolvingScope = URL.BookmarkResolutionOptions.withSecurityScope
+    #else
+    // iOS has no such option: the bookmark of a URL the document picker gave is security-scoped as it is.
+    private static let scope = URL.BookmarkCreationOptions()
+    private static let resolvingScope = URL.BookmarkResolutionOptions()
+    #endif
 
     /// The folders open now: those restored or chosen since launch.
     public private(set) static var folders: [String] = []
@@ -24,7 +32,7 @@ public enum FolderAccess {
     /// bookmark could be made of it (the sandbox doesn't let AirSCP into it).
     @discardableResult
     public static func remember(_ url: URL, in defaults: UserDefaults = .standard) -> Bool {
-        guard let bookmark = try? url.bookmarkData(options: .withSecurityScope, includingResourceValuesForKeys: nil,
+        guard let bookmark = try? url.bookmarkData(options: scope, includingResourceValuesForKeys: nil,
                                                    relativeTo: nil) else { return false }
         let path = normal(url.path)
         let kept = (defaults.array(forKey: key) as? [Data] ?? []).filter { resolve($0).map { normal($0.url.path) } != path }
@@ -41,7 +49,7 @@ public enum FolderAccess {
         for bookmark in defaults.array(forKey: key) as? [Data] ?? [] {
             guard let resolved = resolve(bookmark), resolved.url.startAccessingSecurityScopedResource() else { continue }
             let url = resolved.url
-            kept.append(resolved.stale ? (try? url.bookmarkData(options: .withSecurityScope, includingResourceValuesForKeys: nil,
+            kept.append(resolved.stale ? (try? url.bookmarkData(options: scope, includingResourceValuesForKeys: nil,
                                                                 relativeTo: nil)) ?? bookmark : bookmark)
             let path = normal(url.path)
             if !folders.contains(path) { folders.append(path) }
@@ -68,7 +76,7 @@ public enum FolderAccess {
 
     private static func resolve(_ bookmark: Data) -> (url: URL, stale: Bool)? {
         var stale = false
-        guard let url = try? URL(resolvingBookmarkData: bookmark, options: .withSecurityScope, relativeTo: nil,
+        guard let url = try? URL(resolvingBookmarkData: bookmark, options: resolvingScope, relativeTo: nil,
                                  bookmarkDataIsStale: &stale) else { return nil }
         return (url, stale)
     }

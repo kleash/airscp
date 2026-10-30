@@ -173,13 +173,13 @@ public final class S3Client {
         var dictionary: [AnyHashable: Any]?
         var login: URLCredential?
         if let proxy {
+            // The values of kCFNetworkProxiesSOCKSEnable and the others, which iOS's SDK doesn't name (CFNetwork reads them).
             if proxy.isSOCKS {
-                dictionary = [kCFNetworkProxiesSOCKSEnable as String: 1, kCFNetworkProxiesSOCKSProxy as String: proxy.host,
-                              kCFNetworkProxiesSOCKSPort as String: proxy.port]
+                dictionary = ["SOCKSEnable": 1, "SOCKSProxy": proxy.host, "SOCKSPort": proxy.port]
             } else {
                 dictionary = [kCFNetworkProxiesHTTPEnable as String: 1, kCFNetworkProxiesHTTPProxy as String: proxy.host,
-                              kCFNetworkProxiesHTTPPort as String: proxy.port, kCFNetworkProxiesHTTPSEnable as String: 1,
-                              kCFNetworkProxiesHTTPSProxy as String: proxy.host, kCFNetworkProxiesHTTPSPort as String: proxy.port]
+                              kCFNetworkProxiesHTTPPort as String: proxy.port, "HTTPSEnable": 1,
+                              "HTTPSProxy": proxy.host, "HTTPSPort": proxy.port]
             }
             if !proxy.username.isEmpty {
                 dictionary?[kCFProxyUsernameKey as String] = proxy.username

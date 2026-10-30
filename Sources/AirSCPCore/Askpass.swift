@@ -129,6 +129,7 @@ public enum Askpass {
         var pid: pid_t = 0
         var length = socklen_t(MemoryLayout<pid_t>.size)
         guard getsockopt(connection, SOL_LOCAL, LOCAL_PEERPID, &pid, &length) == 0 else { return false }
+        #if os(macOS)
         let app = getpid()
         for _ in 0..<32 {
             var info = proc_bsdinfo()
@@ -137,7 +138,8 @@ public enum Askpass {
             if pid_t(info.pbi_ppid) == app { return true }
             pid = pid_t(info.pbi_ppid)
         }
-        return false
+        #endif
+        return false  // iOS: an app starts no processes
     }
 
     static func unixAddress(_ path: String) -> sockaddr_un? {

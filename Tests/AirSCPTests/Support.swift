@@ -228,9 +228,10 @@ final class TestServer {
 
     /// A session whose prompts are recorded in `prompts` and answered by `answer` (nil cancels). Disconnected by
     /// `shutdown`.
-    func session(_ host: SSHHost? = nil, jump: SSHHost? = nil, answer: ((Prompt) -> PromptAnswer?)? = nil) throws -> Session {
+    func session(_ host: SSHHost? = nil, jump: SSHHost? = nil, transport: RemoteTransport? = nil,
+                 answer: ((Prompt) -> PromptAnswer?)? = nil) throws -> Session {
         let askpass = try AskpassServer(helperPath: TestEnvironment.airscpBinary)
-        let session = Session(host: host ?? self.host(), jump: jump, askpass: askpass)
+        let session = Session(host: host ?? self.host(), jump: jump, askpass: askpass, transport: transport)
         session.savedPassword = { _ in nil }
         session.savePassword = { _, _ in }
         let prompts = self.prompts, log = self.log

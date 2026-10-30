@@ -316,13 +316,9 @@ extension Session {
                 // entry ls may not look at).
             }
         }
-        let batch = "cd \(Quote.sftp(dir))\n"
-        if let tooLong = Session.tooLongForSFTP([batch]) { throw tooLong }
-        let argv = sftpArgv()
-        let result = try await cancellable { cancellation in
-            slot == .control ? try await runControl(argv, input: batch + "ls -la\n", cancellation: cancellation)
-                : try await runMuxed(argv, input: batch + "ls -la\n", cancellation: cancellation)
-        }
+        let batch = ["cd \(Quote.sftp(dir))", "ls -la"]
+        if let tooLong = Session.tooLongForSFTP(batch) { throw tooLong }
+        let result = try await cancellable { try await sftpBatch(batch, slot: slot, cancellation: $0) }
         // sftp exits 0 when it can go into a folder but not read it ("remote readdir(…): Permission denied").
         guard result.status == 0, !result.stderr.contains("remote readdir(") else {
             throw ErrorMapping.map(result.stderr, status: result.status)
@@ -410,10 +406,8 @@ extension Session {
         while result.count < dirs.count {
             let chunk = Array(dirs[result.count...].prefix(200))
             if let tooLong = Session.tooLongForSFTP(chunk.map { "cd \(Quote.sftp($0))" }) { throw tooLong }
-            let batch = chunk.map { "cd \(Quote.sftp($0))\nls -la\n" }.joined()
-            let run = try await cancellable { cancellation in
-                try await runControl(sftpArgv(), input: batch, cancellation: cancellation)
-            }
+            let batch = chunk.flatMap { ["cd \(Quote.sftp($0))", "ls -la"] }
+            let run = try await cancellable { try await sftpBatch(batch, cancellation: $0) }
             // sftp echoes each command: a folder's part starts at the line echoing its cd. (It exits 0 when it can go
             // into a folder but not read it: then none of these is used.)
             let output = run.stdout, echo = Data("\nsftp> cd ".utf8)

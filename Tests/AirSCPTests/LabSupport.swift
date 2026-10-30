@@ -92,8 +92,10 @@ final class LabRun {
 
     /// A session whose prompts are recorded and answered by `answer` (nil cancels). No saved passwords and nothing is
     /// saved, unless the test sets `savedPassword` and `savePassword`.
-    func session(_ host: SSHHost, jump: SSHHost? = nil, answer: ((Prompt) -> PromptAnswer?)? = nil) throws -> Session {
-        let session = Session(host: host, jump: jump, askpass: try AskpassServer(helperPath: TestEnvironment.airscpBinary))
+    func session(_ host: SSHHost, jump: SSHHost? = nil, transport: RemoteTransport? = nil,
+                 answer: ((Prompt) -> PromptAnswer?)? = nil) throws -> Session {
+        let session = Session(host: host, jump: jump, askpass: try AskpassServer(helperPath: TestEnvironment.airscpBinary),
+                              transport: transport)
         session.savedPassword = { _ in nil }
         session.savePassword = { _, _ in }
         let prompts = self.prompts, log = self.log

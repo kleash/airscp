@@ -27,8 +27,8 @@ public struct AirSCPError: Error, LocalizedError, Equatable {
 
     public var errorDescription: String? { message }
 
-    static let cancelled = AirSCPError(.cancelled, "Cancelled.")
-    static let disconnected = AirSCPError(.disconnected, "The connection to the server was lost.")
+    public static let cancelled = AirSCPError(.cancelled, "Cancelled.")
+    public static let disconnected = AirSCPError(.disconnected, "The connection to the server was lost.")
 }
 
 /// Friendly messages for ssh, scp and sftp error output. The first matching rule wins.
