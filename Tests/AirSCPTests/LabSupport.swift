@@ -137,7 +137,7 @@ final class LabRun {
         }
         for session in sessions {
             await session.disconnect()
-            session.askpass.close()
+            session.askpass!.close()
         }
     }
 }

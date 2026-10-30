@@ -134,6 +134,24 @@ extension TestServer {
     }
 }
 
+@Test func aTrustedKeyIsListedWithItsFingerprintAndForgotten() async throws {
+    try await withServer { server in
+        let fingerprint = String(try await run(["/usr/bin/ssh-keygen", "-lf", server.root + "/host_key.pub"]).output
+            .split(separator: " ")[1])
+        let ssh2 = try server.ssh2Session(server.host(trustNewHostKeys: false)) { _ in .trust }
+        try await ssh2.connect()
+        await ssh2.disconnect()
+        let entries = KnownHosts.entries(server.knownHosts)
+        #expect(entries.map(\.host) == ["[127.0.0.1]:\(server.port)"] && entries.map(\.fingerprint) == [fingerprint],
+                "\(entries)")
+
+        try KnownHosts.forget(entries[0], in: server.knownHosts)
+        #expect(KnownHosts.entries(server.knownHosts).isEmpty)
+        try await ssh2.connect()  // asked again
+        #expect(server.prompts.all.count == 2)
+    }
+}
+
 @Test func overLibssh2AnEncryptedKeyAsksForItsPassphrase() async throws {
     try await withServer { server in
         let ssh2 = try server.ssh2Session(server.host(key: server.encryptedKey)) { _ in

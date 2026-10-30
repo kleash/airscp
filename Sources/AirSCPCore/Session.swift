@@ -139,7 +139,8 @@ public final class Session {
     /// The tunnels switched on (all go off when the connection ends; an automatic reconnect switches them on again).
     public var activeTunnels: Set<UUID> { lock.locked { Set(_activeTunnels.keys) } }
 
-    let askpass: AskpassServer
+    /// Answers ssh's questions; nil with a transport, which asks through `open` (iOS has no askpass helper).
+    let askpass: AskpassServer?
     private let lock = NSLock()
     private var _state = State.idle
     private var _capabilities = Capabilities()
@@ -178,7 +179,7 @@ public final class Session {
     /// Watches an adopted master's process (see `watch(adopted:)`).
     private var adoptedWatch: DispatchSourceProcess?
 
-    public init(host: SSHHost, jump: SSHHost?, askpass: AskpassServer, transport: RemoteTransport? = nil) {
+    public init(host: SSHHost, jump: SSHHost?, askpass: AskpassServer?, transport: RemoteTransport? = nil) {
         self.host = host
         self.jump = jump
         self.askpass = askpass
@@ -189,7 +190,7 @@ public final class Session {
         s3 = host.s3.map { S3Client(settings: $0, name: host.displayName) }
         transfers.session = self
         DebugLog.name(host)
-        askpass.setHandler({ [weak self] request, reply in
+        askpass?.setHandler({ [weak self] request, reply in
             guard let self else { return reply(nil) }
             self.handlePrompt(request, reply: reply)
         }, for: host.id.uuidString)
@@ -377,7 +378,7 @@ public final class Session {
         await transfers.cancelAll()
         let cancellations = lock.locked { running }
         cancellations.forEach { $0.cancel() }
-        askpass.cancelPending(for: host.id.uuidString)
+        askpass?.cancelPending(for: host.id.uuidString)
         if let transport {
             transport.close()
         } else if wasConnected {
@@ -677,7 +678,7 @@ public final class Session {
         }
         if access(privateKey, F_OK) == 0 { symlink(privateKey, link) }  // ssh-copy-id's "already installed?" test uses it
         let result = await Runner.run(OpenSSH.copyID(link + ".pub", host, jump: jump),
-                                      environment: askpass.environment(for: host.id.uuidString), hostID: host.id, log: emit)
+                                      environment: askpass?.environment(for: host.id.uuidString) ?? [:], hostID: host.id, log: emit)
         guard result.status == 0 else { throw ErrorMapping.map(result.stderr, status: result.status) }
         saveRememberedPasswords()  // a password typed with "Remember" worked
     }
@@ -894,7 +895,7 @@ public final class Session {
 
     private func startMaster(silent: Bool) throws {
         let argv = OpenSSH.master(host, jump: jump, socket: socketPath, silent: silent)
-        var environment = askpass.environment(for: host.id.uuidString)
+        var environment = askpass?.environment(for: host.id.uuidString) ?? [:]
         if silent { environment["AIRSCP_SILENT"] = "1" }  // the helpers then ask nothing (prompts, proxy password)
         let line = Runner.shellLine(argv)
         let id = host.id
@@ -989,7 +990,7 @@ public final class Session {
         guard changed else { return }
         notifyState()
         transfers.failQueued(error)
-        askpass.cancelPending(for: host.id.uuidString)
+        askpass?.cancelPending(for: host.id.uuidString)
         if reconnect { startReconnecting() }
     }
 

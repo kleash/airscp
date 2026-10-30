@@ -361,7 +361,7 @@ func answer(_ proxy: Proxy, password: String = "", on askpass: AskpassServer, as
         host.proxyID = saved.id
         let session = try server.session(host)
         let asked = Recorder<Bool>()
-        answer(saved, password: "proxy secret", on: session.askpass, asked: asked)
+        answer(saved, password: "proxy secret", on: session.askpass!, asked: asked)
         try await session.connect()
         #expect(session.state == .connected && session.capabilities.shell)
         #expect(try await session.run("echo through the proxy").output == "through the proxy\n")
@@ -376,7 +376,7 @@ func answer(_ proxy: Proxy, password: String = "", on askpass: AskpassServer, as
 
         // Terminal: ssh without askpass, with only the variables a .command script exports, still gets through.
         let terminal = OpenSSH.interactive(host, jump: nil) + ["echo from terminal"]
-        let fresh = await Runner.run(terminal, environment: session.askpass.terminalEnvironment)
+        let fresh = await Runner.run(terminal, environment: session.askpass!.terminalEnvironment)
         #expect(fresh.status == 0 && fresh.output == "from terminal\n", "\(fresh.stderr)")
         #expect(proxy.logins.count == 2)
     }
@@ -390,7 +390,7 @@ func answer(_ proxy: Proxy, password: String = "", on askpass: AskpassServer, as
         var host = server.host()
         host.proxyID = saved.id
         let session = try server.session(host)
-        answer(saved, password: "wrong", on: session.askpass)
+        answer(saved, password: "wrong", on: session.askpass!)
         do {
             try await session.connect()
             Issue.record("connected through a proxy that rejected the password")
@@ -406,7 +406,7 @@ func answer(_ proxy: Proxy, password: String = "", on askpass: AskpassServer, as
         let openSaved = open.saved()
         host.proxyID = openSaved.id
         let plain = try server.session(host)
-        answer(openSaved, on: plain.askpass)
+        answer(openSaved, on: plain.askpass!)
         try await plain.connect()
         #expect(plain.state == .connected)
         #expect(open.requests.all.count == 1 && open.requests.all.first?.lowercased().contains("proxy-authorization") == false)
@@ -426,7 +426,7 @@ func answer(_ proxy: Proxy, password: String = "", on askpass: AskpassServer, as
         target.hostname = "localhost"
         target.jumpHostID = bastion.id
         let session = try server.session(target, jump: bastion)
-        answer(saved, password: "proxy secret", on: session.askpass)
+        answer(saved, password: "proxy secret", on: session.askpass!)
         try await session.connect()
         #expect(session.state == .connected)
         #expect(try await session.run("echo at the target").output == "at the target\n")
@@ -615,7 +615,7 @@ final class TestSOCKS {
         var host = server.host()
         host.proxyID = proxy.id
         let session = try server.session(host)
-        session.askpass.proxyHandler = { id, _, _, reply in reply(id == proxy.id ? (proxy, "") : nil) }
+        session.askpass!.proxyHandler = { id, _, _, reply in reply(id == proxy.id ? (proxy, "") : nil) }
         try await session.connect()
         _ = try await session.list(server.home)
         #expect(socks.asked.all.contains("127.0.0.1:\(server.port)"))

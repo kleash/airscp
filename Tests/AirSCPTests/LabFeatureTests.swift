@@ -16,7 +16,7 @@ struct LabFeatureTests {
             var target = Lab.host("dev", hostname: "target", port: 22)
             target.jumpHostID = bastion.id
             let session = try lab.session(target, jump: bastion)
-            session.askpass.proxyHandler = { id, _, _, reply in
+            session.askpass!.proxyHandler = { id, _, _, reply in
                 reply(id == Lab.digestProxy.id ? (Lab.digestProxy, Lab.proxyPassword) : nil)
             }
             try await session.connect()
@@ -24,7 +24,7 @@ struct LabFeatureTests {
             await session.disconnect()
             // A wrong password: the 407, in words.
             let refused = try lab.session(target, jump: bastion)
-            refused.askpass.proxyHandler = { id, _, _, reply in reply(id == Lab.digestProxy.id ? (Lab.digestProxy, "wrong") : nil) }
+            refused.askpass!.proxyHandler = { id, _, _, reply in reply(id == Lab.digestProxy.id ? (Lab.digestProxy, "wrong") : nil) }
             await #expect(throws: AirSCPError.self) { try await refused.connect() }
         }
     }
@@ -38,12 +38,12 @@ struct LabFeatureTests {
             var target = Lab.host("dev", hostname: "target", port: 22)
             target.jumpHostID = bastion.id
             let session = try lab.session(target, jump: bastion)
-            session.askpass.proxyHandler = { id, _, _, reply in reply(id == socks.id ? (socks, Lab.proxyPassword) : nil) }
+            session.askpass!.proxyHandler = { id, _, _, reply in reply(id == socks.id ? (socks, Lab.proxyPassword) : nil) }
             try await session.connect()
             #expect(try await session.run("hostname").output.hasSuffix("target\n"))
             await session.disconnect()
             let refused = try lab.session(target, jump: bastion)
-            refused.askpass.proxyHandler = { id, _, _, reply in reply(id == socks.id ? (socks, "wrong") : nil) }
+            refused.askpass!.proxyHandler = { id, _, _, reply in reply(id == socks.id ? (socks, "wrong") : nil) }
             await #expect(throws: AirSCPError.self) { try await refused.connect() }
         }
     }
@@ -51,7 +51,7 @@ struct LabFeatureTests {
     @Test func proxyThenBastionThenTarget() async throws {
         try await withLab { lab in
             func answerProxy(_ session: Session, password: String = Lab.proxyPassword) {
-                session.askpass.proxyHandler = { id, _, _, reply in
+                session.askpass!.proxyHandler = { id, _, _, reply in
                     reply(id == Lab.proxy.id ? (Lab.proxy, password) : nil)
                 }
             }

@@ -10,3 +10,6 @@ testenv/.windows*
 vendor/
 testenv/.keys/
 testenv/.uidriver/
+
+# Xcode (ios/): per-user state
+xcuserdata/

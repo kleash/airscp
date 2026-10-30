@@ -179,7 +179,7 @@ private func reconnectingHost(_ server: TestServer, key: String? = nil) -> SSHHo
         host.proxyID = saved.id
         let session = try server.session(host)
         let asked = Recorder<Bool>()
-        answer(saved, on: session.askpass, asked: asked)
+        answer(saved, on: session.askpass!, asked: asked)
         let states = Recorder<(Date, Session.State)>()
         session.onStateChange = { states.append((Date(), $0)) }
         try await session.connect()
@@ -220,7 +220,7 @@ private func sessionThroughAProxy(_ server: TestServer) throws -> (Session, Test
     var host = reconnectingHost(server)
     host.proxyID = saved.id
     let session = try server.session(host)
-    answer(saved, on: session.askpass)
+    answer(saved, on: session.askpass!)
     return (session, proxy)
 }
 
