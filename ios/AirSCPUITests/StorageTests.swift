@@ -47,6 +47,8 @@ final class StorageTests: XCTestCase {
         type(LabStorage.secret, into: app.secureTextFields["Secret key"])
         keepScreenshot("New S3 storage")
         save.tap()
+        // AirSCP keeps the secret: iOS's Passwords has nothing to offer to save (its prompt has Not Now).
+        XCTAssertFalse(app.buttons["Not Now"].waitForExistence(timeout: 3), "iOS offers to save the secret in Passwords")
 
         // Saved without its secret, which the Keychain keeps.
         let row = app.staticTexts["lab storage"]

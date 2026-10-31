@@ -235,6 +235,8 @@ struct HostEditor: View {
 
     private func save() {
         var host = host
+        let password = self.password
+        self.password = ""  // iOS's Passwords offers to save what a closing form's secure field holds: AirSCP keeps it
         host.label = host.label.trimmingCharacters(in: .whitespaces)
         if var s3 = host.s3 {
             for field in [\S3Settings.endpoint, \.region, \.accessKeyID, \.bucket] {
