@@ -33,6 +33,15 @@ final class TerminalTests: XCTestCase {
         app.typeText("c")
         app.typeText("echo after-$((1+1))\n")
         XCTAssert(terminal.shows("after-2"), terminal.text)
+
+        // A hardware keyboard's Control-C, and its up arrow: the command before, again.
+        app.typeText("sleep 100\n")
+        app.typeKey("c", modifierFlags: .control)
+        app.typeText("echo keys-$((2+2))\n")
+        XCTAssert(terminal.shows("keys-4"), terminal.text)
+        app.typeKey(.upArrow, modifierFlags: [])
+        app.typeText("\n")
+        XCTAssert(terminal.shows("keys-4", times: 2), terminal.text)
     }
 
     func testTheCommandLineSuggestsFromHistoryAndStopStops() {
