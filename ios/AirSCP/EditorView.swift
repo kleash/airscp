@@ -1,32 +1,44 @@
 import AirSCPCore
 import SwiftUI
 
-/// A server's text file, read for the editor.
-struct EditedFile: Identifiable {
-    let id = UUID()
+/// A server's text file, read for the editor, and the editor's state: kept here, not in the editor's view, so that a
+/// change of layout (a sheet becomes a column when an iPad turns, Full Window) keeps what is typed.
+@Observable final class EditedFile: Identifiable {
     let session: Session
     let entry: RemoteEntry
-    let text: String
+    /// The file as it was read.
+    let original: String
+    var text: String
+    var savedText: String
+    /// The file as the server had it when this editor last read or wrote it (or showed its version since).
+    var serverText: String
+    /// Size and encoding, then how the last save went.
+    var status: String
     /// The line to open it at (from 1): the terminal's "file:line".
-    var line: Int?
+    let line: Int?
+
+    init(session: Session, entry: RemoteEntry, text: String, line: Int? = nil) {
+        self.session = session
+        self.entry = entry
+        self.line = line
+        original = text
+        self.text = text
+        savedText = text
+        serverText = text
+        status = "\(text.count.formatted()) characters, UTF-8"
+    }
 }
 
 /// The editor for a server's text file: Edit (monospaced, in syntax colours, Go to Line), Changes (the lines changed
 /// since it was opened) and Info.
 /// Save writes it back byte for byte only while the server still has the file as this editor last read or wrote it
 /// (`Session.saveText`, as the Mac's editor does); else it asks: Overwrite, Show Server Version, or Cancel. It sits in a
-/// navigation stack of its container's (a sheet's, or a column's).
+/// navigation stack of its container's (a sheet's, a column's, Full Window's); `close` takes it away.
 struct EditorView: View {
-    let file: EditedFile
+    @Bindable var file: EditedFile
     let onSaved: () -> Void
-    @Environment(\.dismiss) private var dismiss
-    @State private var text: String
-    @State private var savedText: String
-    /// The file as the server had it when this editor last read or wrote it (or showed its version since).
-    @State private var serverText: String
+    let close: () -> Void
     @State private var tab = Tab.edit
-    /// Size and encoding, then how the last save went.
-    @State private var status: String
     @State private var saving = false
     @State private var closeAfterSaving = false
     @State private var askingToClose = false
@@ -35,6 +47,7 @@ struct EditorView: View {
     /// The server's version, shown read-only.
     @State private var theirs: String?
     @State private var failure: AirSCPError?
+    @State private var width: CGFloat = 0
     /// Go to Line: asking for the number, and the line the text goes to.
     @State private var askingLine = false
     @State private var lineText = ""
@@ -51,15 +64,17 @@ struct EditorView: View {
         let theirs: String?
     }
 
-    init(file: EditedFile, onSaved: @escaping () -> Void) {
+    init(file: EditedFile, onSaved: @escaping () -> Void, close: @escaping () -> Void) {
         self.file = file
         self.onSaved = onSaved
-        _text = State(initialValue: file.text)
-        _savedText = State(initialValue: file.text)
-        _serverText = State(initialValue: file.text)
-        _status = State(initialValue: "\(file.text.count.formatted()) characters, UTF-8")
-        crlf = file.text.contains("\r\n")
+        self.close = close
+        crlf = file.original.contains("\r\n")
     }
+
+    private var text: String { file.text }
+    private var savedText: String { get { file.savedText } nonmutating set { file.savedText = newValue } }
+    private var serverText: String { get { file.serverText } nonmutating set { file.serverText = newValue } }
+    private var status: String { get { file.status } nonmutating set { file.status = newValue } }
 
     private var name: String { file.entry.name }
     private var edited: Bool { text != savedText }
@@ -67,16 +82,26 @@ struct EditorView: View {
     var body: some View {
         Group {
             switch tab {
-            case .edit: CodeView(text: $text, name: name, jump: $jump)
+            case .edit: CodeView(text: $file.text, name: name, jump: $jump)
             case .changes: changes
             case .info: info
             }
         }
+        // Room for both (Full Window on an iPad): the lines changed, beside the text.
+        .safeAreaInset(edge: .trailing, spacing: 0) {
+            if tab == .edit && width >= 900 {
+                HStack(spacing: 0) {
+                    Divider()
+                    changes.frame(width: width * 0.4)
+                }
+            }
+        }
+        .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { width = $0 }
         .navigationTitle(name)
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .cancellationAction) {
-                Button("Close", systemImage: "xmark") { edited ? askingToClose = true : dismiss() }
+                Button("Close", systemImage: "xmark") { edited ? askingToClose = true : close() }
                     .help("Close the editor")
                     // On the button that asks: iOS shows it as a popover from there.
                     .confirmationDialog("Save the changes to “\(name)” before closing?", isPresented: $askingToClose,
@@ -85,7 +110,7 @@ struct EditorView: View {
                             closeAfterSaving = true
                             save(overwriting: false)
                         }
-                        Button("Don't Save", role: .destructive) { dismiss() }
+                        Button("Don't Save", role: .destructive) { close() }
                         Button("Cancel", role: .cancel) {}
                     } message: {
                         Text("If you don't, your changes are lost.")
@@ -173,7 +198,7 @@ struct EditorView: View {
 
     /// The lines changed since the file was opened: as they were (−) and as they are (+), with their line numbers.
     @ViewBuilder private var changes: some View {
-        let old = file.text.split(separator: "\n", omittingEmptySubsequences: false)
+        let old = file.original.split(separator: "\n", omittingEmptySubsequences: false)
         let new = text.split(separator: "\n", omittingEmptySubsequences: false)
         let rows = new.difference(from: old).map { change -> (line: Int, added: Bool, text: Substring) in
             switch change {
@@ -251,7 +276,7 @@ struct EditorView: View {
                 serverText = written
                 status = "Saved at " + Date().formatted(date: .omitted, time: .standard)
                 onSaved()
-                if closeAfterSaving { dismiss() }
+                if closeAfterSaving { close() }
             } catch {
                 status = "Not saved"
                 failure = error as? AirSCPError ?? AirSCPError(.other, error.localizedDescription)

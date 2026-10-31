@@ -6,13 +6,16 @@ import SwiftUI
 struct TerminalTab: View {
     @Environment(AppState.self) private var app
     @Environment(Terminals.self) private var terminals
+    @Environment(\.horizontalSizeClass) private var width
     let goToServers: () -> Void
+    @State private var fullWindow = false
 
     var body: some View {
         NavigationStack {
             Group {
                 if let terminal = terminals.shown {
-                    TerminalPane(terminal: terminal)
+                    // Full Window shows it, and one view for a terminal at a time.
+                    (fullWindow ? nil : TerminalPane(terminal: terminal))
                         .navigationTitle(terminals.list.count > 1 ? "" : terminals.name(of: terminal))  // else the switcher's
                         .navigationBarTitleDisplayMode(.inline)
                         .toolbar { toolbar(terminal) }
@@ -24,11 +27,8 @@ struct TerminalTab: View {
         }
         .onAppear { terminals.sync(with: app) }
         .onChange(of: app.states) { terminals.sync(with: app) }
-        .alert("Can't open a shell", isPresented: Binding(get: { terminals.failure != nil }, set: { if !$0 { terminals.failure = nil } }),
-               presenting: terminals.failure) { _ in
-            Button("OK") {}
-        } message: { failure in
-            Text(failure.message)
+        .fullWindow($fullWindow, escapeLeaves: false) {
+            if let terminal = terminals.shown { TerminalPane(terminal: terminal).navigationTitle(terminals.name(of: terminal)) }
         }
     }
 
@@ -45,6 +45,13 @@ struct TerminalTab: View {
                 }
                 .pickerStyle(.menu)
                 .help("Show another terminal")
+            }
+        }
+        if width == .regular {
+            ToolbarItem(placement: .topBarTrailing) {
+                Button("Full Window", systemImage: "arrow.up.left.and.arrow.down.right") { fullWindow = true }
+                    .keyboardShortcut(fullWindow ? nil : KeyboardShortcut("f", modifiers: [.command, .shift]))  // then Exit's
+                    .help("Give the terminal the whole window (⌘⇧F)")
             }
         }
         ToolbarItem(placement: .topBarTrailing) {
