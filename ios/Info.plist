@@ -18,5 +18,19 @@
 	<true/>
 	<key>LSSupportsOpeningDocumentsInPlace</key>
 	<true/>
+	<!-- Rows dragged between the Files tab's sides: only AirSCP sees this type (FilesView.swift); other apps get files. -->
+	<key>UTExportedTypeDeclarations</key>
+	<array>
+		<dict>
+			<key>UTTypeIdentifier</key>
+			<string>com.kleash.airscp.rows</string>
+			<key>UTTypeDescription</key>
+			<string>AirSCP files</string>
+			<key>UTTypeConformsTo</key>
+			<array>
+				<string>public.data</string>
+			</array>
+		</dict>
+	</array>
 </dict>
 </plist>
