@@ -100,12 +100,12 @@ final class FilesTests: XCTestCase {
         keepScreenshot("Empty folder")
 
         // From the other side, this device's files, to the server.
-        app.buttons["On iPhone"].tap()
+        app.segmentedControls.buttons["On iPhone"].tap()
         XCTAssert(app.staticTexts["photo.bin"].waitForExistence(timeout: 10))
         keepScreenshot("On iPhone")
         row("photo.bin", in: app).swipeLeft()
         app.buttons["Send"].tap()
-        app.buttons["dev@127.0.0.1:42201"].tap()
+        app.segmentedControls.buttons["lab"].tap()
         XCTAssert(app.staticTexts["photo.bin"].waitForExistence(timeout: 30))
         let uploaded = try await lab.data("photo.bin")
         XCTAssertEqual(uploaded, bytes)
@@ -269,19 +269,22 @@ final class FilesTests: XCTestCase {
 
     // MARK: Helpers
 
-    /// Launches the app, logs into the lab's target (its host key is trusted already: `LabServer` wrote known_hosts),
-    /// and opens the test's folder in the Files tab.
+    /// Launches the app with the lab's target saved as "lab", logs into it (its host key is trusted already: `LabServer`
+    /// wrote known_hosts), and opens the test's folder in the Files tab.
     @MainActor private func openTestFolder() -> XCUIApplication {
+        try? """
+        {"hosts":[{"id":"\(UUID())","label":"lab","hostname":"127.0.0.1","port":42201,"username":"dev","auth":"password"}]}
+        """.write(to: folder.appendingPathComponent("airscp.json"), atomically: true, encoding: .utf8)
         let app = XCUIApplication()
         app.launchEnvironment["AIRSCP_SUPPORT_DIR"] = folder.path
         app.launch()
-        let field = app.textFields["quickConnect"]
-        XCTAssert(field.waitForExistence(timeout: 10))
-        field.tap()
-        field.typeText("dev@127.0.0.1:42201\n")
+        let saved = app.staticTexts["lab"]
+        XCTAssert(saved.waitForExistence(timeout: 10))
+        saved.tap()
         let password = app.secureTextFields["answer"]
         XCTAssert(password.waitForExistence(timeout: 30), "No password question")
-        app.typeText("porter-dev\n")
+        password.tap()  // focused already, unless the sheet is still on its way
+        password.typeText("porter-dev\n")
         XCTAssert(app.staticTexts["Connected"].waitForExistence(timeout: 30))
         // The iPad's tabs are buttons at the top, not a tab bar.
         (app.tabBars.firstMatch.exists ? app.tabBars.buttons["Files"] : app.buttons["Files"].firstMatch).tap()
