@@ -50,7 +50,7 @@ struct TerminalTab: View {
         if width == .regular {
             ToolbarItem(placement: .topBarTrailing) {
                 Button("Full Window", systemImage: "arrow.up.left.and.arrow.down.right") { fullWindow = true }
-                    .keyboardShortcut("f", modifiers: [.command, .shift])
+                    .keyboardShortcut(fullWindow ? nil : KeyboardShortcut("f", modifiers: [.command, .shift]))  // then Exit's
                     .help("Give the terminal the whole window (⌘⇧F)")
             }
         }

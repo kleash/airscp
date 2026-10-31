@@ -110,8 +110,8 @@ struct WorkspaceView: View {
                 .help(shell ? "Open another shell on this server" : "Connect to a server that runs commands first")
             Button("Full Window", systemImage: "arrow.up.left.and.arrow.down.right") { fullWindow = true }
                 .disabled(terminal == nil)
-                // The editor's, while it is open in a column: it gets the window then.
-                .keyboardShortcut(wide && files.editing != nil ? nil : KeyboardShortcut("f", modifiers: [.command, .shift]))
+                // The editor's while it is open in a column (it gets the window then); Exit Full Window's while that shows.
+                .keyboardShortcut(fullWindow || (wide && files.editing != nil) ? nil : KeyboardShortcut("f", modifiers: [.command, .shift]))
                 .help("Give the terminal the whole window (⌘⇧F)")
             Toggle("Transfers", systemImage: "arrow.up.arrow.down", isOn: $showingTransfers)
                 .toggleStyle(.button)

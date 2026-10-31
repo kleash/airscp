@@ -112,7 +112,7 @@ final class WideTests: XCTestCase {
         XCTAssert(mine.waitForExistence(timeout: 30), "The test's folder isn't listed")
         mine.tap()
         app.staticTexts["app.conf"].tap()
-        let text = app.textViews["editor.text"]
+        let text = app.textViews["editor.text"].firstMatch  // a sheet on its way out and the column: the same text
         XCTAssert(text.waitForExistence(timeout: 10), "No editor")
         XCTAssertFalse(app.navigationBars["On iPad"].exists, "The editor isn't in the second side's place")
         XCTAssert(app.navigationBars["lab"].exists, "The server's side is gone")
@@ -131,13 +131,13 @@ final class WideTests: XCTestCase {
         app.navigationBars["app.conf"].buttons["Full Window"].tap()
         let exit = app.buttons["Exit Full Window"]
         XCTAssert(exit.waitForExistence(timeout: 10), "No Full Window")
-        XCTAssertFalse(app.navigationBars["lab"].exists, "The files show in Full Window")
-        XCTAssert(app.staticTexts.containing(NSPredicate(format: "label CONTAINS '+ # typed'")).firstMatch.waitForExistence(timeout: 10),
+        XCTAssertFalse(onScreen(app.navigationBars["lab"]), "The files show in Full Window")
+        XCTAssert(app.staticTexts.matching(NSPredicate(format: "label CONTAINS '+ # typed'")).firstMatch.waitForExistence(timeout: 10),
                   "No changes beside the text")
         keepScreenshot("Editor, full window")
         app.typeKey(XCUIKeyboardKey.escape, modifierFlags: [])
         XCTAssert(exit.waitForNonExistence(timeout: 10), "Escape didn't leave Full Window")
-        XCTAssert(app.navigationBars["lab"].waitForExistence(timeout: 10))
+        XCTAssert(app.navigationBars["app.conf"].buttons["Full Window"].waitForExistence(timeout: 10), "The column isn't back")
 
         app.buttons["Close"].tap()
         app.buttons["Don't Save"].tap()
