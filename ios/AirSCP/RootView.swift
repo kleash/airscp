@@ -10,6 +10,7 @@ struct RootView: View {
     // The place each window was in comes back when iOS restores it (and when the Duo folds or opens).
     @SceneStorage("place") private var place = Place.servers
     @State private var app = AppState()
+    @State private var terminals = Terminals()
 
     var body: some View {
         TabView(selection: $place) {
@@ -20,20 +21,26 @@ struct RootView: View {
                 FilesView { place = .servers }
             }
             Tab("Terminal", systemImage: "apple.terminal", value: .terminal) {
-                NothingOpen(title: "No terminal open", systemImage: "apple.terminal",
-                            description: "Open a server in Servers to type commands on it.") { place = .servers }
+                TerminalTab { place = .servers }
             }
             Tab("Transfers", systemImage: "arrow.up.arrow.down", value: .transfers) {
                 TransfersView()
             }
             Tab(value: .search, role: .search) {
-                SearchView(hosts: app.data.hosts)
+                SearchView { host in
+                    place = .servers
+                    if host.s3 == nil { app.connect(host) }  // S3 storage doesn't open here yet: Servers says so when it is tapped
+                } run: { command, session in
+                    terminals.run(command, on: session)
+                    place = .terminal
+                }
             }
         }
         .tabBarMinimizeBehavior(.onScrollDown)
         .transfersAccessory { place = .transfers }
         .traySheet(app.tray)
         .environment(app)
+        .environment(terminals)
         // A connection's question (Trust, password, passphrase, code), whichever tab is showing.
         .sheet(item: Binding(get: { app.questions.first }, set: { if $0 == nil, let first = app.questions.first { app.answer(first, nil) } })) {
             QuestionSheet(question: $0).environment(app)

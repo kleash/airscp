@@ -78,6 +78,13 @@ public final class SSH2Transport: RemoteTransport {
         try await onQueue { [self] in try connection().sftpBatch(lines, cancellation: cancellation) }
     }
 
+    public func shell(_ command: String, columns: Int, rows: Int, output: @escaping (Data) -> Void,
+                      ended: @escaping (Int32) -> Void) async throws -> RemoteShell {
+        try await onQueue { [self] in
+            try connection().openShell(command, columns: columns, rows: rows, queue: queue, output: output, ended: ended)
+        }
+    }
+
     /// Ends the connection: its socket at once (a call waiting on it fails), the sessions once no call runs.
     public func close() {
         let (target, pump, hop) = lock.withLock { () -> (Connection?, Pump?, Connection?) in
@@ -122,6 +129,9 @@ final class Connection {
     /// The connection is gone (a socket error): every later call throws `.disconnected`.
     var dead = false
     var sftp: OpaquePointer?
+    /// The open terminals (SSH2Shell.swift), and what wakes the transport's queue for them when no call runs.
+    var shells: [Shell] = []
+    var shellWatch: DispatchSourceRead?
     /// A keyboard-interactive question was cancelled.
     private var cancelledQuestion = false
 
@@ -147,6 +157,7 @@ final class Connection {
     }
 
     func close() {
+        endShells()
         if let sftp { libssh2_sftp_shutdown(sftp) }
         sftp = nil
         libssh2_session_set_blocking(session, 1)
@@ -428,6 +439,7 @@ final class Connection {
         if directions & LIBSSH2_SESSION_BLOCK_OUTBOUND != 0 { events |= POLLOUT }
         var descriptor = pollfd(fd: fd, events: Int16(events == 0 ? POLLIN : events), revents: 0)
         _ = poll(&descriptor, 1, 100)
+        serveShells()  // after the poll: what it reads for the caller's channel waits there for the caller
     }
 
     /// A libssh2 error: the connection lost (as ssh's own end would show), or what `what` couldn't do.
