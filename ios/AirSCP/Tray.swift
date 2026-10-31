@@ -230,6 +230,8 @@ struct TraySheet: View {
     }
 
     private func localCopies(_ items: [Tray.Item]) async throws -> [URL] {
+        // shortcut: the downloaded copies stay in the temporary folder until iOS empties it; remove them once Save or the
+        // share sheet is done with them if they take up too much room.
         let folder = FileManager.default.temporaryDirectory.appendingPathComponent("Tray " + UUID().uuidString.prefix(8))
         try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
         var urls: [URL] = [], jobs: [UUID] = [], names: [String] = []

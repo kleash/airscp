@@ -126,7 +126,7 @@ private final class Copy {
                     try await uploadFolder(from, to: to, info)
                 case S_IFLNK:
                     guard let target = try? FileManager.default.destinationOfSymbolicLink(atPath: from) else {
-                        throw SFTPFailure("readlink local \"\(from)\": \(String(cString: strerror(errno)))")
+                        throw SFTPFailure("Couldn't read the local link \"\(from)\"")
                     }
                     try await step { try $0.makeLink(to, pointingTo: target) }
                 case S_IFREG:
