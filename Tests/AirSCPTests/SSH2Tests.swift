@@ -209,6 +209,60 @@ extension TestServer {
     }
 }
 
+/// AirSCP's terminal over libssh2 (the iPhone and iPad app's Terminal tab): the shell it starts and its marked commands,
+/// a new size, typing while another call waits on the same connection, and the shell's end with its status.
+@MainActor @Test func overLibssh2TheTerminalRunsTheShell() async throws {
+    var options = TestServer.Options()
+    options.shell = "/bin/zsh"
+    try await withServer(options) { @MainActor server in
+        try write("PS1='%# '\n", to: server.path(".zshrc"))
+        let ssh2 = try server.ssh2Session()
+        try await ssh2.connect()
+        let screen = TerminalScreen(columns: 80, rows: 24)
+        screen.markToken = "feed1234"
+        var commands: [String] = []
+        screen.onCommand = { commands.append($0) }
+        let terminal = try await TerminalSession(transport: try #require(ssh2.transport),
+                                                 command: OpenSSH.terminalShell(in: nil, token: "feed1234"), screen: screen)
+        var status: Int32?
+        terminal.onExit = { status = $0 }
+        #expect(await eventually(timeout: 20) { screen.waitsAtPrompt }, "\(screen.text)")
+        terminal.send("echo marker-$((6*7))\r")
+        #expect(await eventually(timeout: 20) { commands == ["echo marker-$((6*7))"] }, "\(screen.text)")
+        #expect(screen.blocks.last.map(screen.output) == "marker-42", "\(screen.text)")
+
+        // The program gets the new size.
+        terminal.resize(columns: 100, rows: 30)
+        terminal.send("stty size\r")
+        #expect(await eventually(timeout: 20) { screen.text.contains("30 100") }, "\(screen.text)")
+
+        // Typing reaches the shell while another call waits on the connection: that call ends only once the shell has
+        // made the file it waits for.
+        let flag = Quote.shell(server.path("typed"))
+        let cancellation = Cancellation()
+        let waiting = Task { try await ssh2.run("while [ ! -e \(flag) ]; do sleep 0.1; done; printf seen", cancellation: cancellation) }
+        let watchdog = Task {
+            try await Task.sleep(nanoseconds: 60_000_000_000)
+            cancellation.cancel()
+        }
+        terminal.send("touch \(flag)\r")
+        #expect(try await waiting.value.output == "seen")
+        watchdog.cancel()
+
+        terminal.send("exit 3\r")
+        #expect(await eventually(timeout: 20) { status == 3 && !terminal.running }, "\(screen.text)")
+
+        // A lost connection ends a terminal as it ends ssh (255).
+        let another = try await TerminalSession(transport: try #require(ssh2.transport), command: "sleep 100",
+                                                screen: TerminalScreen())
+        var lost: Int32?
+        another.onExit = { lost = $0 }
+        let sshd = try String(contentsOfFile: server.root + "/sshd.pid").trimmingCharacters(in: .whitespacesAndNewlines)
+        try await run(["/usr/bin/pkill", "-P", sshd])
+        #expect(await eventually(timeout: 20) { lost == 255 })
+    }
+}
+
 /// The lab's logins and routes over libssh2.
 @Suite(.enabled(if: Lab.enabled)) struct SSH2LabTests {
     func session(_ lab: LabRun, _ host: SSHHost, jump: SSHHost? = nil,

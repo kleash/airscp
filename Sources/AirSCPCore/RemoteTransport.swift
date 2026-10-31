@@ -14,6 +14,21 @@ public protocol RemoteTransport: AnyObject {
     /// sftp batch lines, as `sftp -b -` runs them (`OpenSSH.sftpBatch`): each echoed after "sftp> ", output as sftp
     /// prints it, sftp's error lines; the first failing line ends the batch with exit status 1, unless it starts with "-".
     func sftp(_ lines: [String], cancellation: Cancellation) async throws -> CommandResult
+    /// `command` on a terminal of `columns` × `rows` (xterm-256color), as `ssh -t host command` runs it, for the
+    /// Terminal tab (`TerminalSession`). What it prints goes to `output`, and `ended` gets its exit status once it has
+    /// ended (255: the connection was lost, as ssh says), both on a queue of the transport's. Throws when it can't start.
+    func shell(_ command: String, columns: Int, rows: Int, output: @escaping (Data) -> Void,
+               ended: @escaping (Int32) -> Void) async throws -> RemoteShell
     /// Ends the connection.
+    func close()
+}
+
+/// A transport's terminal (`RemoteTransport.shell`).
+public protocol RemoteShell: AnyObject {
+    /// Keys, pastes and the screen's answers, in order.
+    func write(_ data: Data)
+    /// A new size: the program gets SIGWINCH.
+    func resize(columns: Int, rows: Int)
+    /// Ends it, as closing a terminal does (a hangup).
     func close()
 }
