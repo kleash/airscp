@@ -155,11 +155,11 @@ final class FilesTests: XCTestCase {
         app.buttons["More"].firstMatch.tap()
         app.buttons["Import from Files"].tap()
         let file = app.cells.containing(NSPredicate(format: "label CONTAINS %@", String(name.dropLast(4)))).firstMatch
-        let browse = app.buttons["Browse"]
-        XCTAssert(browse.waitForExistence(timeout: 15), "No document picker")
-        browse.tap()  // it opens where it was last, else at its locations
+        let browse = app.buttons["Browse"], open = app.navigationBars.buttons["Open"]
+        XCTAssert(browse.waitForExistence(timeout: 15) || open.exists, "No document picker")
+        if browse.exists { browse.tap() }  // the iPhone's picker has tabs (it opens where it was last); the iPad's a sidebar
         if !file.waitForExistence(timeout: 10) {
-            for place in ["On My iPhone", "AirSCP"] {
+            for place in ["On My \(UIDevice.current.model)", "AirSCP"] {
                 let cell = app.cells.containing(.staticText, identifier: place).firstMatch
                 XCTAssert(cell.waitForExistence(timeout: 10), "No \(place) in the document picker")
                 cell.tap()
@@ -170,7 +170,6 @@ final class FilesTests: XCTestCase {
         XCTAssert(file.waitForExistence(timeout: 30), "The saved file isn't in the document picker")
         keepScreenshot("Import from Files")
         file.tap()  // several can be picked: it's selected, and Open takes the selection
-        let open = app.navigationBars.buttons["Open"]
         let enabled = XCTNSPredicateExpectation(predicate: NSPredicate(format: "exists == true AND isEnabled == true"), object: open)
         await fulfillment(of: [enabled], timeout: 10)
         for _ in 0..<3 where open.exists {  // a tap on Open sometimes doesn't take: again while the picker is up
