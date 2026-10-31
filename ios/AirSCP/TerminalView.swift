@@ -89,7 +89,7 @@ final class TerminalView: UIView, UIKeyInput {
             let grown = screen.scrollback.count - scrollbackSeen
             scrollbackSeen = screen.scrollback.count
             if scrollOffset > 0 && grown < 0 { return showLive() }  // the scrollback was cleared
-            if scrollOffset > 0 {
+            if scrollOffset > 0 && grown > 0 {
                 scrollOffset = min(scrollOffset + grown, screen.scrollback.count)
                 terminals?.newLines += grown
             }

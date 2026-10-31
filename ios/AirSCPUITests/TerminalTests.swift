@@ -65,6 +65,21 @@ final class TerminalTests: XCTestCase {
         XCTAssert(terminal.shows("stopped-7"), terminal.text)
     }
 
+    func testANewTerminalIsAddedAndClosed() {
+        let app = launchConnectedToLab(folder)
+        _ = showTerminal(app)
+        app.buttons["New Terminal"].tap()
+        app.buttons["lab"].tap()
+        // Two on the lab now: the switcher shows the new one, which can be closed (the last one stays).
+        let close = app.buttons["Close Terminal"]
+        XCTAssert(close.waitForExistence(timeout: 10), "No second terminal")
+        let terminal = app.descendants(matching: .any)["terminal"]
+        XCTAssert(terminal.shows("dev@"), terminal.text)
+        keepScreenshot("Two terminals")
+        close.tap()
+        XCTAssert(close.waitForNonExistence(timeout: 10), "The last terminal can be closed")
+    }
+
     /// Keeps a screenshot in the test's results, to look at the terminal in light and dark.
     private func keepScreenshot(_ name: String) {
         let screenshot = XCTAttachment(screenshot: XCUIScreen.main.screenshot())

@@ -48,16 +48,17 @@ struct TerminalTab: View {
                 .help("Show another terminal")
             }
         }
+        if terminals.list.contains(where: { $0 !== terminal && $0.session === terminal.session }) {  // the last one stays
+            ToolbarItem(placement: .topBarLeading) {
+                Button("Close Terminal", systemImage: "xmark") { terminals.close(terminal) }
+                    .help("Close this terminal and end its shell")
+            }
+        }
         ToolbarItem(placement: .topBarTrailing) {
             Menu("New Terminal", systemImage: "plus") {
                 ForEach(app.open.filter { $0.state == .connected && $0.capabilities.shell }, id: \.host.id) { session in
                     Button(session.host.displayName) { terminals.shownID = terminals.add(on: session).id }
                         .help("Open another shell on this server")
-                }
-                if terminals.list.contains(where: { $0 !== terminal && $0.session === terminal.session }) {
-                    Divider()
-                    Button("Close This Terminal", systemImage: "xmark", role: .destructive) { terminals.close(terminal) }
-                        .help("Close this terminal and end its shell")
                 }
             }
             .help("Open another shell on an open server")
@@ -184,12 +185,15 @@ struct KeyBar: View {
                 .buttonStyle(.glass)
                 .help("Hide the keyboard")
         }
-        .controlSize(.large)
+        .controlSize(.regular)  // small enough to show most of the keys at once, as a keyboard's own keys
     }
 
     private func key(_ title: String, image: String? = nil, code: UInt16, characters: String? = nil, help: String) -> some View {
         Button { terminals.press(keyCode: code, characters: characters) } label: {
-            if let image { Label(title, systemImage: image).labelStyle(.iconOnly) } else { Text(title) }
+            Group {
+                if let image { Label(title, systemImage: image).labelStyle(.iconOnly) } else { Text(title) }
+            }
+            .frame(minWidth: 20, minHeight: 28)
         }
         .buttonStyle(.glass)
         .help(help)

@@ -165,7 +165,7 @@ import SwiftUI
     /// Search's Run on: `command` at an empty prompt of a terminal on `session`'s server (the shown one first), else in a
     /// new terminal there once its shell waits at its prompt, as the Mac's Run in Terminal never types into a program.
     func run(_ command: String, on session: Session) {
-        let ready = ((shown.map { [$0] } ?? []) + list).first {
+        let ready = ([shown].compactMap { $0 } + list).first {
             $0.session === session && $0.shell?.running == true && $0.shell?.screen.waitsAtPrompt == true
         }
         let terminal = ready ?? add(on: session)

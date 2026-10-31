@@ -82,6 +82,8 @@ struct SearchView: View {
             .navigationTitle("Search")
         }
         .searchable(text: $text, prompt: "Servers, snippets, commands, files")
+        .textInputAutocapitalization(.never)  // commands and names, not sentences
+        .autocorrectionDisabled()
         .onAppear { histories = app.data.hosts.map { (host: $0, commands: CommandHistory(host: $0.id).commands) } }
     }
 
@@ -136,7 +138,8 @@ struct FoundFiles: View {
                 ProgressView("Searching \(session.capabilities.home)…")
             }
         }
-        .navigationTitle(session.host.displayName)
+        .navigationTitle("“\(text)” in \(session.host.displayName)")
+        .navigationBarTitleDisplayMode(.inline)
         .task {
             do {
                 found = try await session.find("*\(text)*", in: session.capabilities.home).items

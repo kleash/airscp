@@ -4,8 +4,7 @@ import Foundation
 
 /// SSH over libssh2: the iPhone and iPad app's `RemoteTransport` (iOS has no ssh), which the Mac tests run too.
 /// One libssh2 session per host, blocking while it logs in and non-blocking after, so that a call waits on its socket
-/// and notices a cancel; calls run one at a time on `queue`, and terminals are served there between them and while one
-/// waits (SSH2Shell.swift). Through a jump host, the jump host's session opens a
+/// and notices a cancel; calls run one at a time on `queue`. Through a jump host, the jump host's session opens a
 /// direct-tcpip channel that a `Pump` carries to a socket pair: the target's session talks over the other end.
 /// Unlike ssh: no ssh config, agent, certificates, FIDO keys or GSSAPI, and no proxy; known hosts are `knownHosts`
 /// (OpenSSH's format).
