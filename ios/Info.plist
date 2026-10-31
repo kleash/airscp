@@ -2,6 +2,11 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
+	<!-- Transfers that go on in the background: iOS 26's continued processing tasks (BackgroundTransfers.swift). -->
+	<key>BGTaskSchedulerPermittedIdentifiers</key>
+	<array>
+		<string>$(PRODUCT_BUNDLE_IDENTIFIER).transfers.*</string>
+	</array>
 	<!-- Nearby servers: the Bonjour services iOS lets the app browse (the rest of Info.plist is generated). -->
 	<key>NSBonjourServices</key>
 	<array>
