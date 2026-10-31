@@ -25,8 +25,8 @@ final class TerminalView: UIView, UIKeyInput {
     /// The cells selected, in `screen.allLines`, both ends included; and the word a touch and hold took first.
     private var selection: (start: TerminalScreen.Position, end: TerminalScreen.Position)?
     private var pressedWord: (start: TerminalScreen.Position, end: TerminalScreen.Position)?
-    /// Copy, Paste and Select All, from the responder chain (this view's `canPerformAction`).
-    private let editMenu = UIEditMenuInteraction(delegate: nil)
+    /// Copy, Paste and Select All over the text (`editMenuInteraction(_:menuFor:suggestedActions:)`).
+    private lazy var editMenu = UIEditMenuInteraction(delegate: self)
     /// A hardware key held down, sent again until it is let go.
     private var repeating: (key: UIKeyboardHIDUsage, task: Task<Void, Never>)?
     private var font = UIFont.monospacedSystemFont(ofSize: 13, weight: .regular)
@@ -439,6 +439,25 @@ final class TerminalView: UIView, UIKeyInput {
         let size = min(max((pinchStart * pinch.scale * 2).rounded() / 2, 8), 28)
         if size != font.pointSize { setFontSize(size) }
         if pinch.state == .ended { UserDefaults.standard.set(Double(size), forKey: Self.fontSizeKey) }
+    }
+}
+
+extension TerminalView: UIEditMenuInteractionDelegate {
+    /// The menu's own actions, sent to this view: the system's would go to the first responder, and this view becomes
+    /// one only to type (the keyboard comes with it).
+    func editMenuInteraction(_ interaction: UIEditMenuInteraction, menuFor configuration: UIEditMenuConfiguration,
+                             suggestedActions: [UIMenuElement]) -> UIMenu? {
+        var actions: [UIAction] = []
+        if canPerformAction(#selector(copy(_:)), withSender: nil) {
+            actions.append(UIAction(title: "Copy") { [weak self] _ in self?.copy(nil) })
+        }
+        if canPerformAction(#selector(paste(_:)), withSender: nil) {
+            actions.append(UIAction(title: "Paste") { [weak self] _ in self?.paste(nil) })
+        }
+        if canPerformAction(#selector(selectAll(_:)), withSender: nil) {
+            actions.append(UIAction(title: "Select All") { [weak self] _ in self?.selectAll(nil) })
+        }
+        return UIMenu(children: actions)
     }
 }
 
