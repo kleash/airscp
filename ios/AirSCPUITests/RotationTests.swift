@@ -42,6 +42,7 @@ final class RotationTests: XCTestCase {
         XCTAssert(terminal.shows("size=", times: 3), terminal.text)
         XCTAssertEqual(Self.sizes(in: terminal.text).last?.columns, sizes[0].columns, terminal.text)
         keepScreenshot("Terminal, portrait, typing")
+        app.buttons["Hide Keyboard"].tap()  // the iPhone's keyboard covers the tabs
 
         app.tab("Search").tap()
         let field = app.searchFields.firstMatch
