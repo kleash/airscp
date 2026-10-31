@@ -63,6 +63,7 @@ struct TerminalTab: View {
 /// history as suggestions, then the key bar while the terminal has the keyboard, or the Stop / Return / Type deck.
 struct TerminalPane: View {
     @Environment(Terminals.self) private var terminals
+    @Environment(\.verticalSizeClass) private var verticalSizeClass
     let terminal: Terminals.Terminal
     @State private var command = ""
     @FocusState private var commandFocused: Bool
@@ -90,23 +91,8 @@ struct TerminalPane: View {
     private var bar: some View {
         VStack(spacing: 8) {
             if commandFocused { suggestions }
-            HStack {
-                TextField("Command", text: $command)
-                    .focused($commandFocused)
-                    .textInputAutocapitalization(.never)
-                    .autocorrectionDisabled()
-                    .submitLabel(.send)
-                    .onSubmit(send)
-                    .font(.body.monospaced())
-                    .accessibilityIdentifier("commandLine")
-                    .help("Type a command to run on the server; suggestions come from the commands run there before")
-                Button("Run", systemImage: "return", action: send)
-                    .labelStyle(.iconOnly)
-                    .disabled(command.trimmingCharacters(in: .whitespaces).isEmpty)
-                    .help("Run the command in the shell")
-            }
-            .padding(12)
-            .glassEffect()
+            // A phone on its side has room above the keyboard for the terminal or the command line, not both.
+            if !(terminal.typing && verticalSizeClass == .compact) { commandLine }
             if terminal.typing {
                 KeyBar(terminal: terminal)
             } else if !commandFocused {
@@ -118,6 +104,26 @@ struct TerminalPane: View {
         }
         .padding(.horizontal)
         .padding(.bottom, 8)
+    }
+
+    private var commandLine: some View {
+        HStack {
+            TextField("Command", text: $command)
+                .focused($commandFocused)
+                .textInputAutocapitalization(.never)
+                .autocorrectionDisabled()
+                .submitLabel(.send)
+                .onSubmit(send)
+                .font(.body.monospaced())
+                .accessibilityIdentifier("commandLine")
+                .help("Type a command to run on the server; suggestions come from the commands run there before")
+            Button("Run", systemImage: "return", action: send)
+                .labelStyle(.iconOnly)
+                .disabled(command.trimmingCharacters(in: .whitespaces).isEmpty)
+                .help("Run the command in the shell")
+        }
+        .padding(12)
+        .glassEffect()
     }
 
     /// The commands run on this server before that start with what is typed, newest first.
