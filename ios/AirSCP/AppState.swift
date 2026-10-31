@@ -15,6 +15,8 @@ import SwiftUI
     private(set) var questions: [Question] = []
     /// Why the last connect failed.
     var failure: AirSCPError?
+    /// Files picked to carry elsewhere together.
+    let tray = Tray()
     /// Connections whose question the user cancelled: their connect failing then needs no alert.
     private var declined: Set<ObjectIdentifier> = []
 
