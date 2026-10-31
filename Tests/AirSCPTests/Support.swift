@@ -54,6 +54,10 @@ enum TestEnvironment {
         Keychain.writeItem = { _ in errSecSuccess }
         // These stand-ins are the tests' Keychain, whatever AIRSCP_SUPPORT_DIR a test sets (it would make it memory-only).
         Keychain.memoryOnly = false
+        // After a menu (macOS 27's SwiftUI pop-ups) window-server events stop the main run loop: rerun it, as NSApp.run does.
+        if #available(macOS 27, *) {
+            RunLoop.main.add(Timer(timeInterval: 0, repeats: false) { _ in RunLoop.main.run() }, forMode: .common)
+        }
     }()
 
     /// The AirSCP executable (askpass helper), built next to the test bundle by `swift test`.

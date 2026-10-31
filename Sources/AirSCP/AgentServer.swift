@@ -745,10 +745,10 @@ final class AgentServer {
                 menu.delegate?.menuWillOpen?(menu)
                 try? await Task.sleep(nanoseconds: 150_000_000)
                 defer { menu.delegate?.menuDidClose?(menu) }
-                try set(node, to: value)
+                try await set(node, to: value)
                 return await acted()
             }
-            try set(node, to: value)
+            try await set(node, to: value)
             // A pane's filter: its rows are filtered off the main thread; the reply has them (as sort waits for its rows).
             if let pane = [main?.selectedWorkspace?.browser.left, main?.selectedWorkspace?.browser.right]
                 .compactMap({ $0 }).first(where: { $0.filterField === node.view }) {
@@ -778,7 +778,7 @@ final class AgentServer {
         return fields.first { normalized($0.title).hasPrefix(wanted + ",") }
     }
 
-    private func set(_ node: AXNode, to value: Any) throws {
+    private func set(_ node: AXNode, to value: Any) async throws {
         let text: String
         switch value {
         case let string as String: text = string
@@ -789,8 +789,7 @@ final class AgentServer {
         let on = ["true", "on", "yes", "1"].contains(text.lowercased())
         switch node.view {
         case let popup as NSPopUpButton:
-            let item = try choice(text, in: popup)
-            guard item.isEnabled else { throw Failure("“\(item.title)” can't be chosen now" + (item.toolTip.map { ": " + $0 } ?? ".")) }
+            let item = try choice(text, in: popup.menu)
             // As choosing it in the open menu does: the item's action (SwiftUI's pickers listen there), else the pop-up's.
             if let menu = popup.menu, let index = menu.items.firstIndex(of: item), item.action != nil {
                 menu.performActionForItem(at: index)
@@ -835,6 +834,19 @@ final class AgentServer {
         default:
             if node.role == "checkbox" || node.role == "disclosuretriangle" {
                 if ((node.value as? NSNumber)?.boolValue ?? false) != on { _ = node.press() }
+            } else if node.role == "popupbutton" || node.role == "menubutton" {
+                // macOS 27's SwiftUI draws its pop-ups itself (no NSPopUpButton): pressed, one opens its menu a moment later.
+                var menu: NSMenu?
+                let opening = NotificationCenter.default.publisher(for: NSMenu.didBeginTrackingNotification)
+                    .sink { menu = $0.object as? NSMenu }
+                defer { opening.cancel() }
+                _ = node.press()
+                let deadline = Date().addingTimeInterval(5)
+                while menu == nil && Date() < deadline { try? await Task.sleep(nanoseconds: 50_000_000) }
+                guard let menu else { throw Failure("“\(node.title.isEmpty ? node.id : node.title)” didn't open its menu.") }
+                // Closed from here, once it tracks: closed in the notification, it went on tracking and none opened again.
+                defer { menu.cancelTrackingWithoutAnimation() }
+                menu.performActionForItem(at: menu.index(of: try choice(text, in: menu)))
             } else if node.object.responds(to: NSSelectorFromString("setAccessibilityValue:")) {
                 node.object.setValue(text, forKey: "accessibilityValue")
             } else {
@@ -843,11 +855,11 @@ final class AgentServer {
         }
     }
 
-    /// The pop-up's item that `text` chooses: the one with that title, else one with these words in it ("zip": "ZIP
-    /// archive (.zip)", not "Gzipped tar…"), else one with it as a part.
-    private func choice(_ text: String, in popup: NSPopUpButton) throws -> NSMenuItem {
-        if let menu = popup.menu { menu.delegate?.menuNeedsUpdate?(menu) }  // menus filled as they open
-        let titles = popup.itemArray.filter { !$0.isSeparatorItem }
+    /// The pop-up menu's item that `text` chooses, if it can be chosen now: the one with that title, else one with these
+    /// words in it ("zip": "ZIP archive (.zip)", not "Gzipped tar…"), else one with it as a part.
+    private func choice(_ text: String, in menu: NSMenu?) throws -> NSMenuItem {
+        if let menu { menu.delegate?.menuNeedsUpdate?(menu) }  // menus filled as they open
+        let titles = (menu?.items ?? []).filter { !$0.isSeparatorItem }
         let words = "(?<![\\p{L}\\p{N}])" + NSRegularExpression.escapedPattern(for: text) + "(?![\\p{L}\\p{N}])"
         let matches = titles.filter { $0.title == text }.first.map { [$0] }
             ?? titles.filter { normalized($0.title) == normalized(text) }.nilIfEmpty
@@ -857,6 +869,7 @@ final class AgentServer {
             throw Failure("“\(text)” \(matches.isEmpty ? "isn't one" : "matches more than one") of the choices: "
                           + titles.map(\.title).filter { !$0.isEmpty }.joined(separator: ", "))
         }
+        guard item.isEnabled else { throw Failure("“\(item.title)” can't be chosen now" + (item.toolTip.map { ": " + $0 } ?? ".")) }
         return item
     }
 
@@ -2037,7 +2050,7 @@ final class AgentServer {
             let isOn = (node.value as? NSNumber)?.boolValue ?? false
             return isOn == on ? nil : Change(what: "switch “\(node.title)” \(on ? "on" : "off")")
         }
-        if node.id == "terminal.snippets", let popup = node.view as? NSPopUpButton, let item = try? choice("\(value)", in: popup),
+        if node.id == "terminal.snippets", let popup = node.view as? NSPopUpButton, let item = try? choice("\(value)", in: popup.menu),
            item.action == #selector(TerminalController.insertSnippet(_:)) {  // not Edit Snippets…
             return terminalChange("type the snippet “\(item.title)” into", text: item.representedObject as? String ?? "")
         }
