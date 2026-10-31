@@ -34,6 +34,11 @@ struct ServersView: View {
                                     let state = app.states[host.id] ?? .idle
                                     Group {
                                         switch state {
+                                        case .connected where host.s3 == nil:
+                                            NavigationLink(value: host.id) {
+                                                HostRow(host: host, state: state, monitor: app.monitor(for: session))
+                                            }
+                                            .help("Show this server's CPU, memory, disks and processes")
                                         case .connecting, .connected:
                                             HostRow(host: host, state: state)
                                         default:
@@ -49,8 +54,8 @@ struct ServersView: View {
                         if !saved.isEmpty {
                             Section("Saved") {
                                 ForEach(saved) { host in
-                                    Button { connect(host) } label: { HostRow(host: host) }
-                                        .help(host.s3 == nil ? "Connect to this server" : "Show why S3 storage can't open here yet")
+                                    Button { app.connect(host) } label: { HostRow(host: host) }
+                                        .help(host.s3 == nil ? "Connect to this server" : "Open this storage")
                                         .swipeActions { actions(host, open: nil) }
                                         .contextMenu { actions(host, open: nil) }
                                 }
@@ -60,6 +65,8 @@ struct ServersView: View {
                 }
             }
             .navigationTitle("Servers")
+            // A value, not a view: the screen stays while its row changes (connection lost, back again).
+            .navigationDestination(for: UUID.self) { MonitorView(hostID: $0) }
             .safeAreaInset(edge: .top) {
                 // Connects without saving the server.
                 TextField("user@host", text: $address)
@@ -114,21 +121,11 @@ struct ServersView: View {
                     .help("Save this server to connect to it again with a tap")
             }
         } else {
-            if host.s3 == nil {  // S3 storage has settings of its own, not this editor's
-                Button("Edit", systemImage: "pencil") { editing = host }
-                    .help("Change this server's name, address or login")
-            }
+            Button("Edit", systemImage: "pencil") { editing = host }
+                .help(host.s3 == nil ? "Change this server's name, address or login" : "Change this storage's settings or key")
             Button("Delete", systemImage: "trash", role: .destructive) { app.delete(host) }
                 .tint(.red)  // the app's teal tint would colour a swipe button's red too
                 .help("Forget this server and its saved password")
-        }
-    }
-
-    private func connect(_ host: SSHHost) {
-        if host.s3 != nil {
-            app.failure = AirSCPError(.other, "AirSCP can't open S3 storage on iPhone and iPad yet.")
-        } else {
-            app.connect(host)
         }
     }
 }
@@ -137,6 +134,9 @@ struct HostRow: View {
     let host: SSHHost
     /// An open connection's state; nil for a server that isn't open.
     var state: Session.State?
+    /// A connected server's monitor: its CPU, memory and disk show under its state, read while the row shows.
+    var monitor: HostMonitor?
+    @Environment(\.scenePhase) private var phase
 
     var body: some View {
         Label {
@@ -146,11 +146,15 @@ struct HostRow: View {
             } else if !host.label.isEmpty {
                 Text(host.s3?.address ?? host.hostname).foregroundStyle(.secondary)
             }
+            if let snapshot = monitor?.snapshot { MonitorFigures(snapshot: snapshot) }
         } icon: {
             Image(systemName: host.s3 == nil ? "server.rack" : "externaldrive.connected.to.line.below")
                 .foregroundStyle(host.s3 == nil ? .teal : .orange)  // the mockups: teal servers, amber S3
         }
         .foregroundStyle(Color.primary)  // as a button's label too: a row, not a link (.primary would be the tint's)
+        .task(id: monitor != nil && phase == .active) {
+            if let monitor, phase == .active { await monitor.sample(processes: false) }
+        }
     }
 
     /// A green, amber or red dot for connected, reconnecting or disconnected (with why); a spinner while connecting.

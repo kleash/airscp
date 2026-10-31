@@ -11,6 +11,7 @@ struct RootView: View {
     @SceneStorage("place") private var place = Place.servers
     @State private var app = AppState()
     @State private var terminals = Terminals()
+    @Environment(\.scenePhase) private var phase
 
     var body: some View {
         TabView(selection: $place) {
@@ -29,7 +30,7 @@ struct RootView: View {
             Tab(value: .search, role: .search) {
                 SearchView { host in
                     place = .servers
-                    if host.s3 == nil { app.connect(host) }  // S3 storage doesn't open here yet: Servers says so when it is tapped
+                    app.connect(host)
                 } run: { command, session in
                     terminals.run(command, on: session)
                     place = .terminal
@@ -37,6 +38,9 @@ struct RootView: View {
             }
         }
         .tabBarMinimizeBehavior(.onScrollDown)
+        // Back in front, each connection checks it is still there (iOS may have let it go in the background): a lost one
+        // reconnects by itself, or says why it can't.
+        .onChange(of: phase) { if phase == .active { for session in app.open { Task { _ = await session.check() } } } }
         .transfersAccessory { place = .transfers }
         .traySheet(app.tray)
         .environment(app)
