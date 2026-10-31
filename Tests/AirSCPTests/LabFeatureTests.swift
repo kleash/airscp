@@ -215,6 +215,40 @@ struct LabFeatureTests {
         }
     }
 
+    /// Disk Usage on Debian (GNU du: NUL-separated, so a name with a line feed comes through) and Alpine (BusyBox du:
+    /// kilobytes, one per line): sizes add up, folders hold their items, the folder's own items count as reached.
+    @Test func diskUsageOnLinux() async throws {
+        try await withLab { lab in
+            for host in [Lab.target(), Lab.minimal()] {
+                let session = try await lab.connected(host)
+                let dir = try await lab.folder(on: session, in: "/home/dev")
+                let gnu = host.port == Lab.target().port
+                let odd = gnu ? "two\nlines" : "it's here"
+                let script = "cd \(Quote.shell(dir)) && mkdir -p 'a b/deep' empty && head -c 300000 /dev/urandom > 'a b/deep/big' "
+                    + "&& head -c 2000 /dev/urandom > \(Quote.shell(odd)) && printf 'hello\\n' > notes.txt"
+                #expect(try await session.run(script).status == 0)
+                final class Found: @unchecked Sendable {  // filled on one background thread, read after the scan
+                    var records: [DiskUsage.Record] = []
+                    var expected = 0
+                }
+                let found = Found()
+                try await session.diskUsage(of: dir) { records, expected in
+                    found.records += records
+                    found.expected = expected
+                }
+                let usage = DiskUsage(path: dir)
+                usage.add(found.records)
+                #expect(found.expected == 4 && usage.reached == 4, "\(host.label): \(found.records)")
+                #expect(usage.root.files == 4, "\(found.records)")  // du doesn't say an empty folder is one: it reads as a file
+                let top = try #require(usage.root.children.first)
+                #expect(top.name == "a b" && top.isFolder && top.files == 1 && top.size >= 300_000 && top.size < 310_000)
+                #expect(usage.root.largestFiles(1).first?.path == dir + "/a b/deep/big")
+                #expect(usage.root.children.contains { $0.name == odd && $0.size >= 2_000 && !$0.isFolder })
+                #expect(usage.root.size >= 302_006)
+            }
+        }
+    }
+
     @Test func folderSizesAndGetInfo() async throws {
         try await withLab { lab in
             let session = try await lab.connected(Lab.target())

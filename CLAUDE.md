@@ -65,7 +65,7 @@ release, self-hosted runner) and `CONTRIBUTING.md`. User docs: `docs/` (publishe
 | `…/AgentBridge.swift` | `AirSCP --mcp` (MCP over stdio) and `--agent` (one tool from a shell); the tool list and the guide |
 | `Sources/AirSCP/main.swift` | Helper modes first (`--proxy-connect`, `--mcp`, `--agent`, askpass when `AIRSCP_ASKPASS_SOCK` is set), then the app |
 | `…/AppDelegate.swift`, `MainWindow.swift`, `HostsSidebar.swift`, `HostWorkspace.swift` | Menu bar, the one main window, sidebar, per-host workspace |
-| `…/BrowserContent.swift`, `FilePane.swift`, `FileActions.swift`, `FileSheets.swift`, `Synchronize.swift` | The Files tab |
+| `…/BrowserContent.swift`, `FilePane.swift`, `FileActions.swift`, `FileSheets.swift`, `Synchronize.swift`, `DiskUsageSheet.swift` | The Files tab (Disk Usage's scan and tree: Core's `DiskUsage.swift`) |
 | `…/TransfersPanel.swift`, `MonitorTab.swift`, `Tunnels.swift`, `TerminalTab.swift`, `RDPWorkspace.swift`, `RDPDesktopView.swift` | Panels and tabs (TerminalTab: the shell inside AirSCP over Core's `TerminalScreen` + `TerminalSession`) |
 | `…/AgentServer.swift`, `AgentSnapshot.swift` | Agent control inside the app: socket, tools, in-process accessibility tree, screenshots |
 | `…/Help.swift` | Tooltips of menu commands, Help menu, the docs URL table (`HelpPage`) |
