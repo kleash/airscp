@@ -7,9 +7,12 @@ struct EditedFile: Identifiable {
     let session: Session
     let entry: RemoteEntry
     let text: String
+    /// The line to open it at (from 1): the terminal's "file:line".
+    var line: Int?
 }
 
-/// The editor for a server's text file: Edit (monospaced), Changes (the lines changed since it was opened) and Info.
+/// The editor for a server's text file: Edit (monospaced, in syntax colours, Go to Line), Changes (the lines changed
+/// since it was opened) and Info.
 /// Save writes it back byte for byte only while the server still has the file as this editor last read or wrote it
 /// (`Session.saveText`, as the Mac's editor does); else it asks: Overwrite, Show Server Version, or Cancel. It sits in a
 /// navigation stack of its container's (a sheet's, or a column's).
@@ -32,6 +35,10 @@ struct EditorView: View {
     /// The server's version, shown read-only.
     @State private var theirs: String?
     @State private var failure: AirSCPError?
+    /// Go to Line: asking for the number, and the line the text goes to.
+    @State private var askingLine = false
+    @State private var lineText = ""
+    @State private var jump: Int?
     /// The file had Windows line ends: lines typed (Return gives "\n") are saved with them too.
     private let crlf: Bool
 
@@ -60,12 +67,7 @@ struct EditorView: View {
     var body: some View {
         Group {
             switch tab {
-            case .edit:
-                TextEditor(text: $text)
-                    .font(.body.monospaced())
-                    .autocorrectionDisabled()  // also no smart quotes and dashes
-                    .textInputAutocapitalization(.never)
-                    .accessibilityIdentifier("editor.text")
+            case .edit: CodeView(text: $text, name: name, jump: $jump)
             case .changes: changes
             case .info: info
             }
@@ -94,7 +96,25 @@ struct EditorView: View {
                     .disabled(!edited || saving)
                     .help(edited ? "Save to the server" : "Nothing to save: no changes since the last save")
             }
+            ToolbarItem(placement: .primaryAction) {
+                Button("Go to Line", systemImage: "text.line.first.and.arrowtriangle.forward") {
+                    lineText = ""
+                    askingLine = true
+                }
+                .help("Go to a line by its number")
+            }
         }
+        .alert("Go to Line", isPresented: $askingLine) {
+            TextField("Line", text: $lineText)
+                .keyboardType(.numberPad)
+                .help("The line's number, from 1")
+            Button("Go") { if let line = Int(lineText) { go(to: line) } }
+                .help("Select that line and show it")
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("A number from 1 to \(lineCount.formatted()).")
+        }
+        .onAppear { if let line = file.line { go(to: line) } }
         .safeAreaBar(edge: .top) {
             Picker("View", selection: $tab) {
                 ForEach(Tab.allCases, id: \.self) { Text($0.rawValue) }
@@ -199,6 +219,16 @@ struct EditorView: View {
                 LabeledContent("Line ends", value: crlf ? "Windows (CR LF)" : "Unix (LF)")
             }
         }
+    }
+
+    private var lineCount: Int { text.utf8.reduce(1) { $1 == 10 ? $0 + 1 : $0 } }
+
+    /// Go to Line (as the Mac's editor goes): the line selected and shown, the last one for a number past the end.
+    private func go(to line: Int) {
+        let lines = lineCount, line = min(max(line, 1), lines)
+        tab = .edit
+        jump = line
+        status = "Line \(line.formatted()) of \(lines.formatted())"
     }
 
     /// `overwriting`: without first checking that the server still has the file as this editor knows it.

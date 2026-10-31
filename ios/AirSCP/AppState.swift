@@ -17,6 +17,17 @@ import SwiftUI
     var failure: AirSCPError?
     /// Files picked to carry elsewhere together.
     let tray = Tray()
+    /// "Show this" from Search or the terminal: the Files tab shows it (a folder opened, a file selected in its folder, or
+    /// with a `line` edited there), then sets it back to nil.
+    var reveal: Reveal?
+
+    struct Reveal: Equatable {
+        let id = UUID()
+        let hostID: UUID
+        let path: String
+        var isFolder = false
+        var line: Int?
+    }
     /// Connections whose question the user cancelled: their connect failing then needs no alert.
     private var declined: Set<ObjectIdentifier> = []
 
