@@ -106,7 +106,7 @@ struct EditorView: View {
         }
         .alert("Go to Line", isPresented: $askingLine) {
             TextField("Line", text: $lineText)
-                .keyboardType(.numberPad)
+                .keyboardType(.numbersAndPunctuation)  // the iPad's number pad is a popover: Go's first tap would only close it
                 .help("The line's number, from 1")
             Button("Go") { if let line = Int(lineText) { go(to: line) } }
                 .help("Select that line and show it")

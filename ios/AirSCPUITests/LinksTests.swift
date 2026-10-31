@@ -159,7 +159,9 @@ final class LinksTests: XCTestCase {
         line.tap()
         app.typeKey("v", modifierFlags: .command)
         XCTAssertEqual(line.value as? String, "copyme")
-        line.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: 6))
+        // Emptied, and Return lets go of it: a tap on a field that has the keyboard shows the system's Paste callout,
+        // which XCUITest can't read (another process), and every query after it waits.
+        line.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: 6) + "\n")
     }
 
     /// Touches and holds a word in the terminal (left, a little above the middle), then chooses `menuItem` in the edit menu.
@@ -167,6 +169,7 @@ final class LinksTests: XCTestCase {
         terminal.coordinate(withNormalizedOffset: CGVector(dx: 0, dy: 0.4)).withOffset(CGVector(dx: 22, dy: 0)).press(forDuration: 1)
         let item = app.menuItems[menuItem]
         XCTAssert(item.waitForExistence(timeout: 5), "No \(menuItem) in the edit menu: \(app.debugDescription)")
+        keepScreenshot("Selected, menu for \(menuItem)")
         item.tap()
     }
 

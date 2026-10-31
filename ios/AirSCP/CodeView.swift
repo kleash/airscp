@@ -97,7 +97,7 @@ struct CodeView: UIViewRepresentable {
 /// editor has no colours.)
 struct Syntax {
     /// Comments, strings, numbers, keywords (and keys, in YAML and config files).
-    static let colors: [UIColor] = [.secondaryLabel, .systemRed, .systemBlue, .systemPink]
+    static let colors: [UIColor] = [.secondaryLabel, .systemRed, .systemBlue, .systemPurple]
     private let pattern: NSRegularExpression
 
     /// nil: a type without colours.
