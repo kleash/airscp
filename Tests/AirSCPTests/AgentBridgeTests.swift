@@ -408,7 +408,10 @@ final class LaunchedAirSCP {
         let folders = open.split(separator: "\n").filter { $0.hasPrefix("n/private/tmp/airscp-askpass.") || $0.hasPrefix("n/tmp/airscp-askpass.") }
             .map { (String($0.dropFirst()) as NSString).deletingLastPathComponent }
         process.terminate()
-        process.waitUntilExit()
+        // Not waitUntilExit: it once waited an hour for an app that had already quit (its exit went unseen).
+        let pid = process.processIdentifier
+        let deadline = Date().addingTimeInterval(30)
+        while kill(pid, 0) == 0 && process.isRunning && Date() < deadline { usleep(100_000) }
         _ = try? runSync(["/usr/bin/pkill", "-f", sshDirectory + "/config"])
         for folder in Set(folders) { try? FileManager.default.removeItem(atPath: folder) }
     }

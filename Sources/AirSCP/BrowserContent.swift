@@ -1213,6 +1213,7 @@ final class BrowserContentController: NSViewController {
             item("Quick Look", #selector(FilePane.quickLook(_:)), "y"),
             item("Get Info", #selector(FilePane.getInfo(_:)), "i"),
             item("Find Files…", #selector(FilePane.findFiles(_:)), "F"),
+            item("Disk Usage…", #selector(FilePane.showDiskUsage(_:))),
             .separator(),
             item("Copy to Other Pane", #selector(FilePane.copyToOtherPane(_:))),
             item("Upload and Delete…", #selector(FilePane.uploadAndDelete(_:))),

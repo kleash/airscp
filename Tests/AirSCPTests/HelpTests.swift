@@ -226,6 +226,7 @@ extension FeatureRoundAppTests {
                 _ = await call(agent, "select", ["pane": "right", "names": ["a.txt"]])
             }
             await sheet("Find Files", close: "Done") { _ = await call(agent, "menu", ["path": "File > Find Files…"]) }
+            await sheet("Disk Usage", close: "Done") { _ = await call(agent, "menu", ["path": "File > Disk Usage…"]) }
             // The server's home folder: Synchronize waits for Compare, then shows the plan.
             await sheet("Synchronize", then: {
                 _ = await call(agent, "press", ["title": "Compare"])

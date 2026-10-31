@@ -47,6 +47,7 @@ enum MenuHelp {
         (#selector(FilePane.quickLook(_:)), "Preview the selected files without opening them (Space does the same)"),
         (#selector(FilePane.getInfo(_:)), "Show the size, dates, owner and permissions of one server item"),
         (#selector(FilePane.findFiles(_:)), "Search names below the server folder shown, by name or a pattern like *.log"),
+        (#selector(FilePane.showDiskUsage(_:)), "See what takes the room below the folder shown, largest first, and delete what you don't need"),
         (#selector(FilePane.copyToOtherPane(_:)), "Copy the selection into the folder the other pane shows (drag does the same)"),
         (#selector(FilePane.chooseUpload(_:)), "Choose files on this Mac to upload into the server folder shown"),
         (#selector(FilePane.downloadTo(_:)), "Download the selection into a folder you choose on this Mac"),
@@ -258,6 +259,7 @@ enum HelpPage: String, CaseIterable {
     case downloadArchive = "transfers/download-as-archive.html"
     case synchronize = "synchronize.html"
     case find = "find.html"
+    case diskUsage = "disk-usage.html"
     case tunnels = "tunnels.html"
     case runCommand = "commands/run-a-command.html"
     case newKeyPair = "keys/new-key-pair.html"

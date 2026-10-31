@@ -597,7 +597,8 @@ AirSCP was installed with `./install.sh`).
 - Sheets queue: a second question appears when the first is answered. `wait until=no_sheet` after the last one.
   `key combo=escape` cancels a question with Cancel; `press title=OK` closes a message with only OK.
 - Menus are never in screenshots (they open only for a person): read `snapshot include=["menus"]`.
-- File > Find Files… searches a server's folders (focus the server's pane); File > Synchronize… needs this Mac in one
+- File > Find Files… searches a server's folders (focus the server's pane); File > Disk Usage… measures the folder a
+  pane shows (a server with a shell, or this Mac) below it; File > Synchronize… needs this Mac in one
   pane and a connected server in the other. `wait until=found` / `compared` needs its sheet open.
 - Synchronize compares times as the server lists them: to the minute (the day for files over six months old, or dated
   after the server's clock: those count as newer), so two versions with the same size saved within one minute count as
