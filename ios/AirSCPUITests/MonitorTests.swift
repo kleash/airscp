@@ -69,7 +69,7 @@ final class MonitorTests: XCTestCase {
         openMonitor(app)
 
         // Away (the Monitor screen stays under the Servers tab): once a read under way is done, the connection is quiet.
-        app.tab("Transfers").tap()
+        place("Transfers", in: app).tap()
         var quiet = try await lab.wakeups(of: mine)
         for _ in 0..<10 {
             try await Task.sleep(for: .seconds(1))
@@ -83,7 +83,7 @@ final class MonitorTests: XCTestCase {
         XCTAssertEqual(after, quiet, "The app read the server while nothing of it showed")
 
         // Back: the screen reads again.
-        app.tab("Servers").tap()
+        place("Servers", in: app).tap()
         XCTAssert(app.descendants(matching: .any)["monitor.cpu"].waitForExistence(timeout: 10))
         let read = await eventually { try await self.lab.wakeups(of: mine) > after }
         XCTAssert(read, "No read after coming back")
@@ -164,10 +164,17 @@ final class MonitorTests: XCTestCase {
     @MainActor private func openMonitor(_ app: XCUIApplication) {
         let cpu = app.descendants(matching: .any)["monitor.cpu"]
         for _ in 0..<3 where !cpu.exists {
-            app.staticTexts["lab"].firstMatch.tap()
+            // Servers' row (an iPad-sized window's sidebar lists the open server under the same name).
+            app.buttons.matching(NSPredicate(format: "label BEGINSWITH 'lab, Connected'")).firstMatch.tap()
             _ = cpu.waitForExistence(timeout: 20)
         }
         XCTAssert(cpu.exists, "No Monitor screen")
+    }
+
+    /// A place's tab: a tab bar's button, an iPad's tabs at the top, or a row of an iPad-sized window's sidebar.
+    @MainActor private func place(_ name: String, in app: XCUIApplication) -> XCUIElement {
+        let button = app.tab(name)
+        return button.exists ? button : app.cells.matching(NSPredicate(format: "label == %@", name)).firstMatch
     }
 
     /// The app's connection on the lab: the one dev's connection that wasn't there before it logged in.
