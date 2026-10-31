@@ -9,11 +9,12 @@ extension EnvironmentValues {
 }
 
 /// An open server's workspace (mockup 14), listed in the sidebar of a regular or wide window: the two Files sides (the
-/// server's, and this device's), the server's terminal in a drawer pulled up under them, and Transfers in an inspector
-/// on the right, which a wide window shows on its own while a transfer runs. Full Window gives the terminal the window.
+/// server's, and this device's), the server's terminal in a drawer pulled up under them, and Transfers in a column on
+/// the right, which a wide window shows on its own while a transfer runs. Full Window gives the terminal the window.
 struct WorkspaceView: View {
     @Environment(AppState.self) private var app
     @Environment(Terminals.self) private var terminals
+    @Environment(\.horizontalSizeClass) private var width
     @Environment(\.wide) private var wide
     let session: Session
     /// The sides, kept here while the window turns or changes size (the server's side first).
@@ -37,19 +38,24 @@ struct WorkspaceView: View {
     }
 
     var body: some View {
-        VStack(spacing: 0) {
-            FilesView(model: files) {}  // its "nothing open" never shows: this server is open
-            bar(terminal)
-            // Not while Full Window shows the terminal: one view for it at a time.
-            if drawerOpen, !fullWindow, let terminal {
-                TerminalPane(terminal: terminal)
-                    .frame(height: min(drawerHeight, maxDrawer))
+        HStack(spacing: 0) {
+            VStack(spacing: 0) {
+                FilesView(model: files) {}  // its "nothing open" never shows: this server is open
+                bar(terminal)
+                // Not while Full Window shows the terminal: one view for it at a time.
+                if drawerOpen, !fullWindow, let terminal {
+                    TerminalPane(terminal: terminal)
+                        .frame(height: min(drawerHeight, maxDrawer))
+                }
             }
-        }
-        .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { height = $0 }
-        .inspector(isPresented: $showingTransfers) {
-            TransfersView()
-                .inspectorColumnWidth(min: 300, ideal: 340, max: 440)
+            .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { height = $0 }
+            // A column of its own: an .inspector here kept an iPad's floating tabs over the Files sides' bars, and around
+            // the tabs it emptied the sidebar (iOS 26.5). A narrow window has the Transfers tab.
+            if showingTransfers && width == .regular {
+                Divider()
+                NavigationStack { TransfersList().navigationTitle("Transfers").navigationBarTitleDisplayMode(.inline) }
+                    .frame(width: 340)
+            }
         }
         .fullWindow($fullWindow, escapeLeaves: false) {
             if let terminal { TerminalPane(terminal: terminal).navigationTitle(terminals.name(of: terminal)) }
@@ -113,10 +119,12 @@ struct WorkspaceView: View {
                 // The editor's while it is open in a column (it gets the window then); Exit Full Window's while that shows.
                 .keyboardShortcut(fullWindow || (wide && files.editing != nil) ? nil : KeyboardShortcut("f", modifiers: [.command, .shift]))
                 .help("Give the terminal the whole window (⌘⇧F)")
-            Toggle("Transfers", systemImage: "arrow.up.arrow.down", isOn: $showingTransfers)
-                .toggleStyle(.button)
-                .accessibilityIdentifier("showTransfers")
-                .help(showingTransfers ? "Hide Transfers" : "Show Transfers on the right")
+            if width == .regular {
+                Toggle("Transfers", systemImage: "arrow.up.arrow.down", isOn: $showingTransfers)
+                    .toggleStyle(.button)
+                    .accessibilityIdentifier("showTransfers")
+                    .help(showingTransfers ? "Hide Transfers" : "Show Transfers on the right")
+            }
         }
         .labelStyle(.iconOnly)
         .buttonStyle(.borderless)
