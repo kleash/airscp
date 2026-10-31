@@ -30,15 +30,15 @@ extension SSH2Transport {
 /// One `copy`: how far it has got, and its steps. Within a folder, an item that fails in sftp's words is left out (and
 /// named); a lost connection or a cancel stops it all.
 private final class Copy {
-    /// What a step reads or keeps in flight at most.
-    static let chunk = 1 << 20
-
     let transport: SSH2Transport
     let connection: Connection
     let preserveTimes: Bool
     let limit: Int?
     let cancellation: Cancellation
     let report: (TransferProgress) -> Void
+    /// What a step reads or keeps in flight at most: a megabyte, or under a speed limit a quarter of a second's worth (so
+    /// that progress and speed move smoothly).
+    let chunk: Int
     var progress = TransferProgress()
     var leftOut: [String] = []
     /// Bytes this run has copied (not what a resumed file had), since `started`: for the speed limit.
@@ -49,6 +49,7 @@ private final class Copy {
          report: @escaping (TransferProgress) -> Void) {
         (self.transport, self.connection, self.preserveTimes, self.limit) = (transport, connection, preserveTimes, limit)
         (self.cancellation, self.report) = (cancellation, report)
+        chunk = limit.map { min(1 << 20, max(16 << 10, $0 / 4)) } ?? 1 << 20
     }
 
     /// `body` on the transport's queue, while `connection` is still its connection (after a reconnect another one is,
@@ -170,10 +171,10 @@ private final class Copy {
             // libssh2 keeps sending what it was given and says how much the server has taken: up to a megabyte stays in
             // flight, each step passing what isn't taken yet, with more read once it runs low.
             var pending: [UInt8] = [], start = 0, ended = false
-            var buffer = [UInt8](repeating: 0, count: Copy.chunk)
+            var buffer = [UInt8](repeating: 0, count: chunk)
             while true {
                 try checkCancelled()
-                if !ended && pending.count - start < Copy.chunk / 2 {
+                if !ended && pending.count - start < chunk / 2 {
                     pending.removeFirst(start)
                     start = 0
                     let count = read(file, &buffer, buffer.count)
@@ -273,7 +274,7 @@ private final class Copy {
             report(progress)
             while true {
                 try checkCancelled()
-                let data = try await step { [cancellation] in try $0.read(handle, remote, cancellation) }
+                let data = try await step { [cancellation, chunk] in try $0.read(handle, remote, upTo: chunk, cancellation) }
                 if data.isEmpty { break }
                 try data.withUnsafeBytes { bytes in
                     var written = 0
@@ -328,11 +329,12 @@ extension Connection {
         try check(again(nil) { libssh2_sftp_close_handle(handle) }, "remote close \"\(path)\"")
     }
 
-    /// What has arrived of the file (waiting for some), up to a megabyte; empty at its end.
-    func read(_ handle: OpaquePointer, _ path: String, _ cancellation: Cancellation) throws -> Data {
+    /// What has arrived of the file (waiting for some), about `size` bytes at most; empty at its end. (The same `size` each
+    /// time: libssh2 asks ahead for four times what a read takes.)
+    func read(_ handle: OpaquePointer, _ path: String, upTo size: Int, _ cancellation: Cancellation) throws -> Data {
         var data = Data()
-        var buffer = [CChar](repeating: 0, count: 256 << 10)
-        while data.count < 1 << 20 {
+        var buffer = [CChar](repeating: 0, count: min(size, 256 << 10))
+        while data.count < size {
             let count = libssh2_sftp_read(handle, &buffer, buffer.count)
             if count == LIBSSH2_ERROR_EAGAIN {
                 if !data.isEmpty { break }
