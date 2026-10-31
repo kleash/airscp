@@ -10,6 +10,7 @@ struct SearchView: View {
     let open: (SSHHost) -> Void
     /// Runs a command on an open server, in its terminal (shown).
     let run: (String, Session) -> Void
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @State private var text = ""
     /// Every saved server's history, read each time Search shows.
     @State private var histories: [(host: SSHHost, commands: [String])] = []
@@ -81,7 +82,9 @@ struct SearchView: View {
             }
             .navigationTitle("Search")
         }
-        .searchable(text: $text, prompt: "Servers, snippets, commands, files")
+        // The iPad would show only a search button in its bar: the field itself, under the title.
+        .searchable(text: $text, placement: horizontalSizeClass == .regular ? .navigationBarDrawer(displayMode: .always) : .automatic,
+                    prompt: "Servers, snippets, commands, files")
         .textInputAutocapitalization(.never)  // commands and names, not sentences
         .autocorrectionDisabled()
         .onAppear { histories = app.data.hosts.map { (host: $0, commands: CommandHistory(host: $0.id).commands) } }

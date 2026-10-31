@@ -129,7 +129,8 @@ extension XCTestCase {
         lab.tap()
         let password = app.secureTextFields["answer"]
         XCTAssert(password.waitForExistence(timeout: 30), "No password question")
-        app.typeText("porter-dev\n")
+        password.tap()  // focused already, unless the sheet is still on its way (a busy Mac)
+        password.typeText("porter-dev\n")
         XCTAssert(app.staticTexts["Connected"].waitForExistence(timeout: 30), "Not connected")
         return app
     }
