@@ -164,21 +164,25 @@ struct MonitorView: View {
     }
 
     private func figures(_ snapshot: MonitorSnapshot, _ monitor: HostMonitor) -> some View {
-        List {
-            Section {
-                rings(snapshot)
-            } footer: {
-                Text(Self.summary(snapshot))
-            }
-            Section {
-                chart(monitor.history)
-            } header: {
-                Text("CPU")
-            } footer: {
-                Text("While AirSCP shows this server, up to 15 minutes: iOS doesn't let it read servers in the background.")
+        // Searching: only the processes found, above the keyboard.
+        let searching = !search.trimmingCharacters(in: .whitespaces).isEmpty
+        return List {
+            if !searching {
+                Section {
+                    rings(snapshot)
+                } footer: {
+                    Text(Self.summary(snapshot))
+                }
+                Section {
+                    chart(monitor.history)
+                } header: {
+                    Text("CPU")
+                } footer: {
+                    Text("While AirSCP shows this server, up to 15 minutes: iOS doesn't let it read servers in the background.")
+                }
             }
             processes(snapshot)
-            if snapshot.disks.count > 1 { disks(snapshot.disks) }  // one alone: its ring says it all
+            if !searching && snapshot.disks.count > 1 { disks(snapshot.disks) }  // one alone: its ring says it all
         }
         .searchable(text: $search, prompt: "Name, user, command or PID")
         .autocorrectionDisabled()
