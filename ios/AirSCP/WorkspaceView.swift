@@ -136,8 +136,8 @@ struct WorkspaceView: View {
 }
 
 extension View {
-    /// Full Window: `content` fills the window, over the sidebar, the tab bar and the inspector, until Exit Full Window
-    /// (its button, ⌘⇧F, or Escape where `escapeLeaves`: not in a terminal, whose Escape is the shell's).
+    /// Full Window: `content` fills the window, over the sidebar, the tab bar and the inspector, until Exit Full Window:
+    /// its button, or its key: Escape, or ⌘⇧F where Escape is the shell's (`escapeLeaves` false: a terminal, for vim).
     func fullWindow<Content: View>(_ isPresented: Binding<Bool>, escapeLeaves: Bool = true,
                                    @ViewBuilder content: @escaping () -> Content) -> some View {
         fullScreenCover(isPresented: isPresented) {
@@ -147,19 +147,10 @@ extension View {
                     .toolbar {
                         ToolbarItem(placement: .topBarTrailing) {
                             Button("Exit Full Window", systemImage: "arrow.down.right.and.arrow.up.left") { isPresented.wrappedValue = false }
-                                .keyboardShortcut("f", modifiers: [.command, .shift])
-                                .help(escapeLeaves ? "Show the rest of the window again (⌘⇧F or Escape)" : "Show the rest of the window again (⌘⇧F)")
+                                .keyboardShortcut(escapeLeaves ? .cancelAction : KeyboardShortcut("f", modifiers: [.command, .shift]))
+                                .help(escapeLeaves ? "Show the rest of the window again (Escape)" : "Show the rest of the window again (⌘⇧F)")
                         }
                     }
-            }
-            // Escape as a key command of its own (the button has ⌘⇧F), whatever has the keyboard.
-            .background {
-                if escapeLeaves {
-                    Button("Exit Full Window") { isPresented.wrappedValue = false }
-                        .keyboardShortcut(.cancelAction)
-                        .opacity(0)
-                        .accessibilityHidden(true)
-                }
             }
         }
     }

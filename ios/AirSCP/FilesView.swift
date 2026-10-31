@@ -19,6 +19,7 @@ let deviceFolder: String = {
 struct FilesView: View {
     @Environment(AppState.self) private var app
     @Environment(\.horizontalSizeClass) private var width
+    @Environment(\.tabBarPlacement) private var tabBarPlacement
     @Environment(\.wide) private var wide
     /// Kept by the view that shows the sides (RootView for the Files tab, a server's workspace), so that a change of
     /// layout keeps the folders and the selection.
@@ -56,6 +57,9 @@ struct FilesView: View {
                         side(1)
                     }
                 }
+                // An iPad's tabs float at the top, in the row of the sides' bars: those go under them. At the top when the
+                // window isn't wide (the placement read there can be the sidebar's, once it has shown over the files).
+                .padding(.top, width == .regular && (tabBarPlacement == .topBar || !wide) ? 52 : 0)
             }
         }
         .onReceive(TransferCenter.shared.$jobs) { model.jobsChanged($0) }
