@@ -306,6 +306,39 @@ import Testing
     }
 }
 
+/// The editors' Save (the Mac's and the iPhone's, so over ssh and over libssh2): it writes only while the server still
+/// has the text the editor knows, else it hands back the server's text (nil once that isn't text) and writes nothing.
+@Test func savingTextChecksTheServerStillHasWhatTheEditorKnows() async throws {
+    try await withServer { server in
+        var sessions = [try await server.connectedSession()]
+        #if canImport(AirSCPSSH2)
+        let ssh2 = try server.ssh2Session()
+        try await ssh2.connect()
+        sessions.append(ssh2)
+        #endif
+        let file = server.path("settings.ini")
+        for session in sessions {
+            try write("port=80\n", to: file)
+            #expect(try await session.saveText("port=8080\n", to: file, ifUnchangedFrom: "port=80\n") == .saved)
+            #expect(read(file) == "port=8080\n")
+            // Changed on the server meanwhile: nothing written, their text back. Overwriting (nil) doesn't check.
+            try write("port=81\n", to: file)
+            #expect(try await session.saveText("port=9090\n", to: file, ifUnchangedFrom: "port=8080\n") == .changed("port=81\n"))
+            #expect(read(file) == "port=81\n")
+            #expect(try await session.saveText("port=9090\n", to: file, ifUnchangedFrom: nil) == .saved && read(file) == "port=9090\n")
+            // The editor's own long line is no change; a file that is gone is made again; one that isn't text any more
+            // can only be overwritten.
+            let long = "x=" + String(repeating: "y", count: 300_000) + "\n"
+            try write(long, to: file)
+            #expect(try await session.saveText(long + "z=1\n", to: file, ifUnchangedFrom: long) == .saved)
+            try FileManager.default.removeItem(atPath: file)
+            #expect(try await session.saveText("port=1\n", to: file, ifUnchangedFrom: "port=0\n") == .saved && read(file) == "port=1\n")
+            try Data([0xFF, 0xFE, 0x00, 0x01]).write(to: URL(fileURLWithPath: file))
+            #expect(try await session.saveText("port=2\n", to: file, ifUnchangedFrom: "port=1\n") == .changed(nil))
+        }
+    }
+}
+
 @Test func diskSpaceSizeAndDuplicate() async throws {
     try await withServer { server in
         let session = try await server.connectedSession()
