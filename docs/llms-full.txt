@@ -39,6 +39,7 @@ opens tunnels. You don't need to type commands.
 | Upload a whole folder | [Upload a folder](https://kleash.github.io/airscp/files/upload-a-folder.html) |
 | Make two folders the same | [Synchronize two folders](https://kleash.github.io/airscp/synchronize.html) |
 | Find a file on a server | [Find files on a server](https://kleash.github.io/airscp/find.html) |
+| Free up disk space | [See what takes the room on a disk](https://kleash.github.io/airscp/disk-usage.html) |
 | Work on a Windows computer | [Remote Desktop (Windows)](https://kleash.github.io/airscp/remote-desktop/) |
 | Open Amazon S3 or similar storage | [S3 storage](https://kleash.github.io/airscp/s3/) |
 | See CPU, memory and processes | [Watch a Linux server](https://kleash.github.io/airscp/monitor.html) |
@@ -1556,6 +1557,47 @@ what it would copy. Nothing is copied until you click **Synchronize**.
   **Leave out**, or fix it and compare again.
 - Two versions with the same size saved within the same minute count as the same: the server lists times to the
   minute.
+
+
+---
+
+Source: https://kleash.github.io/airscp/disk-usage.html
+
+# See what takes the room on a disk
+
+Find the big folders and files below a folder, on a server or on this Mac, and delete what you don't need.
+
+## Steps
+
+1. In a pane, open the folder to look into (or select one folder in it).
+2. Choose **File ▸ Disk Usage…**, or right-click an empty part of the pane.
+3. AirSCP scans everything below the folder. While it runs, the bar shows how far it is, the files it finds show
+   with their sizes, and the rings and the list grow as the sizes add up.
+4. The rings: the folder is in the middle, its items around it, and what is in them further out. The wider an arc,
+   the more room it takes. Point at an arc to see its name and size. Click a folder's arc to go into it; click the
+   middle to go up.
+5. The list: the folder's items, largest first, with their share of the folder. Double-click a folder to go into it,
+   or click **↑** to go up. Choose **Largest Files** to see the 200 biggest files at any depth below.
+6. Select what you don't need and click **Delete…**. AirSCP asks first. On a server it deletes the items (folders with
+   everything in them); on this Mac it moves them to the Trash: empty the Trash to free the space.
+7. Or select an item and click **Show** (or right-click ▸ **Show in Pane**): the pane goes to its folder and selects
+   it. **Copy Paths** copies the full paths, one per line. On this Mac, **Show in Finder** selects them in a Finder
+   window.
+
+## Tips
+
+- **Stop** ends a long scan; the sizes then count what it scanned so far. **Scan Again** measures everything again.
+- The scan stays on the folder's own disk: other disks mounted inside it are left out.
+- Sizes are the files' own sizes, as the panes show them.
+- On a server, AirSCP runs one `du` command. It needs a server with a shell (not file-transfer-only accounts).
+- To see the size of each folder in the pane itself, use **View ▸ Calculate Folder Sizes**.
+
+## If something goes wrong
+
+- **Delete… is greyed out**: wait for the scan to end, or click **Stop**.
+- **A folder you can't read** counts as empty: open it as root (see [Browse as root](https://kleash.github.io/airscp/connecting/browse-as-root.html))
+  and scan again.
+- Disk Usage doesn't work on S3 storage.
 
 
 ---
@@ -3255,6 +3297,14 @@ Source: https://kleash.github.io/airscp/whats-new.html
 
 # What's new
 
+## AirSCP 1.4.0
+
+- **Disk Usage**: **File ▸ Disk Usage…** shows what takes the room below a folder, on a server or on this Mac. While
+  it scans, a bar shows how far it is, the files it finds show with their sizes, and the rings and the list grow as
+  the sizes add up. Point at a ring to see what it is; click a folder's ring, or double-click it in the list, to go
+  into it. **Largest Files** lists the 200 biggest files below. Select what you don't need and **Delete…** it (on this
+  Mac it goes to the Trash), or **Show** it in the pane or in Finder. See [Disk Usage](https://kleash.github.io/airscp/disk-usage.html).
+
 ## AirSCP 1.3.0
 
 - **Amazon S3 and S3-compatible storage**: **File ▸ New S3 Connection…** saves an Amazon S3, MinIO, Cloudflare R2,
@@ -4033,7 +4083,8 @@ AirSCP was installed with `./install.sh`).
 - Sheets queue: a second question appears when the first is answered. `wait until=no_sheet` after the last one.
   `key combo=escape` cancels a question with Cancel; `press title=OK` closes a message with only OK.
 - Menus are never in screenshots (they open only for a person): read `snapshot include=["menus"]`.
-- File > Find Files… searches a server's folders (focus the server's pane); File > Synchronize… needs this Mac in one
+- File > Find Files… searches a server's folders (focus the server's pane); File > Disk Usage… measures the folder a
+  pane shows (a server with a shell, or this Mac) below it; File > Synchronize… needs this Mac in one
   pane and a connected server in the other. `wait until=found` / `compared` needs its sheet open.
 - Synchronize compares times as the server lists them: to the minute (the day for files over six months old, or dated
   after the server's clock: those count as newer), so two versions with the same size saved within one minute count as
