@@ -25,14 +25,15 @@ struct RootView: View {
                             description: "Open a server in Servers to type commands on it.") { place = .servers }
             }
             Tab("Transfers", systemImage: "arrow.up.arrow.down", value: .transfers) {
-                ContentUnavailableView("No transfers", systemImage: "arrow.up.arrow.down",
-                                       description: Text("Files you send or download show here with their progress."))
+                TransfersView()
             }
             Tab(value: .search, role: .search) {
                 SearchView(hosts: app.data.hosts)
             }
         }
         .tabBarMinimizeBehavior(.onScrollDown)
+        .transfersAccessory { place = .transfers }
+        .traySheet(app.tray)
         .environment(app)
         // A connection's question (Trust, password, passphrase, code), whichever tab is showing.
         .sheet(item: Binding(get: { app.questions.first }, set: { if $0 == nil, let first = app.questions.first { app.answer(first, nil) } })) {

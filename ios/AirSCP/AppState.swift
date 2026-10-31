@@ -92,6 +92,14 @@ import SwiftUI
             do {
                 try await session.connect()
                 declined.remove(ObjectIdentifier(session))  // a question cancelled on the way didn't stop it
+                // UI tests: downloads to watch (into the test's settings folder), and the server's files in the tray.
+                let test = ProcessInfo.processInfo.environment
+                for path in (test["AIRSCP_TEST_DOWNLOADS"]?.split(separator: ",") ?? []).map(String.init) {
+                    session.transfers.download(path, to: Store.directory.appendingPathComponent(RemotePath.name(path)).path, isFolder: false)
+                }
+                tray.add((test["AIRSCP_TEST_TRAY"]?.split(separator: ",") ?? []).map {
+                    Tray.Item(hostID: host.id, path: String($0), isFolder: false)
+                })
             } catch {
                 // A first connect that fails goes back to idle in Session; the row keeps the reason.
                 let error = error as? AirSCPError ?? AirSCPError(.other, error.localizedDescription)
