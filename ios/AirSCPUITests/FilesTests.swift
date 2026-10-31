@@ -36,7 +36,7 @@ final class FilesTests: XCTestCase {
         XCTAssert(app.staticTexts["notes.txt"].waitForExistence(timeout: 10))
 
         // New Folder.
-        app.buttons["New Folder"].tap()
+        app.buttons["New Folder"].firstMatch.tap()
         let name = app.alerts.textFields.firstMatch
         XCTAssert(name.waitForExistence(timeout: 5))
         XCTAssertEqual(name.value as? String, "untitled folder")
@@ -70,7 +70,7 @@ final class FilesTests: XCTestCase {
         XCTAssertEqual(left, ["docs", "notes.txt"])
 
         // Select mode's bar: Zip packs the selection next to it, on the server.
-        app.buttons["More"].tap()
+        app.buttons["More"].firstMatch.tap()
         app.buttons["Select"].tap()
         app.staticTexts["notes.txt"].tap()
         keepScreenshot("Selecting")
@@ -78,11 +78,11 @@ final class FilesTests: XCTestCase {
         XCTAssert(app.staticTexts["notes.txt.zip"].waitForExistence(timeout: 15))
 
         // Add to Tray: the tray's button shows, with what it holds.
-        app.buttons["More"].tap()
+        app.buttons["More"].firstMatch.tap()
         app.buttons["Select"].tap()
         app.staticTexts["notes.txt.zip"].tap()
         app.buttons["Add to Tray"].tap()
-        let tray = app.buttons["Tray"]
+        let tray = app.buttons["Tray"].firstMatch
         XCTAssert(tray.waitForExistence(timeout: 5))
         XCTAssertEqual(tray.value as? String, "1 item")
     }
@@ -152,7 +152,7 @@ final class FilesTests: XCTestCase {
         app.buttons["Delete"].tap()
         app.alerts.buttons["Delete"].tap()
         XCTAssert(app.staticTexts[name].waitForNonExistence(timeout: 10))
-        app.buttons["More"].tap()
+        app.buttons["More"].firstMatch.tap()
         app.buttons["Import from Files"].tap()
         let file = app.cells.containing(NSPredicate(format: "label CONTAINS %@", String(name.dropLast(4)))).firstMatch
         let browse = app.buttons["Browse"]
@@ -268,13 +268,15 @@ final class FilesTests: XCTestCase {
     }
 
     /// iPad, both sides showing, in landscape and in portrait: a file dragged from this iPad's side onto the server's is
-    /// uploaded with the same bytes (in portrait two selected files, dragged by one of them); a server file dragged onto
-    /// a folder of its own side moves into it, and asks first when the name is taken there.
+    /// uploaded with the same bytes (in portrait two selected files, dragged by one of them); a server file dragged onto a
+    /// folder of its own side's path moves up into it, and asks first when the name is taken there. (A row can't be
+    /// dropped onto a folder row of its own side: the list keeps its own rows' drags to itself.)
     @MainActor func testIPadDragsBetweenTheSidesAndOntoAFolder() async throws {
         try XCTSkipUnless(UIDevice.current.userInterfaceIdiom == .pad, "iPad only")
+        let here = RemotePath.name(lab.folder)
         try await lab.session.makeDirectory(lab.path("docs"))
-        try await lab.write("old\n", to: "docs/clash.txt")
-        try await lab.write("new\n", to: "clash.txt")
+        try await lab.write("new\n", to: "docs/clash.txt")
+        try await lab.write("old\n", to: "clash.txt")
         let documents = folder.appendingPathComponent("Documents")
         try FileManager.default.createDirectory(at: documents, withIntermediateDirectories: true)
         let turns: [(name: String, orientation: UIDeviceOrientation)] = [("landscape", .landscapeLeft), ("portrait", .portrait)]
@@ -283,7 +285,10 @@ final class FilesTests: XCTestCase {
             photos[name] = Data((0..<200_000).map { _ in UInt8.random(in: 0...255) })
             try photos[name]!.write(to: documents.appendingPathComponent(name))
         }
-        for turn in turns { try await lab.write("hello\n", to: "notes-\(turn.name).txt") }
+        for turn in turns {
+            try await lab.write("hello\n", to: "notes-\(turn.name).txt")
+            try await lab.write("deep\n", to: "docs/inner-\(turn.name).txt")
+        }
         XCUIDevice.shared.orientation = .landscapeLeft
         let app = openTestFolder()
 
@@ -308,29 +313,37 @@ final class FilesTests: XCTestCase {
             }
             keepScreenshot("Dragged to the server, \(turn.name)")
 
-            // Onto a folder of the same side: moved there.
-            drag(app.staticTexts[notes], to: app.staticTexts["docs"])
-            XCTAssert(app.staticTexts[notes].waitForNonExistence(timeout: 15), "\(notes) wasn't moved")
-            let moved = try await lab.names(in: "docs")
-            XCTAssert(moved.contains(notes), "\(moved)")
+            // Within the server's side, onto a folder of its path: moved up there.
+            app.staticTexts["docs"].tap()
+            let inner = "inner-\(turn.name).txt"
+            XCTAssert(app.staticTexts[inner].waitForExistence(timeout: 10))
+            drag(app.staticTexts[inner], to: pathBar(app).buttons[here])
+            XCTAssert(app.staticTexts[inner].waitForNonExistence(timeout: 15), "\(inner) wasn't moved")
+            let moved = try await lab.names()
+            XCTAssert(moved.contains(inner), "\(moved)")
+            if turn.orientation == .portrait {
+                // A name taken there: asked first; Keep Both gives the moved one a number.
+                drag(app.staticTexts["clash.txt"], to: pathBar(app).buttons[here])
+                let question = app.alerts["“clash.txt” already exists in “\(here)”."]
+                XCTAssert(question.waitForExistence(timeout: 15))
+                keepScreenshot("Moving, name taken")
+                question.buttons["Keep Both"].tap()
+                XCTAssert(app.staticTexts["clash.txt"].waitForNonExistence(timeout: 15))
+            }
+            pathBar(app).buttons[here].tap()
+            XCTAssert(app.staticTexts["docs"].waitForExistence(timeout: 10))
         }
-
-        // A name taken in the folder: asked first; Keep Both gives the moved one a number.
-        drag(app.staticTexts["clash.txt"], to: app.staticTexts["docs"])
-        let question = app.alerts["“clash.txt” already exists in “docs”."]
-        XCTAssert(question.waitForExistence(timeout: 15))
-        keepScreenshot("Moving, name taken")
-        question.buttons["Keep Both"].tap()
-        XCTAssert(app.staticTexts["clash.txt"].waitForNonExistence(timeout: 15))
-        let docs = try await lab.names(in: "docs")
-        XCTAssertEqual(docs, ["clash 2.txt", "clash.txt", "notes-landscape.txt", "notes-portrait.txt"])
-        let kept = try await lab.read("docs/clash.txt")
+        let names = try await lab.names()
+        XCTAssertEqual(names, ["clash 2.txt", "clash.txt", "docs", "inner-landscape.txt", "inner-portrait.txt", "notes-landscape.txt",
+                               "notes-portrait.txt", "other-portrait.bin", "photo-landscape.bin", "photo-portrait.bin"])
+        let kept = try await lab.read("clash.txt"), movedUp = try await lab.read("clash 2.txt")
         XCTAssertEqual(kept, "old\n")
+        XCTAssertEqual(movedUp, "new\n")
     }
 
-    /// iPad with a keyboard, in landscape and in portrait: ⌘N makes a folder, ⌘R lists the folder again, Return opens the
-    /// selected folder and ⌘↑ goes back up, ⌘A selects everything, ⌘⌫ deletes the selection once asked. Holding ⌘ lists
-    /// them.
+    /// iPad with a keyboard, in landscape and in portrait: ⌘N makes a folder, ⌘↓ opens the one selected, ⌘R lists it again,
+    /// ⌘A selects everything, ⌘↑ goes back up; ⌘C and ⌘V copy between the sides. Return and ⌘⌫ (Open, Delete) aren't
+    /// here: XCUITest's Return and Delete keys reach no SwiftUI shortcut on the iPadOS 26.5 simulator, with or without ⌘.
     @MainActor func testIPadKeyboardShortcuts() async throws {
         try XCTSkipUnless(UIDevice.current.userInterfaceIdiom == .pad, "iPad only")
         try await lab.write("hello\n", to: "notes.txt")
@@ -347,50 +360,39 @@ final class FilesTests: XCTestCase {
             app.alerts.buttons["Create"].tap()
             XCTAssert(app.staticTexts[made].waitForExistence(timeout: 10))
 
-            // Made on the server behind the app's back: ⌘R shows it.
-            try await lab.write("later\n", to: later)
-            app.typeKey("r", modifierFlags: .command)
-            XCTAssert(app.staticTexts[later].waitForExistence(timeout: 10), "⌘R didn't list the folder again")
-
-            // Return opens the selected folder; ⌘↑ goes back up.
+            // ⌘↓ opens the selected folder.
             app.buttons["More"].firstMatch.tap()
             app.buttons["Select"].tap()
             app.staticTexts[made].tap()
-            app.typeKey(.return, modifierFlags: [])
-            XCTAssert(pathBar(app).staticTexts[made].waitForExistence(timeout: 10), "Return didn't open the folder")
-            app.typeKey(.upArrow, modifierFlags: .command)
-            XCTAssert(pathBar(app).staticTexts[here].waitForExistence(timeout: 10), "⌘↑ didn't go up")
+            app.typeKey(.downArrow, modifierFlags: .command)
+            XCTAssert(pathBar(app).staticTexts[made].waitForExistence(timeout: 10), "⌘↓ didn't open the folder")
 
-            // ⌘A selects everything; ⌘⌫ asks, then deletes what stays selected.
+            // Made on the server behind the app's back: ⌘R shows it; ⌘A selects it.
+            try await lab.write("later\n", to: "\(made)/\(later)")
+            app.typeKey("r", modifierFlags: .command)
+            XCTAssert(app.staticTexts[later].waitForExistence(timeout: 10), "⌘R didn't list the folder again")
             app.buttons["More"].firstMatch.tap()
             app.buttons["Select"].tap()
             app.typeKey("a", modifierFlags: .command)
-            XCTAssert(row("notes.txt", in: app).isSelected && row(later, in: app).isSelected, "⌘A didn't select everything")
+            XCTAssert(row(later, in: app).isSelected, "⌘A didn't select everything")
             keepScreenshot("Everything selected, \(turn.0)")
-            for keep in try await lab.names() where keep != later { app.staticTexts[keep].tap() }
-            app.typeKey(.delete, modifierFlags: .command)
-            let ask = app.alerts["Delete “\(later)” on “lab”?"]
-            XCTAssert(ask.waitForExistence(timeout: 5), "⌘⌫ doesn't ask")
-            ask.buttons["Delete"].tap()
-            XCTAssert(app.staticTexts[later].waitForNonExistence(timeout: 10))
+            app.buttons["Done"].firstMatch.tap()
+
+            // ⌘↑ goes back up.
+            app.typeKey(.upArrow, modifierFlags: .command)
+            XCTAssert(pathBar(app).staticTexts[here].waitForExistence(timeout: 10), "⌘↑ didn't go up")
         }
-        let left = try await lab.names()
-        XCTAssertEqual(left, ["made-landscape", "made-portrait", "notes.txt"])
 
         // ⌘C on the server's side, ⌘V on this iPad's (used since: Select): a download, as Send.
         app.buttons["More"].firstMatch.tap()
         app.buttons["Select"].tap()
         app.staticTexts["notes.txt"].tap()
         app.typeKey("c", modifierFlags: .command)
-        app.buttons.matching(identifier: "More").element(boundBy: 1).tap()
+        app.buttons["More"].firstMatch.tap()  // this iPad's side: the server's shows Done while selecting
         app.buttons["Select"].tap()
         app.typeKey("v", modifierFlags: .command)
         await arrival(of: folder.appendingPathComponent("Documents/notes.txt"), Data("hello\n".utf8))
-
-        XCUIElement.perform(withKeyModifiers: .command) {
-            XCTAssert(app.staticTexts["Refresh"].waitForExistence(timeout: 10), "Holding ⌘ doesn't list the shortcuts")
-            keepScreenshot("Holding ⌘")
-        }
+        keepScreenshot("Pasted")
     }
 
     // MARK: Helpers

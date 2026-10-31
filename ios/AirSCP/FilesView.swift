@@ -386,7 +386,8 @@ struct SideView: View {
     @State private var preview: URL?
     /// The file being read for the editor.
     @State private var opening: String?
-    /// The folder a drag is over (a folder row's, or the one this side shows): it lights up.
+    /// What a drag is over: a row or a folder of the path bar (its path), or this side's empty folder (the folder's path).
+    /// A folder lights up; over a file row or the empty folder, the whole side does (the drop goes into the folder shown).
     @State private var dropTarget: String?
 
     private enum Naming {
@@ -412,17 +413,19 @@ struct SideView: View {
                     .swipeActions(edge: .trailing, allowsFullSwipe: false) { actions(entry, all: false) }
                     .contextMenu { actions(entry, all: true) }
                     .onDrag { dragItem(entry) }
-                    .onDrop(of: entry.kind == .directory ? [.item] : [], delegate: drop(into: entry.path))
-                    .listRowBackground(dropTarget == entry.path ? Color.teal.opacity(0.25) : nil)
+                    // Each row takes drops from elsewhere (the list's own drop handling refuses them): a folder into
+                    // itself, a file into the folder shown. The list keeps its own rows' drags to itself, so a row
+                    // can't be dropped onto a folder row of the same side: the path bar's folders take those.
+                    .onDrop(of: [.item], delegate: drop(into: entry.kind == .directory ? entry.path : dir, over: entry.path))
+                    .listRowBackground(dropTarget == entry.path && entry.kind == .directory ? Color.teal.opacity(0.25) : nil)
             }
         }
-        .overlay { placeholder }
+        .overlay { placeholder.onDrop(of: [.item], delegate: drop(into: dir, over: dir ?? "")) }
         .overlay {
-            if let dir, dropTarget == dir {
+            if let dropTarget, dropTarget == dir || visible.contains(where: { $0.path == dropTarget && $0.kind != .directory }) {
                 RoundedRectangle(cornerRadius: 12).strokeBorder(Color.teal, lineWidth: 3).padding(4).allowsHitTesting(false)
             }
         }
-        .onDrop(of: [.item], delegate: drop(into: dir))
         .background { shortcuts.hidden() }
         .refreshable { if let location { await side.load(session, location) } }
         .environment(\.editMode, Binding(get: { side.selecting ? .active : .inactive }, set: { side.selecting = $0.isEditing }))
@@ -432,7 +435,9 @@ struct SideView: View {
         // A narrow screen's bottom bar takes the tab bar's place while selecting.
         .toolbar(editing && switcher ? .hidden : .visible, for: .tabBar)
         .safeAreaBar(edge: .top) {
-            if let dir { PathBar(crumbs: crumbs(dir)) { side.folders[side.current(app)] = $0 } }
+            if let dir {
+                PathBar(crumbs: crumbs(dir), targeted: dropTarget) { side.folders[side.current(app)] = $0 } drop: { drop(into: $0, over: $0) }
+            }
         }
         .task(id: "\(String(describing: location))|\(side.generation)") {
             if let location { await side.load(session, location) }
@@ -659,14 +664,14 @@ struct SideView: View {
                 .keyboardShortcut("a")
                 .disabled(!editing)
                 .help("Select everything in this folder")
-            Button("Open") {
-                let entry = selected[0]
-                stopSelecting()
-                open(entry)
-            }
-            .keyboardShortcut(.return, modifiers: [])
-            .disabled(selected.count != 1)
-            .help("Open the selected folder or file")
+            Button("Open", action: openSelected)
+                .keyboardShortcut(.return, modifiers: [])
+                .disabled(selected.count != 1)
+                .help("Open the selected folder or file")
+            Button("Open Selection", action: openSelected)  // ⌘↓, as on the Mac
+                .keyboardShortcut(.downArrow)
+                .disabled(selected.count != 1)
+                .help("Open the selected folder or file")
             Button("Enclosing Folder") { if let up { side.folders[side.current(app)] = up } }
                 .keyboardShortcut(.upArrow)
                 .disabled(up == nil)
@@ -680,6 +685,14 @@ struct SideView: View {
                 .disabled(!canPaste)
                 .help("Copy the items copied with ⌘C into this folder")
         }
+    }
+
+    /// Opens the one item selected, out of Select.
+    private func openSelected() {
+        guard selected.count == 1 else { return }
+        let entry = selected[0]
+        stopSelecting()
+        open(entry)
     }
 
     /// The folder above the one shown: up to / on a server, and to this device's own folder.
@@ -731,10 +744,10 @@ struct SideView: View {
         return provider
     }
 
-    /// Dropping into `target`: the folder this side shows (nil: none yet), or one of its folder rows.
-    private func drop(into target: String?) -> FileDrop {
-        FileDrop(targeted: Binding(get: { target != nil && dropTarget == target }, set: { on in
-            if on { dropTarget = target } else if dropTarget == target { dropTarget = nil }
+    /// Dropping into `target` (the folder this side shows, nil before there is one, or a folder row's) while over `key`.
+    private func drop(into target: String?, over key: String) -> FileDrop {
+        FileDrop(targeted: Binding(get: { dropTarget == key }, set: { on in
+            if on { dropTarget = key } else if dropTarget == key { dropTarget = nil }
         })) { info in
             dropOperation(info, into: target)
         } perform: { info in
@@ -1044,10 +1057,13 @@ struct FileRow: View {
     }()
 }
 
-/// The folder's path, each folder a button that goes up to it.
+/// The folder's path, each folder a button that goes up to it, and takes drops (moves this side's rows up into it).
 struct PathBar: View {
     let crumbs: [(name: String, path: String)]
+    /// The folder a drag is over: it lights up.
+    let targeted: String?
     let go: (String) -> Void
+    let drop: (String) -> FileDrop
 
     var body: some View {
         ScrollView(.horizontal) {
@@ -1060,7 +1076,9 @@ struct PathBar: View {
                         Text(crumbs[index].name).fontWeight(.semibold)
                     } else {
                         Button(crumbs[index].name) { go(crumbs[index].path) }
-                            .help("Go up to “\(crumbs[index].name)”")
+                            .help("Go up to “\(crumbs[index].name)”; drop items on it to move them there")
+                            .background(targeted == crumbs[index].path ? Color.teal.opacity(0.25) : .clear, in: .rect(cornerRadius: 4))
+                            .onDrop(of: [.item], delegate: drop(crumbs[index].path))
                     }
                 }
             }
