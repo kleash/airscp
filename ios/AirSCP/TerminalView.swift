@@ -27,7 +27,8 @@ final class TerminalView: UIView, UIKeyInput {
     private var pressedWord: (start: TerminalScreen.Position, end: TerminalScreen.Position)?
     /// Copy, Paste and Select All over the text (`editMenuInteraction(_:menuFor:suggestedActions:)`).
     private lazy var editMenu = UIEditMenuInteraction(delegate: self)
-    /// A hardware key held down, sent again until it is let go.
+    /// The hardware keys down that `pressesBegan` sent to the shell, and the one held down, sent again until it is let go.
+    private var taken = Set<UIKeyboardHIDUsage>()
     private var repeating: (key: UIKeyboardHIDUsage, task: Task<Void, Never>)?
     private var font = UIFont.monospacedSystemFont(ofSize: 13, weight: .regular)
     private var boldFont = UIFont.monospacedSystemFont(ofSize: 13, weight: .bold)
@@ -240,6 +241,7 @@ final class TerminalView: UIView, UIKeyInput {
             terminal?.typing = false
             repeating?.task.cancel()
             repeating = nil
+            taken = []
         }
         setNeedsDisplay()
         return resigned
@@ -289,19 +291,33 @@ final class TerminalView: UIView, UIKeyInput {
             }
             showLive()
             session.send(keys)
+            taken.insert(key.keyCode)
             repeatWhileHeld(key.keyCode, keys)
         }
         if !others.isEmpty { super.pressesBegan(others, with: event) }
     }
 
     override func pressesEnded(_ presses: Set<UIPress>, with event: UIPressesEvent?) {
-        stopRepeating(presses)
-        super.pressesEnded(presses, with: event)
+        let others = release(presses)
+        if !others.isEmpty { super.pressesEnded(others, with: event) }
     }
 
     override func pressesCancelled(_ presses: Set<UIPress>, with event: UIPressesEvent?) {
-        stopRepeating(presses)
-        super.pressesCancelled(presses, with: event)
+        let others = release(presses)
+        if !others.isEmpty { super.pressesCancelled(others, with: event) }
+    }
+
+    /// The presses `pressesBegan` took end here too (passed on, their ends turned a later Control-C into a plain C), and a
+    /// held one stops repeating; the others are returned, to pass on.
+    private func release(_ presses: Set<UIPress>) -> Set<UIPress> {
+        presses.filter { press in
+            guard let code = press.key?.keyCode, taken.remove(code) != nil else { return true }
+            if repeating?.key == code {
+                repeating?.task.cancel()
+                repeating = nil
+            }
+            return false
+        }
     }
 
     /// A key held down sends its keys again after a moment, then about 20 times a second until it is let go, as a
@@ -315,12 +331,6 @@ final class TerminalView: UIView, UIKeyInput {
                 delay = 50
             }
         })
-    }
-
-    private func stopRepeating(_ presses: Set<UIPress>) {
-        guard let repeating, presses.contains(where: { $0.key?.keyCode == repeating.key }) else { return }
-        repeating.task.cancel()
-        self.repeating = nil
     }
 
     /// What a hardware key sends, for the keys `pressesBegan` takes; nil for the others.

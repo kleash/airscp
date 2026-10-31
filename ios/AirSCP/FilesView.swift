@@ -388,7 +388,7 @@ struct SideView: View {
     @State private var preview: URL?
     /// The file being read for the editor.
     @State private var opening: String?
-    /// The row scrolled to (a revealed file's).
+    /// A revealed file's row, to scroll to.
     @State private var scrolledTo: String?
 
     private enum Naming {
@@ -405,11 +405,18 @@ struct SideView: View {
     private var editing: Bool { side.selecting }
 
     var body: some View {
-        List(selection: Binding(get: { side.selection }, set: { side.selection = $0 })) {
-            ForEach(visible) { entry in
-                row(entry)
-                    .swipeActions(edge: .trailing, allowsFullSwipe: false) { actions(entry, all: false) }
-                    .contextMenu { actions(entry, all: true) }
+        ScrollViewReader { proxy in
+            List(selection: Binding(get: { side.selection }, set: { side.selection = $0 })) {
+                ForEach(visible) { entry in
+                    row(entry)
+                        .swipeActions(edge: .trailing, allowsFullSwipe: false) { actions(entry, all: false) }
+                        .contextMenu { actions(entry, all: true) }
+                }
+            }
+            .onChange(of: scrolledTo) {
+                guard let scrolledTo else { return }
+                proxy.scrollTo(scrolledTo, anchor: .center)
+                self.scrolledTo = nil  // the same file shown again scrolls again
             }
         }
         .overlay { placeholder }
@@ -423,7 +430,6 @@ struct SideView: View {
         .safeAreaBar(edge: .top) {
             if let dir { PathBar(crumbs: crumbs(dir)) { side.folders[side.current(app)] = $0 } }
         }
-        .scrollPosition(id: $scrolledTo, anchor: .center)
         .task(id: "\(String(describing: location))|\(side.generation)") {
             if let location { await side.load(session, location) }
             if let revealing = side.revealing, side.listed == location { reveal(revealing) }
