@@ -209,6 +209,24 @@ extension TestServer {
     }
 }
 
+/// The iOS app's check when it comes back to the front: `check()` finds a connection lost while nothing used it, and
+/// the session reconnects by itself.
+@Test func overLibssh2TheCheckFindsALostConnectionWhichThenComesBack() async throws {
+    try await withServer { server in
+        var host = server.host()
+        host.autoReconnect = true
+        let ssh2 = try server.ssh2Session(host)
+        try await ssh2.connect()
+        #expect(await ssh2.check())
+        let sshd = try String(contentsOfFile: server.root + "/sshd.pid").trimmingCharacters(in: .whitespacesAndNewlines)
+        try await run(["/usr/bin/pkill", "-P", sshd])
+        #expect(await ssh2.check() == false)
+        if case .reconnecting = ssh2.state {} else { Issue.record("state \(ssh2.state)") }
+        #expect(await eventually(timeout: 60) { ssh2.state == .connected })
+        #expect(try await ssh2.run("printf back").output == "back")
+    }
+}
+
 /// AirSCP's terminal over libssh2 (the iPhone and iPad app's Terminal tab): the shell it starts and its marked commands,
 /// a new size, typing while another call waits on the same connection, and the shell's end with its status.
 @MainActor @Test func overLibssh2TheTerminalRunsTheShell() async throws {

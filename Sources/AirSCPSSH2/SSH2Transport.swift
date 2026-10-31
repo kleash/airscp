@@ -187,6 +187,10 @@ final class Connection {
             guard fd >= 0 else { continue }
             var on: Int32 = 1
             setsockopt(fd, SOL_SOCKET, SO_NOSIGPIPE, &on, socklen_t(MemoryLayout<Int32>.size))
+            // A server that stops answering (the network dropped the connection while iOS kept the app in the background)
+            // fails the next call within 45 s, as ssh's keep-alive gives up (15 s × 3), not after minutes of resending.
+            var seconds: Int32 = 45
+            setsockopt(fd, IPPROTO_TCP, TCP_RXT_CONNDROPTIME, &seconds, socklen_t(MemoryLayout<Int32>.size))
             if Darwin.connect(fd, address.ai_addr, address.ai_addrlen) == 0 { return fd }
             failure = errno
             Darwin.close(fd)
