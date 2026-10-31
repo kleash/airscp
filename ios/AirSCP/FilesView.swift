@@ -38,6 +38,11 @@ struct FilesView: View {
             }
         }
         .onReceive(TransferCenter.shared.$jobs) { model.jobsChanged($0) }
+        .task(id: app.reveal?.id) {  // also when the tab shows again
+            guard let reveal = app.reveal else { return }
+            app.reveal = nil
+            model.show(reveal, app)
+        }
         .alert(model.failure?.title ?? "", isPresented: Binding(get: { model.failure != nil }, set: { if !$0 { model.failure = nil } }),
                presenting: model.failure) { _ in
             Button("OK") {}
@@ -103,6 +108,19 @@ struct FilesView: View {
         guard let question else { return }
         self.question = nil
         question.reply(choice)
+    }
+
+    /// Search's or the terminal's item: on the side that shows its server (else the one shown), in its folder, then once
+    /// that is listed the item selected, or edited at its line (`SideView.reveal`). A hidden file shows hidden files.
+    func show(_ reveal: AppState.Reveal, _ app: AppState) {
+        let source = FileSide.Source.server(reveal.hostID)
+        shown = sides.firstIndex { $0.current(app) == source } ?? shown
+        let side = sides[shown]
+        side.source = source
+        side.folders[source] = reveal.isFolder ? reveal.path : RemotePath.parent(reveal.path)
+        side.revealing = reveal.isFolder ? nil : reveal
+        if !reveal.isFolder && RemotePath.name(reveal.path).hasPrefix(".") { showHidden = true }
+        side.generation += 1  // listed again, also when it shows that folder already
     }
 
     /// Lists the folder again on the sides that show it (nil: on this device).
@@ -293,6 +311,8 @@ struct FilesView: View {
     /// Select mode, and the items selected (paths): kept when the layout changes (rotating, the Duo folding).
     var selecting = false
     var selection = Set<String>()
+    /// A file to select (or edit) once its folder is listed (`FilesModel.show`).
+    var revealing: AppState.Reveal?
 
     init(source: Source? = nil) {
         self.source = source
@@ -368,6 +388,8 @@ struct SideView: View {
     @State private var preview: URL?
     /// The file being read for the editor.
     @State private var opening: String?
+    /// A revealed file's row, to scroll to.
+    @State private var scrolledTo: String?
 
     private enum Naming {
         case newFolder, rename(RemoteEntry)
@@ -383,11 +405,18 @@ struct SideView: View {
     private var editing: Bool { side.selecting }
 
     var body: some View {
-        List(selection: Binding(get: { side.selection }, set: { side.selection = $0 })) {
-            ForEach(visible) { entry in
-                row(entry)
-                    .swipeActions(edge: .trailing, allowsFullSwipe: false) { actions(entry, all: false) }
-                    .contextMenu { actions(entry, all: true) }
+        ScrollViewReader { proxy in
+            List(selection: Binding(get: { side.selection }, set: { side.selection = $0 })) {
+                ForEach(visible) { entry in
+                    row(entry)
+                        .swipeActions(edge: .trailing, allowsFullSwipe: false) { actions(entry, all: false) }
+                        .contextMenu { actions(entry, all: true) }
+                }
+            }
+            .onChange(of: scrolledTo) {
+                guard let scrolledTo else { return }
+                proxy.scrollTo(scrolledTo, anchor: .center)
+                self.scrolledTo = nil  // the same file shown again scrolls again
             }
         }
         .overlay { placeholder }
@@ -403,6 +432,7 @@ struct SideView: View {
         }
         .task(id: "\(String(describing: location))|\(side.generation)") {
             if let location { await side.load(session, location) }
+            if let revealing = side.revealing, side.listed == location { reveal(revealing) }
         }
         .onChange(of: dir) { side.selection = [] }
         // `presenting`: the buttons get what was asked about, even once dismissing the alert has reset it.
@@ -630,8 +660,22 @@ struct SideView: View {
         }
     }
 
-    /// The editor, for a text file of up to 4 MB.
-    private func edit(_ entry: RemoteEntry) {
+    /// Search's or the terminal's file, once its folder is listed: selected and scrolled to, or edited at its line.
+    private func reveal(_ target: AppState.Reveal) {
+        side.revealing = nil
+        guard let entry = side.items.first(where: { $0.path == target.path }) else {
+            if side.error != nil { return }  // the folder says why already
+            return model.fail("Can't find “\(RemotePath.name(target.path))”",
+                              AirSCPError(.noSuchFile, "There is no “\(target.path)” on \(side.name(app))."))
+        }
+        if let line = target.line, entry.kind != .directory { return edit(entry, line: line) }
+        side.selecting = true
+        side.selection = [entry.path]
+        scrolledTo = entry.path
+    }
+
+    /// The editor, for a text file of up to 4 MB; at `line` when given.
+    private func edit(_ entry: RemoteEntry, line: Int? = nil) {
         guard let session else { return }
         let title = "Can't edit “\(entry.name)”"
         guard entry.size <= 4 << 20 else {
@@ -641,7 +685,7 @@ struct SideView: View {
         Task {
             defer { opening = nil }
             do {
-                model.editing = EditedFile(session: session, entry: entry, text: try await session.readText(entry.path))
+                model.editing = EditedFile(session: session, entry: entry, text: try await session.readText(entry.path), line: line)
             } catch let error as AirSCPError where error.kind == .notText {
                 // Core's words name the Mac's Open; here Share hands a file to another app.
                 model.fail(title, AirSCPError(.notText, error.message.replacingOccurrences(of: "Use Open to open it in its app.",

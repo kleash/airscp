@@ -36,6 +36,7 @@ struct RootView: View {
                 }
             }
         }
+        .onChange(of: app.reveal?.id) { if app.reveal != nil { place = .files } }  // Search's or the terminal's file
         .tabBarMinimizeBehavior(.onScrollDown)
         .transfersAccessory { place = .transfers }
         .traySheet(app.tray)

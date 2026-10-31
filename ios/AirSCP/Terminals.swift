@@ -19,6 +19,9 @@ import SwiftUI
         var typing = false
         /// Lines that came while its view is scrolled back.
         var newLines = 0
+        /// The files on the server that the last command named with a line ("src/main.c:12"): "Open file:line".
+        var fileLines: [(path: String, line: Int)] = []
+        @ObservationIgnored fileprivate var finding: Task<Void, Never>?
         /// The view that shows it, while one does.
         @ObservationIgnored weak var view: TerminalView?
         /// A command to type once the shell waits at its prompt (Run on, the command line while it starts).
@@ -92,7 +95,11 @@ import SwiftUI
         let token = UUID().uuidString.replacingOccurrences(of: "-", with: "").lowercased()
         screen.markToken = token
         let history = terminal.history
-        screen.onCommand = { history.add($0) }
+        terminal.fileLines = []
+        screen.onCommand = { [weak self, weak terminal, weak screen] command in
+            history.add(command)
+            if let terminal, let screen { self?.findFiles(of: terminal, on: screen) }
+        }
         Task { [self, terminal] in
             defer { terminal.starting = false }
             do {
@@ -127,6 +134,28 @@ import SwiftUI
         changed(terminal)
         // 255: as when the connection was lost, which the session learns at its next call: one now, so Servers says so.
         if status == 255 { Task { _ = try? await terminal.session.run(":") } }
+    }
+
+    /// The files the command that just ended names with a line (Core's `fileLines`: "src/main.c:12: error", grep -n's
+    /// "notes.txt:3:…") that are on the server, for the pane's "Open file:line" buttons. A relative path is in the folder
+    /// the command ran in, as the shell said it at its prompt; where the shell doesn't say, only full paths count.
+    private func findFiles(of terminal: Terminal, on screen: TerminalScreen) {
+        guard let block = screen.blocks.last else { return }
+        let session = terminal.session, home = session.capabilities.home, directory = screen.directory
+        let places = TerminalScreen.fileLines(in: screen.output(of: block)).compactMap { place -> (path: String, line: Int)? in
+            let path: String? = place.path.hasPrefix("/") ? place.path : place.path.hasPrefix("~/") ? home + place.path.dropFirst()
+                : directory.map { RemotePath.join($0, place.path) }
+            return path.map { (RemotePath.normalized($0), place.line) }
+        }
+        terminal.finding?.cancel()
+        terminal.finding = Task {
+            var found: [(path: String, line: Int)] = [], there: [String: Bool] = [:]
+            for place in places.prefix(5) {
+                if there[place.path] == nil { there[place.path] = (try? await session.exists(place.path)) == true }
+                if there[place.path] == true { found.append(place) }
+            }
+            if !Task.isCancelled { terminal.fileLines = found }
+        }
     }
 
     /// Return in a shell that ended: a new one in its place, while the server is connected.

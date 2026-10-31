@@ -46,7 +46,7 @@ final class SearchTests: XCTestCase {
         app.tab("Search").tap()
         retype(field, "bashrc")
         app.buttons["Find “bashrc” in lab"].tap()
-        XCTAssert(app.staticTexts["/home/dev/.bashrc"].waitForExistence(timeout: 60), "The file isn't found")
+        XCTAssert(app.buttons["/home/dev/.bashrc"].waitForExistence(timeout: 60), "The file isn't found")  // it opens in Files
     }
 
     private func search(_ app: XCUIApplication, for text: String) -> XCUIElement {

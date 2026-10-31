@@ -116,8 +116,10 @@ struct SearchView: View {
     }
 }
 
-/// Find Files on an open server (Core's `Session.find`): what is below the home folder whose name holds the text.
+/// Find Files on an open server (Core's `Session.find`): what is below the home folder whose name holds the text. One
+/// opens in Files: a folder shown, a file selected in its folder.
 struct FoundFiles: View {
+    @Environment(AppState.self) private var app
     let session: Session
     let text: String
     @State private var found: [FoundItem]?
@@ -131,11 +133,16 @@ struct FoundFiles: View {
                 ContentUnavailableView.search(text: text)
             } else if let found {
                 List(found, id: \.path) { item in
-                    Label(item.path, systemImage: item.isFolder ? "folder" : "doc")
-                        .contextMenu {
-                            Button("Copy Path", systemImage: "doc.on.doc") { UIPasteboard.general.string = item.path }
-                                .help("Copy this path to paste it elsewhere")
-                        }
+                    Button {
+                        app.reveal = AppState.Reveal(hostID: session.host.id, path: item.path, isFolder: item.isFolder)
+                    } label: {
+                        Label(item.path, systemImage: item.isFolder ? "folder" : "doc").foregroundStyle(Color.primary)
+                    }
+                    .help(item.isFolder ? "Open this folder in Files" : "Show this file in Files, selected in its folder")
+                    .contextMenu {
+                        Button("Copy Path", systemImage: "doc.on.doc") { UIPasteboard.general.string = item.path }
+                            .help("Copy this path to paste it elsewhere")
+                    }
                 }
             } else {
                 ProgressView("Searching \(session.capabilities.home)…")
