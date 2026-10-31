@@ -174,29 +174,3 @@ struct HostRow: View {
         .font(.subheadline)
     }
 }
-
-struct SearchView: View {
-    let hosts: [SSHHost]
-    @State private var text = ""
-
-    private var found: [SSHHost] {
-        hosts.filter { $0.displayName.localizedStandardContains(text) || $0.hostname.localizedStandardContains(text) }
-    }
-
-    var body: some View {
-        NavigationStack {
-            Group {
-                if text.isEmpty {
-                    ContentUnavailableView("Search", systemImage: "magnifyingglass",
-                                           description: Text("Type a server's name or address to find it."))
-                } else if found.isEmpty {
-                    ContentUnavailableView.search(text: text)
-                } else {
-                    List(found) { HostRow(host: $0) }
-                }
-            }
-            .navigationTitle("Search")
-        }
-        .searchable(text: $text, prompt: "Servers")
-    }
-}
