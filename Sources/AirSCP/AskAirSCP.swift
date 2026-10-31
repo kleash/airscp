@@ -61,8 +61,13 @@ struct AppleAssistant: Assistant {
 
     func generate(_ prompt: String, instructions: String, schema: AssistantOutput) async throws -> String {
         let session = LanguageModelSession(instructions: instructions)
-        return try await session.respond(to: prompt, schema: try Self.schema(schema), options: GenerationOptions(sampling: .greedy))
-            .content.jsonString
+        // The macOS 27 SDK (Swift 6.4) renames `sampling:`; older SDKs, as CI's, only have the old name.
+        #if compiler(>=6.4)
+        let options = GenerationOptions(samplingMode: .greedy)
+        #else
+        let options = GenerationOptions(sampling: .greedy)
+        #endif
+        return try await session.respond(to: prompt, schema: try Self.schema(schema), options: options).content.jsonString
     }
 
     /// The model's schema for each shape (built at run time: the Command Line Tools have no @Generable macro).
