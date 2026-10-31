@@ -122,7 +122,8 @@ extension XCTestCase {
 
     /// The Terminal tab, once its shell waits at its prompt.
     func showTerminal(_ app: XCUIApplication) -> XCUIElement {
-        app.tabBars.buttons["Terminal"].tap()
+        // The iPad's tabs are buttons at the top, not a tab bar.
+        (app.tabBars.firstMatch.exists ? app.tabBars.buttons["Terminal"] : app.buttons["Terminal"].firstMatch).tap()
         let terminal = app.descendants(matching: .any)["terminal"]
         XCTAssert(terminal.waitForExistence(timeout: 10), "No terminal")
         XCTAssert(terminal.shows("dev@"), "No prompt: \(terminal.text)")
