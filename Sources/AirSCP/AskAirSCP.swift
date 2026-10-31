@@ -61,8 +61,8 @@ struct AppleAssistant: Assistant {
 
     func generate(_ prompt: String, instructions: String, schema: AssistantOutput) async throws -> String {
         let session = LanguageModelSession(instructions: instructions)
-        // The macOS 27 SDK (Swift 6.4) renames `sampling:`; older SDKs, as CI's, only have the old name.
-        #if compiler(>=6.4)
+        // The macOS 27 SDK (FoundationModels 2) renames `sampling:`; older SDKs (CI's 26, whatever its Swift) have only that.
+        #if canImport(FoundationModels, _version: 2)
         let options = GenerationOptions(samplingMode: .greedy)
         #else
         let options = GenerationOptions(sampling: .greedy)
