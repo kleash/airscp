@@ -17,8 +17,7 @@ struct RootView: View {
                 ServersView()
             }
             Tab("Files", systemImage: "folder", value: .files) {
-                NothingOpen(title: "No server open", systemImage: "folder",
-                            description: "Open a server in Servers to browse its files.") { place = .servers }
+                FilesView { place = .servers }
             }
             Tab("Terminal", systemImage: "apple.terminal", value: .terminal) {
                 NothingOpen(title: "No terminal open", systemImage: "apple.terminal",

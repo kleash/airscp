@@ -13,5 +13,10 @@
 		<string>_ssh._tcp</string>
 		<string>_sftp-ssh._tcp</string>
 	</array>
+	<!-- The Files tab's "On iPhone" side (the app's Documents folder) shows in the Files app too: On My iPhone ▸ AirSCP. -->
+	<key>UIFileSharingEnabled</key>
+	<true/>
+	<key>LSSupportsOpeningDocumentsInPlace</key>
+	<true/>
 </dict>
 </plist>
