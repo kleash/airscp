@@ -122,8 +122,7 @@ extension XCTestCase {
 
     /// The Terminal tab, once its shell waits at its prompt.
     func showTerminal(_ app: XCUIApplication) -> XCUIElement {
-        // The iPad's tabs are buttons at the top, not a tab bar.
-        (app.tabBars.firstMatch.exists ? app.tabBars.buttons["Terminal"] : app.buttons["Terminal"].firstMatch).tap()
+        app.tab("Terminal").tap()
         let terminal = app.descendants(matching: .any)["terminal"]
         XCTAssert(terminal.waitForExistence(timeout: 10), "No terminal")
         XCTAssert(terminal.shows("dev@"), "No prompt: \(terminal.text)")
@@ -141,6 +140,13 @@ extension XCTestCase {
         return withUnsafePointer(to: &address) {
             $0.withMemoryRebound(to: sockaddr.self, capacity: 1) { connect(fd, $0, socklen_t(MemoryLayout<sockaddr_in>.size)) }
         } == 0
+    }
+}
+
+extension XCUIApplication {
+    /// A tab's button: in the tab bar, or at the top on iPad, which has no tab bar.
+    func tab(_ name: String) -> XCUIElement {
+        tabBars.firstMatch.exists ? tabBars.buttons[name] : buttons[name].firstMatch
     }
 }
 

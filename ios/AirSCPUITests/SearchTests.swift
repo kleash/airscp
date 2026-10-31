@@ -36,21 +36,21 @@ final class SearchTests: XCTestCase {
         XCTAssert(terminal.shows("snippet-25"), terminal.text)
 
         // A command from the lab's history.
-        app.tabBars.buttons["Search"].tap()
+        app.tab("Search").tap()
         retype(field, "history-")
         XCTAssert(app.staticTexts["echo history-$((7*6))"].waitForExistence(timeout: 5), "The command isn't found")
         runOnLab(app)
         XCTAssert(terminal.shows("history-42"), terminal.text)
 
         // Files on the open server, by name.
-        app.tabBars.buttons["Search"].tap()
+        app.tab("Search").tap()
         retype(field, "bashrc")
         app.buttons["Find “bashrc” in lab"].tap()
         XCTAssert(app.staticTexts["/home/dev/.bashrc"].waitForExistence(timeout: 60), "The file isn't found")
     }
 
     private func search(_ app: XCUIApplication, for text: String) -> XCUIElement {
-        app.tabBars.buttons["Search"].tap()
+        app.tab("Search").tap()
         let field = app.searchFields.firstMatch
         XCTAssert(field.waitForExistence(timeout: 5))
         field.tap()
