@@ -126,6 +126,9 @@ changing the code.
   (`CGEventThreadStartPullingEvents`), and from then on each event queues a `CFRunLoopStop` block on the main run
   loop, which ended the test process at the next sheet. On macOS 27 the test process keeps its main run loop running
   (`TestEnvironment.isolated`: `RunLoop.main.run()` from a timer, as `NSApp.run` does): a stop ends one pass.
+- macOS 27.2 (1.4.0): BSD `du` without a UTF-8 locale (an ssh session has none) prints a name's "é" as the one
+  Latin-1 byte 0xE9, so Folder Sizes lost "café" (`folderSizes`). `Session.du` and `duAll` run BSD du with
+  `env LC_CTYPE=UTF-8`; GNU and BusyBox du print the bytes as they are and ignore the name.
 - Apple's on-device model (1.2.0, first runs with Apple Intelligence on): a `DynamicGenerationSchema` string with
   a regex guide (`.pattern`) fails generation outright (`GenerativeError` 1020000), anchored or not: Suggest uses plain
   strings and `SuggestField.problem` checks them. Its plans are readable but padded: a connect before each action, a
