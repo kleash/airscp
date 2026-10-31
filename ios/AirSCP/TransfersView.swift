@@ -245,6 +245,7 @@ struct TransferRow: View {
 
 struct SpeedChart: View {
     let samples: [SpeedHistory.Sample]
+    @Environment(\.verticalSizeClass) private var height
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
@@ -264,7 +265,7 @@ struct SpeedChart: View {
                     AxisValueLabel { Text(speed > 0 ? Self.speed(speed) : "0") }
                 }
             }
-            .frame(height: 90)
+            .frame(height: height == .compact ? 50 : 90)  // an iPhone on its side has little height
         }
         .padding(.vertical, 4)
         .accessibilityElement(children: .ignore)
