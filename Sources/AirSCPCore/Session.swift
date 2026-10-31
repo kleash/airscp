@@ -781,12 +781,11 @@ public final class Session {
     /// A transport call in `slot`'s lane, as `runOver` runs a command over the master: cancelled by `disconnect`, and a
     /// lost connection makes the session Disconnected (or reconnecting).
     /// shortcut: the command log (`onLog`) doesn't list transport calls; add them when the iOS app shows that log.
-    private func overTransport(_ slot: Slot, _ cancellation: Cancellation?,
-                               _ body: (Cancellation) async throws -> CommandResult) async throws -> CommandResult {
+    func overTransport<T>(_ slot: Slot, _ cancellation: Cancellation?, _ body: (Cancellation) async throws -> T) async throws -> T {
         let cancellation = cancellation ?? Cancellation()
         lock.locked { running.append(cancellation) }
         defer { lock.locked { running.removeAll { $0 === cancellation } } }
-        func call() async throws -> CommandResult {
+        func call() async throws -> T {
             try ensureConnected()
             do {
                 let result = try await body(cancellation)

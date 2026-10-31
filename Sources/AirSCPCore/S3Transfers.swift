@@ -277,6 +277,14 @@ extension TransferQueue {
                                             cancellation: cancellation)
                 continue
             }
+            if source.transport != nil {
+                if let leftOut = try await copyOverTransport(job, upload: false, local: temp + "/" + name,
+                                                             remote: RemotePath.join(job.source, name), session: source, meter: meter,
+                                                             cancellation: cancellation) {
+                    errors.append(leftOut)
+                }
+                continue
+            }
             let (argv, input) = try copy(upload: false, temp + "/" + name, RemotePath.join(job.source, name), folder: true,
                                          preserveTimes: true, session: source)
             let result = try await source.runMuxed(argv, input: input, cancellation: cancellation,

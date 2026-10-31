@@ -14,6 +14,17 @@ public protocol RemoteTransport: AnyObject {
     /// sftp batch lines, as `sftp -b -` runs them (`OpenSSH.sftpBatch`): each echoed after "sftp> ", output as sftp
     /// prints it, sftp's error lines; the first failing line ends the batch with exit status 1, unless it starts with "-".
     func sftp(_ lines: [String], cancellation: Cancellation) async throws -> CommandResult
+    /// The transfer queue's copy (`TransferQueue`; iOS has no scp, sftp or tar to run): `local` to `remote` (`upload`) or
+    /// back over SFTP, a folder with everything in it (symbolic links stay links), a step at a time so that other calls
+    /// go on in between. `resume`: a single file continues its partial copy (the server's for an upload, the local one
+    /// for a download) from that copy's size, as sftp's reput and reget do; else, or when there is none to continue, it
+    /// starts afresh. `preserveTimes`: as sftp's -p. `limit`: bytes a second at most. `progress` gets the bytes copied so
+    /// far, the file at it and the files done (a single file's size as `total`), on a background thread. Returns where
+    /// a resumed copy continued from (0: afresh), and what a folder's copy left out (in sftp's words, a line each).
+    /// Throws as `sftp` does (mapped), `.disconnected` once the connection is gone, `.cancelled`.
+    func copy(upload: Bool, local: String, remote: String, resume: Bool, preserveTimes: Bool, limit: Int?,
+              cancellation: Cancellation, progress: @escaping (TransferProgress) -> Void) async throws
+        -> (resumedFrom: Int64, leftOut: [String])
     /// Ends the connection.
     func close()
 }

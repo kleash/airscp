@@ -734,7 +734,10 @@ public final class TransferQueue {
                 } else {
                     setTotal(job.id, TransferQueue.localSize(job.source))
                 }
-                if try await !resume(job, into: target, session: session, cancellation: cancellation) {
+                if session.transport != nil {
+                    errors = try await copyOverTransport(job, upload: true, local: job.source, remote: target, session: session,
+                                                         cancellation: cancellation)
+                } else if try await !resume(job, into: target, session: session, cancellation: cancellation) {
                     let (argv, input) = try copy(upload: true, job.source, target, folder: job.isFolder, preserveTimes: job.preserveTimes,
                                              session: session)
                     let result = try await session.runMuxed(argv, input: input, cancellation: cancellation,
@@ -817,6 +820,48 @@ public final class TransferQueue {
         publish()
     }
 
+    /// `local` to `remote` (`upload`) or back over the session's transport (`RemoteTransport.copy`: iPhone and iPad have
+    /// no scp, sftp or tar to run), as `upload` and `download` copy with scp: a single file that a lost connection or Pause
+    /// cut off continues (`resumable`). Progress is bytes and speed, after `meter.done` bytes of the job's earlier steps (a
+    /// relay's), which this copy's bytes are added to. What a folder's copy left out, if anything.
+    func copyOverTransport(_ job: TransferJob, upload: Bool, local: String, remote: String, session: Session,
+                           meter: Progress = Progress(), cancellation: Cancellation) async throws -> String? {
+        guard let transport = session.transport else { throw AirSCPError.disconnected }
+        let resume = job.isSingleFile && isResumable(job.id)
+        if resume { setResumed(job.id, true) }
+        if lock.locked({ meters[job.id] == nil }) {
+            startStream(job.id, label: TransferQueue.label(job.names.isEmpty ? [job.name] : job.names),
+                        total: job.isSingleFile && upload ? TransferQueue.localSize(local) : nil)
+        }
+        let done = meter.done
+        var first = true
+        // A relay keeps times and permissions, as its tar stream and scp -p do.
+        let preserveTimes = job.preserveTimes || job.direction == .relay
+        let (resumedFrom, leftOut) = try await session.overTransport(.transfer, cancellation) {
+            try await transport.copy(upload: upload, local: local, remote: remote, resume: resume, preserveTimes: preserveTimes,
+                                     limit: streamLimit, cancellation: $0) { progress in
+                self.lock.locked {
+                    // The speed from where this copy starts (a resumed file's first report is what it had already).
+                    if first { self.meters[job.id] = Meter(time: Date(), bytes: done + progress.bytes, rate: 0) }
+                    first = false
+                    guard let index = self._jobs.firstIndex(where: { $0.id == job.id }) else { return }
+                    self._jobs[index].progress.file = progress.file
+                    self._jobs[index].progress.filesDone = progress.filesDone
+                    // A single file's size, known once the server said it (a download's).
+                    if job.isSingleFile, let total = progress.total, self._jobs[index].progress.indeterminate {
+                        self._jobs[index].progress.total = total
+                        self._jobs[index].progress.indeterminate = false
+                    }
+                }
+                meter.done = done + progress.bytes
+                self.streamed(job.id, meter.done)
+            }
+        }
+        if resume && resumedFrom == 0 { setResumed(job.id, false) }  // nothing to continue: it started afresh
+        streamed(job.id, meter.done, final: true)
+        return leftOut.isEmpty ? nil : leftOut.joined(separator: "\n")
+    }
+
     private func setChecksum(_ id: UUID, _ checksum: TransferJob.Checksum?) {
         lock.locked { if let index = _jobs.firstIndex(where: { $0.id == id }) { _jobs[index].checksum = checksum } }
         publish()
@@ -881,8 +926,12 @@ public final class TransferQueue {
                     errors = ([errors].compactMap { $0 } + [TransferQueue.clashMessage(clashes)]).joined(separator: "\n")
                 }
             } else {
-                if !folder, let tooLong = TransferQueue.tooLong(job.source) { throw tooLong }
-                if try await !resume(job, into: part, session: session, cancellation: cancellation) {
+                if session.transport != nil {
+                    errors = try await copyOverTransport(job, upload: false, local: part, remote: job.source, session: session,
+                                                         cancellation: cancellation)
+                } else if !folder, let tooLong = TransferQueue.tooLong(job.source) {
+                    throw tooLong
+                } else if try await !resume(job, into: part, session: session, cancellation: cancellation) {
                     try? fileManager.removeItem(atPath: part)  // what sftp couldn't continue
                     let (argv, input) = try copy(upload: false, part, job.source, folder: folder, preserveTimes: job.preserveTimes,
                                              session: session)
@@ -1084,11 +1133,19 @@ public final class TransferQueue {
             throw AirSCPError(.other, "Can't create a temporary folder: \(String(cString: strerror(errno)))")
         }
         defer { try? FileManager.default.removeItem(atPath: temp) }
-        var errors = try await fetchForRelay(job, from: source, into: temp, meter: Progress(), cancellation: cancellation)
+        let meter = Progress()
+        var errors = try await fetchForRelay(job, from: source, into: temp, meter: meter, cancellation: cancellation)
         let fetched = job.names.filter { access(temp + "/" + $0, F_OK) == 0 }
         try? await session.deleteFolders([staging], slot: .transfer)  // an earlier try's
         try await session.sftp(["mkdir \(Quote.sftp(staging))"], slot: .transfer)
         for name in fetched {
+            if session.transport != nil {
+                if let leftOut = try await copyOverTransport(job, upload: true, local: temp + "/" + name, remote: RemotePath.join(staging, name),
+                                                             session: session, meter: meter, cancellation: cancellation) {
+                    errors.append(leftOut)
+                }
+                continue
+            }
             let (argv, input) = try copy(upload: true, temp + "/" + name, RemotePath.join(staging, name), folder: true,
                                      preserveTimes: true, session: session)
             let result = try await session.runMuxed(argv, input: input, cancellation: cancellation,
@@ -1401,13 +1458,18 @@ public final class TransferQueue {
         patterns.map { "--exclude=" + Quote.shell($0) + " " }.joined()
     }
 
-    /// The server can run tar over the connection.
+    /// The server can run tar over the connection (a stream between processes: none over a transport, which copies file
+    /// by file).
     static func canStream(_ session: Session) -> Bool {
         let capabilities = session.capabilities
-        return capabilities.shell && capabilities.tools.contains("tar")
+        return session.transport == nil && capabilities.shell && capabilities.tools.contains("tar")
     }
 
     static func requireTar(_ session: Session) throws {
+        if session.transport != nil {
+            throw AirSCPError(.other, "A .tar.gz needs tar on this device too, which iPhone and iPad don't have: copy the items "
+                              + "themselves instead.")
+        }
         if let reason = session.compressUnavailableReason(.tarGz) {
             throw AirSCPError(session.capabilities.shell ? .missingTool : .sftpOnly, reason)
         }
