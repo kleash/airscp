@@ -68,6 +68,15 @@ final class TerminalView: UIView, UIKeyInput {
         resizeShell()
     }
 
+    /// Shown again (its tab chosen again; another tab may show the same terminal meanwhile): the output is drawn here, in
+    /// this view's size.
+    override func didMoveToWindow() {
+        super.didMoveToWindow()
+        guard window != nil else { return }
+        terminal?.view = self
+        resizeShell()
+    }
+
     private func resizeShell() {
         guard let session, bounds.width > 0 else { return }
         let size = gridSize

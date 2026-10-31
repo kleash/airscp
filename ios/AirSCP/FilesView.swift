@@ -19,22 +19,43 @@ let deviceFolder: String = {
 struct FilesView: View {
     @Environment(AppState.self) private var app
     @Environment(\.horizontalSizeClass) private var width
-    @State private var model = FilesModel()
+    @Environment(\.wide) private var wide
+    /// Kept by the view that shows the sides (RootView for the Files tab, a server's workspace), so that a change of
+    /// layout keeps the folders and the selection.
+    @Bindable var model: FilesModel
     let goToServers: () -> Void
+    @State private var editorFullWindow = false
+    /// A wide window shows the editor in a column, in the second side's place, not in a sheet. State, not the
+    /// environment's value: when a turn of the iPad dismisses the sheet, its binding reads this as it is now.
+    @State private var editorInColumn = false
+
+    private var editorColumn: EditedFile? { editorInColumn ? model.editing : nil }
 
     var body: some View {
         Group {
             if app.open.isEmpty {
                 NothingOpen(title: "No server open", systemImage: "folder",
                             description: "Open a server in Servers to browse its files.", goToServers: goToServers)
-            } else if width == .regular {
-                HStack(spacing: 0) {
-                    NavigationStack { SideView(model: model, index: 0, switcher: false) }
-                    Divider()
-                    NavigationStack { SideView(model: model, index: 1, switcher: false) }
-                }
             } else {
-                NavigationStack { SideView(model: model, index: model.shown, switcher: true) }.id(model.shown)
+                // Each side in a place of its own: the one shown keeps its scroll position when the window narrows to
+                // one side with a switcher, or widens again.
+                HStack(spacing: 0) {
+                    if width == .regular || model.shown == 0 { side(0) }
+                    if width == .regular { Divider() }
+                    if let file = editorColumn, !editorFullWindow {  // one view for the editor at a time
+                        NavigationStack {
+                            editor(file).toolbar {
+                                ToolbarItem(placement: .topBarTrailing) {
+                                    Button("Full Window", systemImage: "arrow.up.left.and.arrow.down.right") { editorFullWindow = true }
+                                        .keyboardShortcut("f", modifiers: [.command, .shift])
+                                        .help("Give the editor the whole window (⌘⇧F)")
+                                }
+                            }
+                        }
+                    } else if width == .regular || model.shown == 1 {
+                        side(1)
+                    }
+                }
             }
         }
         .onReceive(TransferCenter.shared.$jobs) { model.jobsChanged($0) }
@@ -62,17 +83,34 @@ struct FilesView: View {
         } message: { question in
             Text(question.keepBoth ? "Replace, keep both (the new ones get a number), or skip?" : "Replace, or skip?")
         }
-        .sheet(item: $model.editing) { file in
-            NavigationStack {
-                EditorView(file: file) { model.reload(file.session.host.id, RemotePath.parent(file.entry.path)) }
-            }
+        // A sheet unless a column or the whole window shows it.
+        .sheet(item: Binding(get: { !editorInColumn && !editorFullWindow ? model.editing : nil },
+                             set: { if !editorInColumn && !editorFullWindow { model.editing = $0 } })) { file in
+            NavigationStack { editor(file) }
+        }
+        .fullWindow(Binding(get: { editorFullWindow && model.editing != nil }, set: { editorFullWindow = $0 })) {
+            if let file = model.editing { editor(file) }
+        }
+        .onChange(of: wide && width == .regular, initial: true) { _, column in editorInColumn = column }
+    }
+
+    private func side(_ index: Int) -> some View {
+        NavigationStack { SideView(model: model, index: index, switcher: width != .regular) }
+    }
+
+    private func editor(_ file: EditedFile) -> some View {
+        EditorView(file: file) {
+            model.reload(file.session.host.id, RemotePath.parent(file.entry.path))
+        } close: {
+            editorFullWindow = false
+            model.editing = nil
         }
     }
 }
 
 /// The Files tab's sides and what they share: the questions and failures they show, and work waiting for transfers.
 @MainActor @Observable final class FilesModel {
-    var sides = [FileSide(), FileSide(source: .device)]
+    var sides: [FileSide]
     /// The side shown on a narrow screen.
     var shown = 0
     var showHidden = false
@@ -93,6 +131,11 @@ struct FilesView: View {
         /// The copy can give the new items other names (not between two servers: the stream keeps them).
         let keepBoth: Bool
         let reply: (Choice?) -> Void
+    }
+
+    /// `server`: a server's workspace, whose first side shows that server; else the newest open one.
+    init(server: UUID? = nil) {
+        sides = [FileSide(source: server.map(FileSide.Source.server)), FileSide(source: .device)]
     }
 
     func fail(_ title: String, _ error: Error) {
