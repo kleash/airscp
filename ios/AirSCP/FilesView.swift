@@ -158,7 +158,7 @@ struct FilesView: View {
 
     /// Copies `entries` from `source` (nil: this device) into `dir` on `target` (nil: this device), as the Mac's panes
     /// do: asks first about the names there, then queues a transfer for each item (one for all between two servers); a
-    /// copy within one server runs at once (cp), and so does a `move` there (rows dropped onto a folder of their side).
+    /// copy within one server runs at once (cp), and so does a `move` there (rows dropped onto a folder of their path).
     /// Returns the queued jobs.
     @discardableResult
     func copy(_ entries: [RemoteEntry], from source: Session?, to target: Session?, into dir: String, move: Bool = false) async -> [UUID] {
@@ -592,7 +592,7 @@ struct SideView: View {
                         side.selecting = true
                         model.active = index
                     }
-                        .help("Select items to send, share or delete together")
+                    .help("Select items to send, share or delete together")
                     Picker(selection: Binding(get: { side.current(app) }, set: { side.source = $0 })) {
                         ForEach(app.open, id: \.host.id) { session in
                             Text(app.data.hosts.first { $0.id == session.host.id }?.displayName ?? session.host.displayName)
@@ -762,7 +762,7 @@ struct SideView: View {
     }
 
     /// What a drop into `target` does: copy (from the other side, as Send, or from another app), move (rows of a server's
-    /// side onto one of its folders, as the Mac does) or nothing.
+    /// side onto a folder of its path, as the Mac moves within a server) or nothing.
     private func dropOperation(_ info: DropInfo, into target: String?) -> DropOperation {
         guard let target, let dir else { return .forbidden }
         guard info.hasItemsConforming(to: [.airscpRows]) else { return .copy }
