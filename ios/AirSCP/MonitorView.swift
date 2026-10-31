@@ -184,7 +184,8 @@ struct MonitorView: View {
             processes(snapshot)
             if !searching && snapshot.disks.count > 1 { disks(snapshot.disks) }  // one alone: its ring says it all
         }
-        .searchable(text: $search, prompt: "Name, user, command or PID")
+        // Always there: the footer sends people to it (by default it hides until pulled, or folds into a button on iPad).
+        .searchable(text: $search, placement: .navigationBarDrawer(displayMode: .always), prompt: "Name, user, command or PID")
         .autocorrectionDisabled()
         .textInputAutocapitalization(.never)
     }

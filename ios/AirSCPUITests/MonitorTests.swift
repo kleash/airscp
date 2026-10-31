@@ -35,7 +35,7 @@ final class MonitorTests: XCTestCase {
         XCTAssert(figures.label.contains("CPU") && figures.label.contains("Memory") && figures.label.contains("Disk"), figures.label)
         keepScreenshot("Servers")
 
-        app.staticTexts["lab"].tap()
+        openMonitor(app)
         for ring in ["monitor.cpu", "monitor.memory", "monitor.disk"] {
             XCTAssert(app.descendants(matching: .any)[ring].waitForExistence(timeout: 30), "No \(ring)")
         }
@@ -66,8 +66,7 @@ final class MonitorTests: XCTestCase {
     @MainActor func testReadingStopsWhenTheScreenGoes() async throws {
         let app = try await logIn()
         let mine = try await appConnection()
-        app.staticTexts["lab"].tap()
-        XCTAssert(app.descendants(matching: .any)["monitor.cpu"].waitForExistence(timeout: 30))
+        openMonitor(app)
 
         // Away (the Monitor screen stays under the Servers tab): once a read under way is done, the connection is quiet.
         app.tab("Transfers").tap()
@@ -120,9 +119,8 @@ final class MonitorTests: XCTestCase {
         XCTAssert(app.descendants(matching: .any)["figures"].waitForExistence(timeout: 10))
         keepScreenshot("Servers landscape")
 
-        app.staticTexts["lab"].tap()
+        openMonitor(app)
         let cpu = app.descendants(matching: .any)["monitor.cpu"]
-        XCTAssert(cpu.waitForExistence(timeout: 30))
         XCTAssert(app.descendants(matching: .any)["monitor.chart"].waitForExistence(timeout: 15))
         keepScreenshot("Monitor landscape")
         XCUIDevice.shared.orientation = .portrait
@@ -160,6 +158,16 @@ final class MonitorTests: XCTestCase {
         password.typeText("porter-dev\n")
         XCTAssert(app.staticTexts["Connected"].waitForExistence(timeout: 30))
         return app
+    }
+
+    /// The lab's Monitor screen, from its row in Servers: tapped again when a tap got lost (a busy Mac's simulator).
+    @MainActor private func openMonitor(_ app: XCUIApplication) {
+        let cpu = app.descendants(matching: .any)["monitor.cpu"]
+        for _ in 0..<3 where !cpu.exists {
+            app.staticTexts["lab"].firstMatch.tap()
+            _ = cpu.waitForExistence(timeout: 20)
+        }
+        XCTAssert(cpu.exists, "No Monitor screen")
     }
 
     /// The app's connection on the lab: the one dev's connection that wasn't there before it logged in.
