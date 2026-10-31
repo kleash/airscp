@@ -63,6 +63,14 @@ public struct RemoteEntry: Hashable, Identifiable {
     public var isHidden: Bool { name.hasPrefix(".") }
 }
 
+extension RemoteEntry {
+    /// A file or folder of the iPhone app's own (no permissions or owner). In an extension, so that the memberwise
+    /// initializer stays.
+    public init(name: String, path: String, kind: Kind, size: Int64, modified: Date?) {
+        self.init(name: name, path: path, kind: kind, size: size, modified: modified, permissions: "", mode: 0, owner: "", group: "")
+    }
+}
+
 /// `ls -la` output.
 public enum Listing {
     private static let months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]

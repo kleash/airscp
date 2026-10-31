@@ -9,6 +9,8 @@
 /* Begin PBXBuildFile section */
 		A1000000000000000000000B /* AirSCPCore in Frameworks */ = {isa = PBXBuildFile; productRef = A1000000000000000000000D /* AirSCPCore */; };
 		A1000000000000000000000C /* AirSCPSSH2 in Frameworks */ = {isa = PBXBuildFile; productRef = A1000000000000000000000E /* AirSCPSSH2 */; };
+		A100000000000000000000F1 /* AirSCPCore in Frameworks */ = {isa = PBXBuildFile; productRef = A100000000000000000000F3 /* AirSCPCore */; };
+		A100000000000000000000F2 /* AirSCPSSH2 in Frameworks */ = {isa = PBXBuildFile; productRef = A100000000000000000000F4 /* AirSCPSSH2 */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -36,6 +38,8 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				A100000000000000000000F1 /* AirSCPCore in Frameworks */,
+				A100000000000000000000F2 /* AirSCPSSH2 in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -89,6 +93,10 @@
 				A10000000000000000000024 /* AirSCPUITests */,
 			);
 			name = AirSCPUITests;
+			packageProductDependencies = (
+				A100000000000000000000F3 /* AirSCPCore */,
+				A100000000000000000000F4 /* AirSCPSSH2 */,
+			);
 			productName = AirSCPUITests;
 			productReference = A10000000000000000000023 /* AirSCPUITests.xctest */;
 			productType = "com.apple.product-type.bundle.ui-testing";
@@ -369,6 +377,14 @@
 			productName = AirSCPCore;
 		};
 		A1000000000000000000000E /* AirSCPSSH2 */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = AirSCPSSH2;
+		};
+		A100000000000000000000F3 /* AirSCPCore */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = AirSCPCore;
+		};
+		A100000000000000000000F4 /* AirSCPSSH2 */ = {
 			isa = XCSwiftPackageProductDependency;
 			productName = AirSCPSSH2;
 		};
