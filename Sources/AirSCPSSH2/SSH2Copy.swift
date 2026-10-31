@@ -312,8 +312,8 @@ private final class Copy {
     }
 }
 
-/// The SFTP requests of a copy, each made whole (no cancel half-way through: libssh2 would take the next request's
-/// answer for it), but for reading and writing, whose state closing the file clears.
+/// The SFTP requests of a copy (`again` and `opened` make each whole), and its reads and writes (which a cancel stops at
+/// once: closing the file clears what libssh2 keeps of them).
 extension Connection {
     /// A file opened for reading, or for writing (made, or emptied unless it continues `from` an offset), at `from`.
     func openFile(_ path: String, write: Bool, from offset: Int64, mode: Int = 0o644) throws -> OpaquePointer {
@@ -351,11 +351,14 @@ extension Connection {
     /// Sends the start of `bytes` (what libssh2 has sent of it already it doesn't send again); how much of it the server
     /// has taken.
     func write(_ handle: OpaquePointer, _ bytes: ArraySlice<UInt8>, _ path: String, _ cancellation: Cancellation) throws -> Int {
-        let taken = try again(cancellation) {
-            bytes.withUnsafeBytes { libssh2_sftp_write(handle, $0.baseAddress!.assumingMemoryBound(to: CChar.self), $0.count) }
+        while true {
+            let taken = bytes.withUnsafeBytes { libssh2_sftp_write(handle, $0.baseAddress!.assumingMemoryBound(to: CChar.self), $0.count) }
+            if taken != LIBSSH2_ERROR_EAGAIN {
+                try check(taken, "write remote \"\(path)\"")
+                return taken
+            }
+            try wait(cancellation)
         }
-        try check(taken, "write remote \"\(path)\"")
-        return taken
     }
 
     /// A folder's entries (not "." and ".."), with what the server says of each (a link's own, not its target's).
