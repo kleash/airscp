@@ -49,7 +49,7 @@ final class Shell: RemoteShell {
     }
 
     /// What the app asks for now: the keys not sent yet, the size, and whether to end.
-    var asked: (typed: Data, size: (columns: Int, rows: Int), closing: Bool) { lock.withLock { (typed, size, closing) } }
+    var asked: (typed: Data, size: (columns: Int, rows: Int), closing: Bool) { lock.withLock { (typed: typed, size: size, closing: closing) } }
 
     /// `count` of the typed bytes went out.
     func sent(_ count: Int) { lock.withLock { typed.removeFirst(count) } }
