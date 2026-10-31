@@ -30,6 +30,7 @@ opens tunnels. You don't need to type commands.
 | Upload a whole folder | [Upload a folder](files/upload-a-folder.md) |
 | Make two folders the same | [Synchronize two folders](synchronize.md) |
 | Find a file on a server | [Find files on a server](find.md) |
+| Free up disk space | [See what takes the room on a disk](disk-usage.md) |
 | Work on a Windows computer | [Remote Desktop (Windows)](remote-desktop/index.md) |
 | Open Amazon S3 or similar storage | [S3 storage](s3/index.md) |
 | See CPU, memory and processes | [Watch a Linux server](monitor.md) |

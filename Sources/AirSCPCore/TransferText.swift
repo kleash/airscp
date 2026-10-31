@@ -52,8 +52,8 @@ public enum TransferText {
         case .upload: return "Upload"
         case .download: return "Download"
         case .relay: return "Server to server"
-        case .compress: return "Zip on S3 storage (through this Mac)"
-        case .extract: return "Extract on S3 storage (through this Mac)"
+        case .compress: return "Zip on S3 storage (through \(Device.this))"
+        case .extract: return "Extract on S3 storage (through \(Device.this))"
         }
     }
 

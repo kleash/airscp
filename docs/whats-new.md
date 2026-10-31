@@ -5,6 +5,14 @@ nav_order: 18
 
 # What's new
 
+## AirSCP 1.4.0
+
+- **Disk Usage**: **File ▸ Disk Usage…** shows what takes the room below a folder, on a server or on this Mac. While
+  it scans, a bar shows how far it is, the files it finds show with their sizes, and the rings and the list grow as
+  the sizes add up. Point at a ring to see what it is; click a folder's ring, or double-click it in the list, to go
+  into it. **Largest Files** lists the 200 biggest files below. Select what you don't need and **Delete…** it (on this
+  Mac it goes to the Trash), or **Show** it in the pane or in Finder. See [Disk Usage](disk-usage.md).
+
 ## AirSCP 1.3.0
 
 - **Amazon S3 and S3-compatible storage**: **File ▸ New S3 Connection…** saves an Amazon S3, MinIO, Cloudflare R2,

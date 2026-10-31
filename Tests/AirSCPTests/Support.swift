@@ -3,6 +3,7 @@ import Darwin
 import Foundation
 import Security
 import Testing
+@testable import AirSCP
 @testable import AirSCPCore
 
 /// Test-wide isolation, set up once: AirSCP's commands get `-F <test ssh_config>` (not ~/.ssh/config), a scratch HOME
@@ -38,6 +39,7 @@ enum TestEnvironment {
         Session.socketDirectory = root + "/sockets"
         let home = root + "/local-home"
         try? FileManager.default.createDirectory(atPath: home + "/.ssh", withIntermediateDirectories: true)
+        sshDirectory = home + "/.ssh"  // the app's ~/.ssh in this process (host editor's keys, Import's config): never the real one
         Runner.environmentOverrides = ["HOME": home, "SSH_AUTH_SOCK": ""]
         // No window animations (windows zooming in, fading out): while the Mac's screen is locked they don't run, and a
         // window freed while one was under way crashed the test process later (-[_NSWindowTransformAnimation dealloc]).
@@ -54,6 +56,10 @@ enum TestEnvironment {
         Keychain.writeItem = { _ in errSecSuccess }
         // These stand-ins are the tests' Keychain, whatever AIRSCP_SUPPORT_DIR a test sets (it would make it memory-only).
         Keychain.memoryOnly = false
+        // After a menu (macOS 27's SwiftUI pop-ups) window-server events stop the main run loop: rerun it, as NSApp.run does.
+        if #available(macOS 27, *) {
+            RunLoop.main.add(Timer(timeInterval: 0, repeats: false) { _ in RunLoop.main.run() }, forMode: .common)
+        }
     }()
 
     /// The AirSCP executable (askpass helper), built next to the test bundle by `swift test`.

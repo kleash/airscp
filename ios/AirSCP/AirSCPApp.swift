@@ -15,6 +15,7 @@ struct AirSCPApp: App {
 
     var body: some Scene {
         WindowGroup { RootView() }
+            .commands { AppCommands() }
     }
 }
 

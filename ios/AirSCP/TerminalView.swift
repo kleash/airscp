@@ -4,8 +4,9 @@ import UIKit
 
 /// A terminal's screen (Core's `TerminalScreen`), drawn cell by cell as the Mac's TerminalView draws it: colours, bold,
 /// the cursor; one view for each terminal shown. Typing goes to the shell (UIKeyInput), and so do a hardware keyboard's arrows, Escape, Tab and
-/// Control keys. A drag goes through the scrollback (full-screen programs get arrow keys), a pinch changes the size, and
-/// the shell's terminal gets the columns and rows that fit.
+/// Control keys (repeated while held). A drag goes through the scrollback (full-screen programs get arrow keys), a pinch
+/// changes the size, touch and hold selects text (Copy, Paste, Select All), and the shell's terminal gets the columns and
+/// rows that fit.
 final class TerminalView: UIView, UIKeyInput {
     /// The Mac's key codes that `TerminalSession.keys` takes; `anyKey` is none of them: the characters count.
     static let returnKey: UInt16 = 36, anyKey = UInt16.max
@@ -16,10 +17,19 @@ final class TerminalView: UIView, UIKeyInput {
     private weak var terminal: Terminals.Terminal?
     var session: TerminalSession? {
         didSet {
+            selection = nil
             showLive()
             resizeShell()  // a shell kept its size while another was shown
         }
     }
+    /// The cells selected, in `screen.allLines`, both ends included; and the word a touch and hold took first.
+    private var selection: (start: TerminalScreen.Position, end: TerminalScreen.Position)?
+    private var pressedWord: (start: TerminalScreen.Position, end: TerminalScreen.Position)?
+    /// Copy, Paste and Select All over the text (`editMenuInteraction(_:menuFor:suggestedActions:)`).
+    private lazy var editMenu = UIEditMenuInteraction(delegate: self)
+    /// The hardware keys down that `pressesBegan` sent to the shell, and the one held down, sent again until it is let go.
+    private var taken = Set<UIKeyboardHIDUsage>()
+    private var repeating: (key: UIKeyboardHIDUsage, task: Task<Void, Never>)?
     private var font = UIFont.monospacedSystemFont(ofSize: 13, weight: .regular)
     private var boldFont = UIFont.monospacedSystemFont(ofSize: 13, weight: .bold)
     private var cellWidth: CGFloat = 8, cellHeight: CGFloat = 17
@@ -41,13 +51,15 @@ final class TerminalView: UIView, UIKeyInput {
         contentMode = .redraw
         isAccessibilityElement = true
         accessibilityLabel = "Terminal"
-        accessibilityHint = "Tap to type in the shell; drag to scroll back, pinch to change the text size"
+        accessibilityHint = "Tap to type in the shell; touch and hold to select text; drag to scroll back, pinch to change the text size"
         accessibilityIdentifier = "terminal"
         addGestureRecognizer(UITapGestureRecognizer(target: self, action: #selector(tapped)))
         let drag = UIPanGestureRecognizer(target: self, action: #selector(dragged(_:)))
         drag.maximumNumberOfTouches = 1  // two are a pinch
         addGestureRecognizer(drag)
         addGestureRecognizer(UIPinchGestureRecognizer(target: self, action: #selector(pinched(_:))))
+        addGestureRecognizer(UILongPressGestureRecognizer(target: self, action: #selector(pressed(_:))))
+        addInteraction(editMenu)
     }
 
     required init?(coder: NSCoder) { fatalError("not used") }
@@ -65,6 +77,15 @@ final class TerminalView: UIView, UIKeyInput {
 
     override func layoutSubviews() {
         super.layoutSubviews()
+        resizeShell()
+    }
+
+    /// Shown again (its tab chosen again; another tab may show the same terminal meanwhile): the output is drawn here, in
+    /// this view's size.
+    override func didMoveToWindow() {
+        super.didMoveToWindow()
+        guard window != nil else { return }
+        terminal?.view = self
         resizeShell()
     }
 
@@ -136,6 +157,13 @@ final class TerminalView: UIView, UIKeyInput {
                 draw(run, attributes: cell.attributes, in: CGRect(x: inset + CGFloat(x) * cellWidth, y: y,
                                                                   width: CGFloat(end - x) * cellWidth, height: cellHeight))
                 x = end
+            }
+            if let selection, index >= selection.start.line, index <= selection.end.line {
+                let from = index == selection.start.line ? selection.start.column : 0
+                let to = index == selection.end.line ? selection.end.column : screen.columns - 1
+                tintColor.withAlphaComponent(0.3).setFill()
+                UIRectFillUsingBlendMode(CGRect(x: inset + CGFloat(from) * cellWidth, y: y, width: CGFloat(to - from + 1) * cellWidth,
+                                                height: cellHeight), .normal)
             }
             // The cursor: a block while the terminal has the keyboard, an outline otherwise.
             if index == cursorLine, screen.cursorVisible {
@@ -218,7 +246,12 @@ final class TerminalView: UIView, UIKeyInput {
 
     override func resignFirstResponder() -> Bool {
         let resigned = super.resignFirstResponder()
-        if resigned { terminal?.typing = false }
+        if resigned {
+            terminal?.typing = false
+            repeating?.task.cancel()
+            repeating = nil
+            taken = []
+        }
         setNeedsDisplay()
         return resigned
     }
@@ -267,8 +300,46 @@ final class TerminalView: UIView, UIKeyInput {
             }
             showLive()
             session.send(keys)
+            taken.insert(key.keyCode)
+            repeatWhileHeld(key.keyCode, keys)
         }
         if !others.isEmpty { super.pressesBegan(others, with: event) }
+    }
+
+    override func pressesEnded(_ presses: Set<UIPress>, with event: UIPressesEvent?) {
+        let others = release(presses)
+        if !others.isEmpty { super.pressesEnded(others, with: event) }
+    }
+
+    override func pressesCancelled(_ presses: Set<UIPress>, with event: UIPressesEvent?) {
+        let others = release(presses)
+        if !others.isEmpty { super.pressesCancelled(others, with: event) }
+    }
+
+    /// The presses `pressesBegan` took end here too (passed on, their ends turned a later Control-C into a plain C), and a
+    /// held one stops repeating; the others are returned, to pass on.
+    private func release(_ presses: Set<UIPress>) -> Set<UIPress> {
+        presses.filter { press in
+            guard let code = press.key?.keyCode, taken.remove(code) != nil else { return true }
+            if repeating?.key == code {
+                repeating?.task.cancel()
+                repeating = nil
+            }
+            return false
+        }
+    }
+
+    /// A key held down sends its keys again after a moment, then about 20 times a second until it is let go, as a
+    /// keyboard repeats: UIKit repeats only what goes to `insertText`.
+    private func repeatWhileHeld(_ code: UIKeyboardHIDUsage, _ keys: String) {
+        repeating?.task.cancel()
+        repeating = (code, Task { [weak self] in
+            var delay = 450  // milliseconds
+            while (try? await Task.sleep(for: .milliseconds(delay))) != nil, let session = self?.session, session.running {
+                session.send(keys)
+                delay = 50
+            }
+        })
     }
 
     /// What a hardware key sends, for the keys `pressesBegan` takes; nil for the others.
@@ -291,22 +362,76 @@ final class TerminalView: UIView, UIKeyInput {
                                     shift: flags.contains(.shift), applicationCursor: applicationCursor)
     }
 
-    /// ⌘V on a hardware keyboard.
+    /// Paste (the edit menu, ⌘V): the text at the prompt, as typed.
     override func paste(_ sender: Any?) {
         guard let session, session.running, let text = UIPasteboard.general.string else { return }
         showLive()
         session.paste(text)
     }
 
+    /// Copy (the edit menu, ⌘C): the selected text.
+    override func copy(_ sender: Any?) {
+        guard let selection, let screen = session?.screen else { return }
+        let end = TerminalScreen.Position(line: selection.end.line, column: selection.end.column + 1)
+        UIPasteboard.general.string = screen.text(from: selection.start, to: end)
+    }
+
+    /// Select All (the edit menu, ⌘A): the scrollback and the screen; the menu shows again to copy it.
+    override func selectAll(_ sender: Any?) {
+        guard let screen = session?.screen else { return }
+        selection = (TerminalScreen.Position(line: 0, column: 0),
+                     TerminalScreen.Position(line: screen.scrollback.count + screen.lines.count - 1, column: screen.columns - 1))
+        setNeedsDisplay()
+        editMenu.presentEditMenu(with: UIEditMenuConfiguration(identifier: nil, sourcePoint: CGPoint(x: bounds.midX, y: bounds.midY)))
+    }
+
     override func canPerformAction(_ action: Selector, withSender sender: Any?) -> Bool {
-        action == #selector(paste(_:)) ? session?.running == true && UIPasteboard.general.hasStrings
-            : super.canPerformAction(action, withSender: sender)
+        switch action {
+        case #selector(paste(_:)): session?.running == true && UIPasteboard.general.hasStrings
+        case #selector(copy(_:)): selection != nil
+        case #selector(selectAll(_:)): session != nil
+        default: super.canPerformAction(action, withSender: sender)
+        }
     }
 
     // MARK: Gestures
 
+    /// A tap ends a selection; otherwise it brings the keyboard.
     @objc private func tapped() {
-        if !isFirstResponder { _ = becomeFirstResponder() }
+        if selection != nil {
+            selection = nil
+            setNeedsDisplay()
+        } else if !isFirstResponder {
+            _ = becomeFirstResponder()
+        }
+    }
+
+    /// Touch and hold: the word there selected (as the Mac's double-click takes it), a drag then selects on to the finger;
+    /// let go, and the edit menu shows Copy, Paste and Select All.
+    @objc private func pressed(_ press: UILongPressGestureRecognizer) {
+        guard let screen = session?.screen else { return }
+        let point = press.location(in: self)
+        // The cell there, in `screen.allLines` as `draw` shows them.
+        let total = screen.scrollback.count + screen.lines.count, first = max(total - scrollOffset - screen.rows, 0)
+        let at = TerminalScreen.Position(line: min(first + max(Int((point.y - inset) / cellHeight), 0), total - 1),
+                                         column: min(max(Int((point.x - inset) / cellWidth), 0), screen.columns - 1))
+        switch press.state {
+        case .began:
+            let cells = screen.allLines[at.line].cells
+            guard at.column < cells.count else { break }
+            var start = at.column, end = at.column
+            while start > 0, cells[start - 1].character != " " { start -= 1 }
+            while end < cells.count - 1, cells[end + 1].character != " " { end += 1 }
+            pressedWord = (TerminalScreen.Position(line: at.line, column: start), TerminalScreen.Position(line: at.line, column: end))
+            selection = pressedWord
+        case .changed:
+            if let word = pressedWord { selection = (min(word.start, at), max(word.end, at)) }
+        case .ended:
+            editMenu.presentEditMenu(with: UIEditMenuConfiguration(identifier: nil, sourcePoint: point))
+        default:
+            break
+        }
+        setNeedsDisplay()
     }
 
     @objc private func dragged(_ drag: UIPanGestureRecognizer) {
@@ -333,6 +458,25 @@ final class TerminalView: UIView, UIKeyInput {
         let size = min(max((pinchStart * pinch.scale * 2).rounded() / 2, 8), 28)
         if size != font.pointSize { setFontSize(size) }
         if pinch.state == .ended { UserDefaults.standard.set(Double(size), forKey: Self.fontSizeKey) }
+    }
+}
+
+extension TerminalView: UIEditMenuInteractionDelegate {
+    /// The menu's own actions, sent to this view: the system's would go to the first responder, and this view becomes
+    /// one only to type (the keyboard comes with it).
+    func editMenuInteraction(_ interaction: UIEditMenuInteraction, menuFor configuration: UIEditMenuConfiguration,
+                             suggestedActions: [UIMenuElement]) -> UIMenu? {
+        var actions: [UIAction] = []
+        if canPerformAction(#selector(copy(_:)), withSender: nil) {
+            actions.append(UIAction(title: "Copy") { [weak self] _ in self?.copy(nil) })
+        }
+        if canPerformAction(#selector(paste(_:)), withSender: nil) {
+            actions.append(UIAction(title: "Paste") { [weak self] _ in self?.paste(nil) })
+        }
+        if canPerformAction(#selector(selectAll(_:)), withSender: nil) {
+            actions.append(UIAction(title: "Select All") { [weak self] _ in self?.selectAll(nil) })
+        }
+        return UIMenu(children: actions)
     }
 }
 

@@ -1004,6 +1004,23 @@ public final class TerminalScreen {
         guard !word.isEmpty, word != "." || characters[offset] == "." else { return nil }
         return word
     }
+
+    /// The files a command's output names with a line, as compilers, linters and `grep -n` print them ("src/main.c:12:5:
+    /// error", "./notes.txt:3:hello", "Makefile:7: *** missing separator"): each place once, in the order they come.
+    /// Words are split as `path(atLine:column:)` splits them; one without a letter is no file ("12:30", "10.0.0.1:22").
+    public static func fileLines(in text: String) -> [(path: String, line: Int)] {
+        var found: [(path: String, line: Int)] = []
+        let string = text as NSString
+        for match in fileLine.matches(in: text, range: NSRange(location: 0, length: string.length)) {
+            let path = string.substring(with: match.range(at: 1))
+            guard path.contains(where: \.isLetter), let line = Int(string.substring(with: match.range(at: 2))),
+                  !found.contains(where: { $0.path == path && $0.line == line }) else { continue }
+            found.append((path, line))
+        }
+        return found
+    }
+
+    private static let fileLine = try! NSRegularExpression(pattern: #"([^\s"'`()\[\]{}<>|,;=:]+):([0-9]+)(?![0-9])"#)
 }
 
 extension TerminalScreen.Attributes {

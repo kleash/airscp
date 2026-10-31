@@ -295,8 +295,9 @@ extension Session {
     /// Sets $du to a du command for one total per operand, of the files' sizes where du can tell them (GNU: bytes; BSD:
     /// kilobytes, -A), like a selection's status line adds them up; else (BusyBox) their space on disk in kilobytes.
     /// $unit is bytes per unit.
+    /// BSD du gets a UTF-8 locale: without one (as over ssh) macOS 27's prints "é" as one Latin-1 byte.
     static let du = "if du --version 2>/dev/null | grep -q GNU; then du='du -s --apparent-size --block-size=1'; unit=1; "
-        + "else case $(uname -s) in Darwin|*BSD) du='du -s -A -k';; *) du='du -s -k';; esac; unit=1024; fi;"
+        + "else case $(uname -s) in Darwin|*BSD) du='env LC_CTYPE=UTF-8 du -s -A -k';; *) du='du -s -k';; esac; unit=1024; fi;"
 
     /// Runs `command` unless something is at `path` (cp and mv would put the item inside a folder that is there).
     private func unlessExists(_ path: String, _ command: String) async throws {

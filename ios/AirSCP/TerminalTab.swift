@@ -6,13 +6,16 @@ import SwiftUI
 struct TerminalTab: View {
     @Environment(AppState.self) private var app
     @Environment(Terminals.self) private var terminals
+    @Environment(\.horizontalSizeClass) private var width
     let goToServers: () -> Void
+    @State private var fullWindow = false
 
     var body: some View {
         NavigationStack {
             Group {
                 if let terminal = terminals.shown {
-                    TerminalPane(terminal: terminal)
+                    // Full Window shows it, and one view for a terminal at a time.
+                    (fullWindow ? nil : TerminalPane(terminal: terminal))
                         .navigationTitle(terminals.list.count > 1 ? "" : terminals.name(of: terminal))  // else the switcher's
                         .navigationBarTitleDisplayMode(.inline)
                         .toolbar { toolbar(terminal) }
@@ -24,11 +27,8 @@ struct TerminalTab: View {
         }
         .onAppear { terminals.sync(with: app) }
         .onChange(of: app.states) { terminals.sync(with: app) }
-        .alert("Can't open a shell", isPresented: Binding(get: { terminals.failure != nil }, set: { if !$0 { terminals.failure = nil } }),
-               presenting: terminals.failure) { _ in
-            Button("OK") {}
-        } message: { failure in
-            Text(failure.message)
+        .fullWindow($fullWindow, escapeLeaves: false) {
+            if let terminal = terminals.shown { TerminalPane(terminal: terminal).navigationTitle(terminals.name(of: terminal)) }
         }
     }
 
@@ -47,6 +47,13 @@ struct TerminalTab: View {
                 .help("Show another terminal")
             }
         }
+        if width == .regular {
+            ToolbarItem(placement: .topBarTrailing) {
+                Button("Full Window", systemImage: "arrow.up.left.and.arrow.down.right") { fullWindow = true }
+                    .keyboardShortcut(fullWindow ? nil : KeyboardShortcut("f", modifiers: [.command, .shift]))  // then Exit's
+                    .help("Give the terminal the whole window (⌘⇧F)")
+            }
+        }
         ToolbarItem(placement: .topBarTrailing) {
             Menu("New Terminal", systemImage: "plus") {
                 ForEach(app.open.filter { $0.state == .connected && $0.capabilities.shell }, id: \.host.id) { session in
@@ -62,6 +69,7 @@ struct TerminalTab: View {
 /// One terminal (mockup screens 10 and 11) at any size: its screen, and under it the command line with the server's
 /// history as suggestions, then the key bar while the terminal has the keyboard, or the Stop / Return / Type deck.
 struct TerminalPane: View {
+    @Environment(AppState.self) private var app
     @Environment(Terminals.self) private var terminals
     @Environment(\.verticalSizeClass) private var verticalSizeClass
     let terminal: Terminals.Terminal
@@ -90,9 +98,10 @@ struct TerminalPane: View {
 
     private var bar: some View {
         VStack(spacing: 8) {
-            if commandFocused { suggestions }
             // A phone on its side has room above the keyboard for the terminal or the command line, not both.
-            if !(terminal.typing && verticalSizeClass == .compact) { commandLine }
+            let roomy = !(terminal.typing && verticalSizeClass == .compact)
+            if commandFocused { suggestions } else if roomy && !terminal.fileLines.isEmpty { fileLines }
+            if roomy { commandLine }
             if terminal.typing {
                 KeyBar(terminal: terminal)
             } else if !commandFocused {
@@ -144,6 +153,25 @@ struct TerminalPane: View {
             }
             .scrollClipDisabled()
         }
+    }
+
+    /// "Open file:line": the files the last command named with a line ("src/main.c:12: error", grep -n), each opening
+    /// in the editor at that line.
+    private var fileLines: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack {
+                ForEach(Array(terminal.fileLines.enumerated()), id: \.offset) { _, place in
+                    Button("\(RemotePath.name(place.path)):\(place.line)", systemImage: "doc.text") {
+                        app.reveal = AppState.Reveal(hostID: terminal.session.host.id, path: place.path, line: place.line)
+                    }
+                    .font(.callout.monospaced())
+                    .buttonStyle(.glass)
+                    .accessibilityIdentifier("fileLine")
+                    .help("Open \(place.path) in the editor at line \(place.line)")
+                }
+            }
+        }
+        .scrollClipDisabled()
     }
 
     /// The keyboard down: Stop, Return and Type, big for the thumb.

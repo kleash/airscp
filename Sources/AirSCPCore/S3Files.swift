@@ -193,7 +193,7 @@ extension Session {
     func fetchS3(_ path: String, to local: URL, limit: Int64?, tooLarge: String) async throws {
         let (bucket, key) = try s3Item(path)
         guard FileManager.default.createFile(atPath: local.path, contents: nil), let file = FileHandle(forWritingAtPath: local.path) else {
-            throw AirSCPError(.permissionDenied, "AirSCP can't write a temporary copy on this Mac.")
+            throw AirSCPError(.permissionDenied, "AirSCP can't write a temporary copy on \(Device.this).")
         }
         defer { try? file.close() }
         do {

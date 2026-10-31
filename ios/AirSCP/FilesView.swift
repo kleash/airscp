@@ -19,22 +19,43 @@ let deviceFolder: String = {
 struct FilesView: View {
     @Environment(AppState.self) private var app
     @Environment(\.horizontalSizeClass) private var width
-    @State private var model = FilesModel()
+    @Environment(\.wide) private var wide
+    /// Kept by the view that shows the sides (RootView for the Files tab, a server's workspace), so that a change of
+    /// layout keeps the folders and the selection.
+    @Bindable var model: FilesModel
     let goToServers: () -> Void
+    @State private var editorFullWindow = false
+    /// A wide window shows the editor in a column, in the second side's place, not in a sheet. State, not the
+    /// environment's value: when a turn of the iPad dismisses the sheet, its binding reads this as it is now.
+    @State private var editorInColumn = false
+
+    private var editorColumn: EditedFile? { editorInColumn ? model.editing : nil }
 
     var body: some View {
         Group {
             if app.open.isEmpty {
                 NothingOpen(title: "No server open", systemImage: "folder",
                             description: "Open a server in Servers to browse its files.", goToServers: goToServers)
-            } else if width == .regular {
-                HStack(spacing: 0) {
-                    NavigationStack { SideView(model: model, index: 0, switcher: false) }
-                    Divider()
-                    NavigationStack { SideView(model: model, index: 1, switcher: false) }
-                }
             } else {
-                NavigationStack { SideView(model: model, index: model.shown, switcher: true) }.id(model.shown)
+                // Each side in a place of its own: the one shown keeps its scroll position when the window narrows to
+                // one side with a switcher, or widens again.
+                HStack(spacing: 0) {
+                    if width == .regular || model.shown == 0 { side(0) }
+                    if width == .regular { Divider() }
+                    if let file = editorColumn, !editorFullWindow {  // one view for the editor at a time
+                        NavigationStack {
+                            editor(file).toolbar {
+                                ToolbarItem(placement: .topBarTrailing) {
+                                    Button("Full Window", systemImage: "arrow.up.left.and.arrow.down.right") { editorFullWindow = true }
+                                        .keyboardShortcut("f", modifiers: [.command, .shift])
+                                        .help("Give the editor the whole window (⌘⇧F)")
+                                }
+                            }
+                        }
+                    } else if width == .regular || model.shown == 1 {
+                        side(1)
+                    }
+                }
             }
         }
         .onReceive(TransferCenter.shared.$jobs) { model.jobsChanged($0) }
@@ -62,20 +83,44 @@ struct FilesView: View {
         } message: { question in
             Text(question.keepBoth ? "Replace, keep both (the new ones get a number), or skip?" : "Replace, or skip?")
         }
-        .sheet(item: $model.editing) { file in
-            NavigationStack {
-                EditorView(file: file) { model.reload(file.session.host.id, RemotePath.parent(file.entry.path)) }
-            }
+        // A sheet unless a column or the whole window shows it.
+        .sheet(item: Binding(get: { !editorInColumn && !editorFullWindow ? model.editing : nil },
+                             set: { if !editorInColumn && !editorFullWindow { model.editing = $0 } })) { file in
+            NavigationStack { editor(file) }
+        }
+        .fullWindow(Binding(get: { editorFullWindow && model.editing != nil }, set: { editorFullWindow = $0 })) {
+            if let file = model.editing { editor(file) }
+        }
+        .onChange(of: wide && width == .regular, initial: true) { _, column in editorInColumn = column }
+    }
+
+    private func side(_ index: Int) -> some View {
+        NavigationStack { SideView(model: model, index: index, switcher: width != .regular) }
+    }
+
+    private func editor(_ file: EditedFile) -> some View {
+        EditorView(file: file) {
+            model.reload(file.session.host.id, RemotePath.parent(file.entry.path))
+        } close: {
+            editorFullWindow = false
+            model.editing = nil
         }
     }
 }
 
 /// The Files tab's sides and what they share: the questions and failures they show, and work waiting for transfers.
 @MainActor @Observable final class FilesModel {
-    var sides = [FileSide(), FileSide(source: .device)]
+    var sides: [FileSide]
     /// The side shown on a narrow screen.
     var shown = 0
     var showHidden = false
+    /// The side the keyboard's shortcuts work on while both show: the one last used (a folder opened, rows selected, a
+    /// drop).
+    var active = 0
+    /// Items copied with ⌘C, for ⌘V (AirSCP's own: other apps never see a server's paths).
+    var copied: (session: Session?, entries: [RemoteEntry])?
+    /// The rows being dragged in AirSCP, and where from (one drag at a time; for every window, as a drag can end in another).
+    static var dragged: (side: FileSide, session: Session?, entries: [RemoteEntry])?
     var failure: (title: String, message: String)?
     var question: Question?
     var editing: EditedFile?
@@ -95,6 +140,11 @@ struct FilesView: View {
         let reply: (Choice?) -> Void
     }
 
+    /// `server`: a server's workspace, whose first side shows that server; else the newest open one.
+    init(server: UUID? = nil) {
+        sides = [FileSide(source: server.map(FileSide.Source.server)), FileSide(source: .device)]
+    }
+
     func fail(_ title: String, _ error: Error) {
         failure = (title, (error as? AirSCPError)?.message ?? error.localizedDescription)
     }
@@ -103,6 +153,19 @@ struct FilesView: View {
         guard let question else { return }
         self.question = nil
         question.reply(choice)
+    }
+
+    /// Search's or the terminal's item: on the side that shows its server (else the one shown), in its folder, then once
+    /// that is listed the item selected, or edited at its line (`SideView.reveal`). A hidden file shows hidden files.
+    func show(_ reveal: AppState.Reveal, _ app: AppState) {
+        let source = FileSide.Source.server(reveal.hostID)
+        shown = sides.firstIndex { $0.current(app) == source } ?? shown
+        let side = sides[shown]
+        side.source = source
+        side.folders[source] = reveal.isFolder ? reveal.path : RemotePath.parent(reveal.path)
+        side.revealing = reveal.isFolder ? nil : reveal
+        if !reveal.isFolder && RemotePath.name(reveal.path).hasPrefix(".") { showHidden = true }
+        side.generation += 1  // listed again, also when it shows that folder already
     }
 
     /// Lists the folder again on the sides that show it (nil: on this device).
@@ -151,14 +214,16 @@ struct FilesView: View {
 
     /// Copies `entries` from `source` (nil: this device) into `dir` on `target` (nil: this device), as the Mac's panes
     /// do: asks first about the names there, then queues a transfer for each item (one for all between two servers); a
-    /// copy within one server runs at once (cp). Returns the queued jobs.
+    /// copy within one server runs at once (cp), and so does a `move` there (rows dropped onto a folder of their path).
+    /// Returns the queued jobs.
     @discardableResult
-    func copy(_ entries: [RemoteEntry], from source: Session?, to target: Session?, into dir: String) async -> [UUID] {
+    func copy(_ entries: [RemoteEntry], from source: Session?, to target: Session?, into dir: String, move: Bool = false) async -> [UUID] {
         guard !entries.isEmpty else { return [] }
+        let verb = move ? "move" : "copy"
         let place = "“\(target == nil && dir == deviceFolder ? deviceName : RemotePath.name(dir))”"
         let sameServer = source != nil && source?.host.id == target?.host.id
         if sameServer, let looped = entries.first(where: { dir == $0.path || dir.hasPrefix($0.path + "/") }) {
-            fail("Can't copy", AirSCPError(.other, "“\(looped.name)” can't go into itself."))
+            fail("Can't \(verb)", AirSCPError(.other, "“\(looped.name)” can't go into itself."))
             return []
         }
         // Listed now: the other side's rows may be older than what is there (an item made since would be replaced unasked).
@@ -166,7 +231,7 @@ struct FilesView: View {
         do {
             existing = try await target?.list(dir) ?? FileSide.localEntries(dir)
         } catch {
-            fail("Can't copy to \(place)", error)
+            fail("Can't \(verb) to \(place)", error)
             return []
         }
         let ignoreCase = target?.capabilities.caseInsensitive ?? TransferQueue.ignoresCase(dir)
@@ -233,16 +298,21 @@ struct FilesView: View {
                     if let old = step.replaces, old.name == step.name {
                         // The old item stays until the new one is complete.
                         try await server.copy(step.entry.path, replacing: path, folder: step.entry.kind == .directory || old.kind == .directory,
-                                              move: false)
+                                              move: move)
                     } else {
                         if let old = step.replaces { try await server.delete([old]) }  // another spelling: it goes first
-                        try await server.copy(step.entry.path, to: path)
+                        if move {
+                            try await server.move(step.entry.path, to: path)
+                        } else {
+                            try await server.copy(step.entry.path, to: path)
+                        }
                     }
                 }
             } catch {
-                fail("Can't copy", error)
+                fail("Can't \(verb)", error)
             }
             reload(server.host.id, dir)
+            if move { reload(server.host.id, RemotePath.parent(entries[0].path)) }
             return []
         case (nil, nil):
             return []
@@ -250,20 +320,24 @@ struct FilesView: View {
     }
 
     /// Downloads server files into a new temporary folder through the transfer queue, then hands them to `then`
-    /// (Share, Save to Files); says why when one fails.
-    func download(_ entries: [RemoteEntry], from session: Session, then: @escaping ([URL]) -> Void) {
+    /// (Share, Save to Files, a drag to another app); nil, once it has said why, when one fails or is cancelled.
+    func download(_ entries: [RemoteEntry], from session: Session, then: @escaping ([URL]?) -> Void) {
         let folder = FileManager.default.temporaryDirectory.appendingPathComponent("Downloads-" + UUID().uuidString)
         do {
             try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
         } catch {
-            return fail("Can't download", error)
+            fail("Can't download", error)
+            return then(nil)
         }
         let urls = entries.map { folder.appendingPathComponent($0.name) }
         let jobs = zip(entries, urls).map { entry, url in session.transfers.download(entry.path, to: url.path, isFolder: false) }
         whenDone(jobs) { [self] finished in
             for job in finished {
-                if case .failed(let error) = job.status { return fail("Can't download “\(job.name)”", error) }
-                if job.status != .done { return }  // cancelled
+                if case .failed(let error) = job.status {
+                    fail("Can't download “\(job.name)”", error)
+                    return then(nil)
+                }
+                if job.status != .done { return then(nil) }  // cancelled
             }
             then(urls)
         }
@@ -293,6 +367,8 @@ struct FilesView: View {
     /// Select mode, and the items selected (paths): kept when the layout changes (rotating, the Duo folding).
     var selecting = false
     var selection = Set<String>()
+    /// A file to select (or edit) once its folder is listed (`FilesModel.show`).
+    var revealing: AppState.Reveal?
 
     init(source: Source? = nil) {
         self.source = source
@@ -368,6 +444,11 @@ struct SideView: View {
     @State private var preview: URL?
     /// The file being read for the editor.
     @State private var opening: String?
+    /// A revealed file's row, to scroll to.
+    @State private var scrolledTo: String?
+    /// What a drag is over: a row or a folder of the path bar (its path), or this side's empty folder (the folder's path).
+    /// A folder lights up; over a file row or the empty folder, the whole side does (the drop goes into the folder shown).
+    @State private var dropTarget: String?
     /// The server whose Monitor screen shows.
     @State private var monitoring: UUID?
 
@@ -385,14 +466,36 @@ struct SideView: View {
     private var editing: Bool { side.selecting }
 
     var body: some View {
-        List(selection: Binding(get: { side.selection }, set: { side.selection = $0 })) {
-            ForEach(visible) { entry in
-                row(entry)
-                    .swipeActions(edge: .trailing, allowsFullSwipe: false) { actions(entry, all: false) }
-                    .contextMenu { actions(entry, all: true) }
+        ScrollViewReader { proxy in
+            List(selection: Binding(get: { side.selection }, set: {
+                side.selection = $0
+                model.active = index
+            })) {
+                ForEach(visible) { entry in
+                    row(entry)
+                        .swipeActions(edge: .trailing, allowsFullSwipe: false) { actions(entry, all: false) }
+                        .contextMenu { actions(entry, all: true) }
+                        .onDrag { dragItem(entry) }
+                        // Each row takes drops from elsewhere (the list's own drop handling refuses them): a folder into
+                        // itself, a file into the folder shown. The list keeps its own rows' drags to itself, so a row
+                        // can't be dropped onto a folder row of the same side: the path bar's folders take those.
+                        .onDrop(of: [.item], delegate: drop(into: entry.kind == .directory ? entry.path : dir, over: entry.path))
+                        .listRowBackground(dropTarget == entry.path && entry.kind == .directory ? Color.teal.opacity(0.25) : nil)
+                }
+            }
+            .onChange(of: scrolledTo) {
+                guard let scrolledTo else { return }
+                proxy.scrollTo(scrolledTo, anchor: .center)
+                self.scrolledTo = nil  // the same file shown again scrolls again
             }
         }
-        .overlay { placeholder }
+        .overlay { placeholder.onDrop(of: [.item], delegate: drop(into: dir, over: dir ?? "")) }
+        .overlay {
+            if let dropTarget, dropTarget == dir || visible.contains(where: { $0.path == dropTarget && $0.kind != .directory }) {
+                RoundedRectangle(cornerRadius: 12).strokeBorder(Color.teal, lineWidth: 3).padding(4).allowsHitTesting(false)
+            }
+        }
+        .background { shortcuts.hidden() }
         .refreshable { if let location { await side.load(session, location) } }
         .environment(\.editMode, Binding(get: { side.selecting ? .active : .inactive }, set: { side.selecting = $0.isEditing }))
         .navigationTitle(side.name(app))
@@ -401,12 +504,18 @@ struct SideView: View {
         // A narrow screen's bottom bar takes the tab bar's place while selecting.
         .toolbar(editing && switcher ? .hidden : .visible, for: .tabBar)
         .safeAreaBar(edge: .top) {
-            if let dir { PathBar(crumbs: crumbs(dir)) { side.folders[side.current(app)] = $0 } }
+            if let dir {
+                PathBar(crumbs: crumbs(dir), targeted: dropTarget) { side.folders[side.current(app)] = $0 } drop: { drop(into: $0, over: $0) }
+            }
         }
         .task(id: "\(String(describing: location))|\(side.generation)") {
             if let location { await side.load(session, location) }
+            if let revealing = side.revealing, side.listed == location { reveal(revealing) }
         }
-        .onChange(of: dir) { side.selection = [] }
+        .onChange(of: dir) {
+            side.selection = []
+            model.active = index  // a folder opened here: the keyboard works here now
+        }
         // `presenting`: the buttons get what was asked about, even once dismissing the alert has reset it.
         .alert(namingTitle, isPresented: Binding(get: { naming != nil }, set: { if !$0 { naming = nil } }), presenting: naming) { naming in
             TextField("Name", text: $name)
@@ -425,7 +534,7 @@ struct SideView: View {
         }
         .fileImporter(isPresented: $importing, allowedContentTypes: [.item], allowsMultipleSelection: true) { result in
             switch result {
-            case .success(let urls): importFiles(urls)
+            case .success(let urls): if let dir { importFiles(urls, into: dir) }
             case .failure(let error): model.fail("Can't import", error)
             }
         }
@@ -547,14 +656,15 @@ struct SideView: View {
                         side.session(app).flatMap { session in side.dir(app).map { (session.host.id, $0) } }
                     }) { first, _ in first })
                 }
-                Button("New Folder", systemImage: "folder.badge.plus") {
-                    ask(.newFolder, name: Names.unique("untitled folder", existing: side.items.map(\.name)))
-                }
-                .disabled(dir == nil)
-                .help(dir == nil ? "Connect to the server first" : "Make a folder here")
+                Button("New Folder", systemImage: "folder.badge.plus", action: newFolder)
+                    .disabled(dir == nil)
+                    .help(dir == nil ? "Connect to the server first" : "Make a folder here")
                 Menu("More", systemImage: "ellipsis") {
-                    Button("Select", systemImage: "checkmark.circle") { side.selecting = true }
-                        .help("Select items to send, share or delete together")
+                    Button("Select", systemImage: "checkmark.circle") {
+                        side.selecting = true
+                        model.active = index
+                    }
+                    .help("Select items to send, share or delete together")
                     Picker(selection: Binding(get: { side.current(app) }, set: { side.source = $0 })) {
                         ForEach(app.open, id: \.host.id) { session in
                             Text(app.data.hosts.first { $0.id == session.host.id }?.displayName ?? session.host.displayName)
@@ -611,6 +721,153 @@ struct SideView: View {
             .help("Delete the selected items")
     }
 
+    // MARK: Keyboard
+
+    /// The keyboard's shortcuts (listed while ⌘ is held), on the side shown, or last used where both show. Not while
+    /// the editor or a name is being typed: those keys are the text's then (a sheet's keys fall through to its presenter).
+    @ViewBuilder private var shortcuts: some View {
+        if (switcher || model.active == index) && model.editing == nil && naming == nil {
+            Button("Refresh") { side.generation += 1 }
+                .keyboardShortcut("r")
+                .help("List the folder again")
+            Button("New Folder", action: newFolder)
+                .keyboardShortcut("n")
+                .disabled(dir == nil)
+                .help("Make a folder here")
+            Button("Delete") { deleting = selected }
+                .keyboardShortcut(.delete)
+                .disabled(selected.isEmpty)
+                .help("Delete the selected items (asks first)")
+            Button("Select All") { side.selection = Set(visible.map(\.path)) }
+                .keyboardShortcut("a")
+                .disabled(!editing)
+                .help("Select everything in this folder")
+            Button("Open", action: openSelected)
+                .keyboardShortcut(.return, modifiers: [])
+                .disabled(selected.count != 1)
+                .help("Open the selected folder or file")
+            Button("Open Selection", action: openSelected)  // ⌘↓, as on the Mac
+                .keyboardShortcut(.downArrow)
+                .disabled(selected.count != 1)
+                .help("Open the selected folder or file")
+            Button("Enclosing Folder") { if let up { side.folders[side.current(app)] = up } }
+                .keyboardShortcut(.upArrow)
+                .disabled(up == nil)
+                .help("Go up one folder")
+            Button("Copy") { model.copied = (session, selected) }
+                .keyboardShortcut("c")
+                .disabled(selected.isEmpty)
+                .help("Copy the selected items, to paste them on the other side")
+            Button("Paste", action: paste)
+                .keyboardShortcut("v")
+                .disabled(!canPaste)
+                .help("Copy the items copied with ⌘C into this folder")
+        }
+    }
+
+    /// Opens the one item selected, out of Select.
+    private func openSelected() {
+        guard selected.count == 1 else { return }
+        let entry = selected[0]
+        stopSelecting()
+        open(entry)
+    }
+
+    /// The folder above the one shown: up to / on a server, and to this device's own folder.
+    private var up: String? {
+        guard let dir, dir != (session == nil ? deviceFolder : "/") else { return nil }
+        return RemotePath.parent(dir)
+    }
+
+    private var canPaste: Bool {
+        guard let copied = model.copied, dir != nil else { return false }
+        if let from = copied.session { return app.open.contains { $0 === from } }  // closed since: nothing to copy from
+        return session != nil  // from this device to this device: as Send, no
+    }
+
+    private func paste() {
+        guard let copied = model.copied, let dir else { return }
+        Task { await model.copy(copied.entries, from: copied.session, to: session, into: dir) }
+    }
+
+    // MARK: Drag and drop
+
+    /// A row's drag. Within AirSCP it carries the row, or the selection the row is in (`FilesModel.dragged`); other apps
+    /// get the file itself (a server's is downloaded through the queue once they ask for it), never a server's path.
+    /// Folders and several rows only go to AirSCP's sides.
+    private func dragItem(_ entry: RemoteEntry) -> NSItemProvider {
+        let entries = editing && side.selection.contains(entry.path) ? selected : [entry]
+        FilesModel.dragged = (side, session, entries)
+        let provider = NSItemProvider()
+        provider.registerDataRepresentation(for: .airscpRows, visibility: .ownProcess) { done in
+            done(Data(), nil)
+            return nil
+        }
+        guard entries.count == 1, entry.kind != .directory else { return provider }
+        provider.suggestedName = entry.name
+        let (session, model) = (session, model)
+        let type = UTType(filenameExtension: (entry.name as NSString).pathExtension, conformingTo: .data) ?? .data
+        provider.registerFileRepresentation(for: type, visibility: .all) { done in
+            guard let session else {
+                done(URL(fileURLWithPath: entry.path), false, nil)
+                return nil
+            }
+            Task { @MainActor in
+                model.download([entry], from: session) { urls in
+                    if let url = urls?.first { done(url, false, nil) } else { done(nil, false, CocoaError(.fileReadUnknown)) }
+                }
+            }
+            return nil
+        }
+        return provider
+    }
+
+    /// Dropping into `target` (the folder this side shows, nil before there is one, or a folder row's) while over `key`.
+    private func drop(into target: String?, over key: String) -> FileDrop {
+        FileDrop(targeted: Binding(get: { dropTarget == key }, set: { on in
+            if on { dropTarget = key } else if dropTarget == key { dropTarget = nil }
+        })) { info in
+            dropOperation(info, into: target)
+        } perform: { info in
+            guard let target else { return }
+            model.active = index
+            guard info.hasItemsConforming(to: [.airscpRows]) else { return receive(info.itemProviders(for: [.item]), into: target) }
+            guard let dragged = FilesModel.dragged else { return }
+            dragged.side.selecting = false  // as Send does
+            dragged.side.selection = []
+            Task { await model.copy(dragged.entries, from: dragged.session, to: session, into: target, move: dragged.side === side) }
+        }
+    }
+
+    /// What a drop into `target` does: copy (from the other side, as Send, or from another app), move (rows of a server's
+    /// side onto a folder of its path, as the Mac moves within a server) or nothing.
+    private func dropOperation(_ info: DropInfo, into target: String?) -> DropOperation {
+        guard let target, let dir else { return .forbidden }
+        guard info.hasItemsConforming(to: [.airscpRows]) else { return .copy }
+        guard let dragged = FilesModel.dragged else { return .forbidden }
+        if dragged.side === side {
+            return session != nil && target != dir && !dragged.entries.contains { $0.path == target } ? .move : .forbidden
+        }
+        return dragged.session == nil && session == nil ? .forbidden : .copy  // this device on both sides: as Send, no
+    }
+
+    /// Files dropped from another app: taken out of the drop (iOS deletes its copies at once), then uploaded into
+    /// `target` on a server or copied there on this device, as Import from Files does.
+    private func receive(_ providers: [NSItemProvider], into target: String) {
+        let folder = FileManager.default.temporaryDirectory.appendingPathComponent("Dropped-" + UUID().uuidString)
+        Task {
+            var urls: [URL] = []
+            for provider in providers {
+                do {
+                    urls.append(try await provider.file(in: folder))
+                } catch {
+                    model.fail("Can't add “\(provider.suggestedName ?? "an item")” from the other app", error)
+                }
+            }
+            importFiles(urls, into: target) { try? FileManager.default.removeItem(at: folder) }
+        }
+    }
+
     // MARK: Path
 
     /// The folders from the top down to `dir`: a server's from /, this device's from its own folder.
@@ -640,8 +897,22 @@ struct SideView: View {
         }
     }
 
-    /// The editor, for a text file of up to 4 MB.
-    private func edit(_ entry: RemoteEntry) {
+    /// Search's or the terminal's file, once its folder is listed: selected and scrolled to, or edited at its line.
+    private func reveal(_ target: AppState.Reveal) {
+        side.revealing = nil
+        guard let entry = side.items.first(where: { $0.path == target.path }) else {
+            if side.error != nil { return }  // the folder says why already
+            return model.fail("Can't find “\(RemotePath.name(target.path))”",
+                              AirSCPError(.noSuchFile, "There is no “\(target.path)” on \(side.name(app))."))
+        }
+        if let line = target.line, entry.kind != .directory { return edit(entry, line: line) }
+        side.selecting = true
+        side.selection = [entry.path]
+        scrolledTo = entry.path
+    }
+
+    /// The editor, for a text file of up to 4 MB; at `line` when given.
+    private func edit(_ entry: RemoteEntry, line: Int? = nil) {
         guard let session else { return }
         let title = "Can't edit “\(entry.name)”"
         guard entry.size <= 4 << 20 else {
@@ -651,7 +922,7 @@ struct SideView: View {
         Task {
             defer { opening = nil }
             do {
-                model.editing = EditedFile(session: session, entry: entry, text: try await session.readText(entry.path))
+                model.editing = EditedFile(session: session, entry: entry, text: try await session.readText(entry.path), line: line)
             } catch let error as AirSCPError where error.kind == .notText {
                 // Core's words name the Mac's Open; here Share hands a file to another app.
                 model.fail(title, AirSCPError(.notText, error.message.replacingOccurrences(of: "Use Open to open it in its app.",
@@ -677,7 +948,7 @@ struct SideView: View {
         }
         stopSelecting()
         guard let session else { return hand(entries.map { URL(fileURLWithPath: $0.path) }) }
-        model.download(entries, from: session, then: hand)
+        model.download(entries, from: session) { if let urls = $0 { hand(urls) } }
     }
 
     private func zip(_ entries: [RemoteEntry]) {
@@ -686,16 +957,19 @@ struct SideView: View {
         perform("Can't zip") { _ = try await session.compress(entries.map(\.name), in: dir, format: .zip) }
     }
 
-    /// Import from Files: uploaded into the server's folder (each file kept open to AirSCP until its upload is done), or
-    /// copied into this device's (keeping both where a name is taken).
-    private func importFiles(_ urls: [URL]) {
-        guard let dir else { return }
+    /// Import from Files, and files dropped from another app: uploaded into `dir` on the server (each file kept open to
+    /// AirSCP until its upload is done), or copied there on this device (keeping both where a name is taken); `then` once
+    /// they are copied.
+    private func importFiles(_ urls: [URL], into dir: String, then: @escaping () -> Void = {}) {
         let scoped = urls.filter { $0.startAccessingSecurityScopedResource() }
-        let done = { scoped.forEach { $0.stopAccessingSecurityScopedResource() } }
+        let done = {
+            scoped.forEach { $0.stopAccessingSecurityScopedResource() }
+            then()
+        }
         guard let session else {
             perform("Can't import") {
                 defer { done() }
-                var names = side.items.map(\.name)
+                var names = try FileSide.localEntries(dir).map(\.name)
                 for url in urls {
                     let name = Names.unique(url.lastPathComponent, existing: names, caseInsensitive: TransferQueue.ignoresCase(dir))
                     names.append(name)
@@ -729,6 +1003,10 @@ struct SideView: View {
     private func ask(_ naming: Naming, name: String) {
         self.name = name
         self.naming = naming
+    }
+
+    private func newFolder() {
+        ask(.newFolder, name: Names.unique("untitled folder", existing: side.items.map(\.name)))
     }
 
     private var namingTitle: String {
@@ -875,10 +1153,13 @@ struct FileRow: View {
     }()
 }
 
-/// The folder's path, each folder a button that goes up to it.
+/// The folder's path, each folder a button that goes up to it, and takes drops (moves this side's rows up into it).
 struct PathBar: View {
     let crumbs: [(name: String, path: String)]
+    /// The folder a drag is over: it lights up.
+    let targeted: String?
     let go: (String) -> Void
+    let drop: (String) -> FileDrop
 
     var body: some View {
         ScrollView(.horizontal) {
@@ -891,7 +1172,9 @@ struct PathBar: View {
                         Text(crumbs[index].name).fontWeight(.semibold)
                     } else {
                         Button(crumbs[index].name) { go(crumbs[index].path) }
-                            .help("Go up to “\(crumbs[index].name)”")
+                            .help("Go up to “\(crumbs[index].name)”; drop items on it to move them there")
+                            .background(targeted == crumbs[index].path ? Color.teal.opacity(0.25) : .clear, in: .rect(cornerRadius: 4))
+                            .onDrop(of: [.item], delegate: drop(crumbs[index].path))
                     }
                 }
             }
@@ -902,6 +1185,52 @@ struct PathBar: View {
         .scrollIndicators(.hidden)
         .defaultScrollAnchor(.trailing)
         .accessibilityIdentifier("path")
+    }
+}
+
+/// A drop onto a side or one of its folders: the badge shows what it does (copy, move, or not here), the place lights
+/// up, and dropping does it.
+struct FileDrop: DropDelegate {
+    @Binding var targeted: Bool
+    let operation: (DropInfo) -> DropOperation
+    let perform: (DropInfo) -> Void
+
+    func validateDrop(info: DropInfo) -> Bool { operation(info) != .forbidden }
+    func dropEntered(info: DropInfo) { targeted = true }
+    func dropExited(info: DropInfo) { targeted = false }
+    func dropUpdated(info: DropInfo) -> DropProposal? { DropProposal(operation: operation(info)) }
+
+    func performDrop(info: DropInfo) -> Bool {
+        targeted = false
+        perform(info)
+        return true
+    }
+}
+
+extension UTType {
+    /// Rows dragged between the Files tab's sides: AirSCP's own type (Info.plist), never shown to other apps.
+    static let airscpRows = UTType(exportedAs: "com.kleash.airscp.rows")
+}
+
+extension NSItemProvider {
+    /// The dropped item as a file of AirSCP's own, in a new folder in `folder` (a file's own type before a folder's).
+    func file(in folder: URL) async throws -> URL {
+        let type = registeredContentTypes.first { $0.conforms(to: .data) }
+            ?? registeredContentTypes.first { $0.conforms(to: .directory) } ?? .item
+        return try await withCheckedThrowingContinuation { continuation in
+            _ = loadFileRepresentation(for: type, openInPlace: false) { url, _, error in
+                // Moved away before returning: iOS deletes the file once this handler returns.
+                do {
+                    guard let url else { throw error ?? CocoaError(.fileReadUnknown) }
+                    let file = folder.appendingPathComponent(UUID().uuidString).appendingPathComponent(url.lastPathComponent)
+                    try FileManager.default.createDirectory(at: file.deletingLastPathComponent(), withIntermediateDirectories: true)
+                    try FileManager.default.moveItem(at: url, to: file)
+                    continuation.resume(returning: file)
+                } catch {
+                    continuation.resume(throwing: error)
+                }
+            }
+        }
     }
 }
 

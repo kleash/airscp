@@ -1376,7 +1376,7 @@ public final class TransferQueue {
         guard file >= 0 else {
             let failure = errno
             throw AirSCPError(failure == ENOENT ? .noSuchFile : .other,
-                              "Can't read \(RemotePath.name(path)) on this Mac: \(String(cString: strerror(failure))).")
+                              "Can't read \(RemotePath.name(path)) on \(Device.this): \(String(cString: strerror(failure))).")
         }
         defer { close(file) }
         var hasher = SHA256()
@@ -1387,7 +1387,7 @@ public final class TransferQueue {
             if count == 0 { break }
             guard count > 0 else {
                 if errno == EINTR { continue }
-                throw AirSCPError(.other, "Can't read \(RemotePath.name(path)) on this Mac: \(String(cString: strerror(errno))).")
+                throw AirSCPError(.other, "Can't read \(RemotePath.name(path)) on \(Device.this): \(String(cString: strerror(errno))).")
             }
             buffer.withUnsafeBytes { hasher.update(bufferPointer: UnsafeRawBufferPointer(rebasing: $0.prefix(count))) }
         }
@@ -1515,7 +1515,7 @@ public final class TransferQueue {
         if let result = pumped.consumer, result.status != 0 { throw failure(result, remote: consumer) }
         if let failure = pumped.writeError, pumped.consumer == nil {
             throw AirSCPError(failure == ENOSPC || failure == EDQUOT ? .diskFull : .other,
-                              "Can't save the download on this Mac: \(String(cString: strerror(failure))).")
+                              "Can't save the download on \(Device.this): \(String(cString: strerror(failure))).")
         }
         if producerFailed { throw failure(pumped.producer, remote: producer) }
         return pumped.producer.status == 0 ? nil : OpenSSH.afterMarker(pumped.producer.stderr)

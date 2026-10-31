@@ -393,7 +393,7 @@ public final class S3Client {
         }
         do {
             guard let handle = FileHandle(forReadingAtPath: file.path) else {
-                throw AirSCPError(.permissionDenied, "AirSCP can't read \(file.lastPathComponent) on this Mac.")
+                throw AirSCPError(.permissionDenied, "AirSCP can't read \(file.lastPathComponent) on \(Device.this).")
             }
             defer { try? handle.close() }
             var parts: [(number: Int, etag: String, checksum: String?)] = []
@@ -411,7 +411,7 @@ public final class S3Client {
                 // if such files become common.
                 try handle.seek(toOffset: UInt64(offset))
                 guard let data = try handle.read(upToCount: Int(length)), data.count == length else {
-                    throw AirSCPError(.other, "\(file.lastPathComponent) changed on this Mac while it was uploaded.")
+                    throw AirSCPError(.other, "\(file.lastPathComponent) changed on \(Device.this) while it was uploaded.")
                 }
                 let base = sent
                 let (etag, checksum) = try await uploadPart(bucket, key, id: id, number: number, data: data,
@@ -595,7 +595,7 @@ public final class S3Client {
     /// The SHA-256 of a file, a megabyte at a time.
     static func sha256(_ file: URL, cancellation: Cancellation? = nil) throws -> Data {
         guard let handle = FileHandle(forReadingAtPath: file.path) else {
-            throw AirSCPError(.permissionDenied, "AirSCP can't read \(file.lastPathComponent) on this Mac.")
+            throw AirSCPError(.permissionDenied, "AirSCP can't read \(file.lastPathComponent) on \(Device.this).")
         }
         defer { try? handle.close() }
         var hash = SHA256()
@@ -609,7 +609,7 @@ public final class S3Client {
     /// The SHA-256 a storage keeps for a file uploaded in parts of `partSize`: of the parts' own SHA-256s, then "-N".
     static func compositeSHA256(_ file: URL, partSize: Int64) throws -> String {
         guard let handle = FileHandle(forReadingAtPath: file.path) else {
-            throw AirSCPError(.permissionDenied, "AirSCP can't read \(file.lastPathComponent) on this Mac.")
+            throw AirSCPError(.permissionDenied, "AirSCP can't read \(file.lastPathComponent) on \(Device.this).")
         }
         defer { try? handle.close() }
         var digests = Data(), count = 0
@@ -803,7 +803,7 @@ final class S3Transport: NSObject, URLSessionDataDelegate {
             do {
                 try file.write(contentsOf: data)
             } catch {
-                exchange.failure = AirSCPError(.diskFull, "AirSCP couldn't write the download on this Mac: \(error.localizedDescription)")
+                exchange.failure = AirSCPError(.diskFull, "AirSCP couldn't write the download on \(Device.this): \(error.localizedDescription)")
                 return dataTask.cancel()
             }
             exchange.bytes += Int64(data.count)
