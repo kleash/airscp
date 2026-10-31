@@ -1,3 +1,4 @@
+import AirSCPCore
 import XCTest
 
 /// Transfers (Phase 2d): the running transfer above the tab bar, the Transfers tab's sections, Pause and Resume, Retry,
@@ -10,7 +11,7 @@ final class TransfersTests: XCTestCase {
 
     override func setUpWithError() throws {
         continueAfterFailure = false
-        try XCTSkipUnless(labIsUp(), "The Docker lab's target doesn't answer on 127.0.0.1:42201 (testenv/up.sh starts it)")
+        try XCTSkipUnless(LabServer.isUp(), "The Docker lab's target doesn't answer on 127.0.0.1:42201 (testenv/up.sh starts it)")
         folder = FileManager.default.temporaryDirectory.appendingPathComponent("airscp-ui-\(UUID().uuidString)")
         try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
     }
@@ -96,6 +97,34 @@ final class TransfersTests: XCTestCase {
         keepScreenshot("Share")
     }
 
+    /// The tray's Send: a server's file goes to the open server's home folder as a server-to-server copy (through this
+    /// device), shown in Transfers until it is done, and arrives as it was. The test's folder (`LabServer`) and the copy
+    /// are removed afterwards.
+    @MainActor func testTheTraySendsItsFilesToAnOpenServer() async throws {
+        let lab = try await LabServer(knownHosts: folder.appendingPathComponent("known_hosts").path)
+        let name = "tray-" + UUID().uuidString.prefix(8).lowercased() + ".txt"
+        let landed = RemotePath.join(lab.session.capabilities.home, name)
+        addTeardownBlock {
+            try? await lab.session.delete([RemoteEntry(name: name, path: landed, kind: .file, size: 0, modified: nil)])
+            await lab.remove()
+        }
+        try await lab.write("from the tray\n", to: name)
+
+        let app = connect(tray: [lab.path(name)], trusted: true)
+        openTransfers(app)
+        app.buttons["Tray"].tap()
+        app.buttons["Send"].tap()
+        app.buttons["dev@127.0.0.1:42201 — dev"].tap()
+        XCTAssert(app.navigationBars["Tray"].waitForNonExistence(timeout: 30), "The tray stayed open")
+        let row = transfer(name, in: app)
+        XCTAssert(waitUntil(row, says: "Done", timeout: 60), row.label)
+        XCTAssert(row.label.contains("dev@127.0.0.1:42201 → dev@127.0.0.1:42201"), row.label)
+        keepScreenshot("Sent")
+        let arrived = try await lab.session.readText(landed)
+        XCTAssertEqual(arrived, "from the tray\n")
+        XCTAssertEqual((app.buttons["Tray"].value as? String), "0 items")
+    }
+
     /// Turned between portrait and landscape (an iPad, and the iPhone Duo's fold), a running transfer keeps going and
     /// keeps showing, above the tab bar and in Transfers; the tray shows in both too.
     func testARunningTransferKeepsGoingWhileTheDeviceTurns() {
@@ -142,8 +171,9 @@ final class TransfersTests: XCTestCase {
     }
 
     /// Launches a throwaway AirSCP that downloads `paths` once connected (at most `bytesPerSecond`) and puts the server's
-    /// files `tray` in the tray, and connects it to the lab's target.
-    private func connect(downloading paths: [String] = [], tray: [String] = [], bytesPerSecond: Int? = nil) -> XCUIApplication {
+    /// files `tray` in the tray, and connects it to the lab's target (`trusted`: its key is known already, by `LabServer`).
+    private func connect(downloading paths: [String] = [], tray: [String] = [], bytesPerSecond: Int? = nil,
+                         trusted: Bool = false) -> XCUIApplication {
         let app = XCUIApplication()
         app.launchEnvironment["AIRSCP_SUPPORT_DIR"] = folder.path
         app.launchEnvironment["AIRSCP_TEST_DOWNLOADS"] = paths.joined(separator: ",")
@@ -154,8 +184,10 @@ final class TransfersTests: XCTestCase {
         XCTAssert(field.waitForExistence(timeout: 10))
         field.tap()
         field.typeText("dev@127.0.0.1:42201\n")
-        XCTAssert(app.buttons["Trust"].waitForExistence(timeout: 30), "No Trust question")
-        app.buttons["Trust"].tap()
+        if !trusted {
+            XCTAssert(app.buttons["Trust"].waitForExistence(timeout: 30), "No Trust question")
+            app.buttons["Trust"].tap()
+        }
         XCTAssert(app.secureTextFields["answer"].waitForExistence(timeout: 30), "No password question")
         app.typeText("porter-dev\n")
         XCTAssert(app.staticTexts["Connected"].waitForExistence(timeout: 30))
@@ -178,18 +210,5 @@ final class TransfersTests: XCTestCase {
         screenshot.name = name
         screenshot.lifetime = .keepAlways
         add(screenshot)
-    }
-
-    /// Whether the lab's target accepts a TCP connection (at once on this Mac: refused or not).
-    private func labIsUp() -> Bool {
-        let fd = socket(AF_INET, SOCK_STREAM, 0)
-        defer { close(fd) }
-        var address = sockaddr_in()
-        address.sin_family = sa_family_t(AF_INET)
-        address.sin_port = in_port_t(42201).bigEndian
-        address.sin_addr.s_addr = inet_addr("127.0.0.1")
-        return withUnsafePointer(to: &address) {
-            $0.withMemoryRebound(to: sockaddr.self, capacity: 1) { Darwin.connect(fd, $0, socklen_t(MemoryLayout<sockaddr_in>.size)) }
-        } == 0
     }
 }

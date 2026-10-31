@@ -396,21 +396,26 @@ final class Connection {
 
     // MARK: Waiting (non-blocking calls)
 
-    /// Calls `body` until it stops saying "again", waiting for the socket in between.
+    /// Calls `body` until it stops saying "again", waiting for the socket in between. A cancel stops it before it starts,
+    /// never half-way: libssh2 keeps a started request in the session (an open, a stat, a readdir, a channel), and the
+    /// next request of its kind, a transfer's between a listing's, would take that one's answer. (Reading and writing a
+    /// file stop half-way: closing the file clears what they keep.)
     func again<T: BinaryInteger>(_ cancellation: Cancellation?, _ body: () -> T) throws -> T {
+        if cancellation?.isCancelled == true { throw AirSCPError.cancelled }
         while true {
             let rc = body()
             if rc != LIBSSH2_ERROR_EAGAIN { return rc }
-            try wait(cancellation)
+            try wait(nil)
         }
     }
 
     /// `again` for a call that returns a pointer: nil when it failed.
     func opened(_ cancellation: Cancellation?, _ body: () -> OpaquePointer?) throws -> OpaquePointer? {
+        if cancellation?.isCancelled == true { throw AirSCPError.cancelled }
         while true {
             if let pointer = body() { return pointer }
             guard libssh2_session_last_errno(session) == LIBSSH2_ERROR_EAGAIN else { return nil }
-            try wait(cancellation)
+            try wait(nil)
         }
     }
 
