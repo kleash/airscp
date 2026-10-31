@@ -10,6 +10,7 @@ final class TerminalTests: XCTestCase {
         continueAfterFailure = false
         try XCTSkipUnless(labIsReachable(), "The Docker lab's target doesn't answer on 127.0.0.1:42201 (testenv/up.sh starts it)")
         folder = try labFolder()
+        XCUIDevice.shared.orientation = .portrait
     }
 
     override func tearDownWithError() throws {
@@ -85,6 +86,10 @@ final class TerminalTests: XCTestCase {
         let terminal = app.descendants(matching: .any)["terminal"]
         XCTAssert(terminal.shows("dev@"), terminal.text)
         keepScreenshot("Two terminals")
+        XCUIDevice.shared.orientation = .landscapeLeft
+        XCTAssert(close.waitForExistence(timeout: 10), "No Close Terminal in landscape")
+        keepScreenshot("Two terminals, landscape")
+        XCUIDevice.shared.orientation = .portrait
         close.tap()
         XCTAssert(close.waitForNonExistence(timeout: 10), "The last terminal can be closed")
     }

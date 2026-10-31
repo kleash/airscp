@@ -2,8 +2,8 @@ import AirSCPCore
 import SwiftUI
 import UIKit
 
-/// The shown shell's screen (Core's `TerminalScreen`), drawn cell by cell as the Mac's TerminalView draws it: colours,
-/// bold, the cursor. Typing goes to the shell (UIKeyInput), and so do a hardware keyboard's arrows, Escape, Tab and
+/// A terminal's screen (Core's `TerminalScreen`), drawn cell by cell as the Mac's TerminalView draws it: colours, bold,
+/// the cursor; one view for each terminal shown. Typing goes to the shell (UIKeyInput), and so do a hardware keyboard's arrows, Escape, Tab and
 /// Control keys. A drag goes through the scrollback (full-screen programs get arrow keys), a pinch changes the size, and
 /// the shell's terminal gets the columns and rows that fit.
 final class TerminalView: UIView, UIKeyInput {
@@ -12,6 +12,8 @@ final class TerminalView: UIView, UIKeyInput {
     static let fontSizeKey = "terminalFontSize"
 
     private weak var terminals: Terminals?
+    /// The terminal shown: its shell, its Ctrl, whether it has the keyboard, the lines that came while scrolled back.
+    private weak var terminal: Terminals.Terminal?
     var session: TerminalSession? {
         didSet {
             showLive()
@@ -29,8 +31,9 @@ final class TerminalView: UIView, UIKeyInput {
     /// Where a drag or a pinch started: the offset, the arrow keys sent for it, the font size.
     private var dragStart = (offset: 0, sent: 0), pinchStart: CGFloat = 13
 
-    init(terminals: Terminals) {
+    init(terminals: Terminals, terminal: Terminals.Terminal) {
         self.terminals = terminals
+        self.terminal = terminal
         super.init(frame: .zero)
         let size = UserDefaults.standard.double(forKey: Self.fontSizeKey)
         setFontSize(size > 0 ? size : 13)
@@ -54,10 +57,10 @@ final class TerminalView: UIView, UIKeyInput {
         set {}
     }
 
-    /// Columns and rows that fit (80 × 24 before the view has a size).
+    /// Columns and rows that fit, however small the view (80 × 24 before it has a size).
     var gridSize: (columns: Int, rows: Int) {
         guard bounds.width > 0, bounds.height > 0 else { return (80, 24) }
-        return (max(Int((bounds.width - 2 * inset) / cellWidth), 20), max(Int((bounds.height - 2 * inset) / cellHeight), 5))
+        return (max(Int((bounds.width - 2 * inset) / cellWidth), 10), max(Int((bounds.height - 2 * inset) / cellHeight), 2))
     }
 
     override func layoutSubviews() {
@@ -91,7 +94,7 @@ final class TerminalView: UIView, UIKeyInput {
             if scrollOffset > 0 && grown < 0 { return showLive() }  // the scrollback was cleared
             if scrollOffset > 0 && grown > 0 {
                 scrollOffset = min(scrollOffset + grown, screen.scrollback.count)
-                terminals?.newLines += grown
+                terminal?.newLines += grown
             }
         }
         setNeedsDisplay()
@@ -101,7 +104,7 @@ final class TerminalView: UIView, UIKeyInput {
     func showLive() {
         scrollOffset = 0
         scrollbackSeen = session?.screen.scrollback.count ?? 0
-        if terminals?.newLines != 0 { terminals?.newLines = 0 }
+        if terminal?.newLines != 0 { terminal?.newLines = 0 }
         setNeedsDisplay()
     }
 
@@ -208,14 +211,14 @@ final class TerminalView: UIView, UIKeyInput {
 
     override func becomeFirstResponder() -> Bool {
         let became = super.becomeFirstResponder()
-        if became { terminals?.typing = true }
+        if became { terminal?.typing = true }
         setNeedsDisplay()
         return became
     }
 
     override func resignFirstResponder() -> Bool {
         let resigned = super.resignFirstResponder()
-        if resigned { terminals?.typing = false }
+        if resigned { terminal?.typing = false }
         setNeedsDisplay()
         return resigned
     }
@@ -232,12 +235,12 @@ final class TerminalView: UIView, UIKeyInput {
     func insertText(_ text: String) {
         guard let session else { return }
         guard session.running else {
-            if text == "\n", let terminal = terminals?.shown { terminals?.restart(terminal) }  // Return: a new shell
+            if text == "\n", let terminal { terminals?.restart(terminal) }  // Return: a new shell
             return
         }
         var keys = text.replacingOccurrences(of: "\n", with: "\r")
-        if terminals?.ctrl == true, let first = keys.first {
-            terminals?.ctrl = false
+        if terminal?.ctrl == true, let first = keys.first {
+            terminal?.ctrl = false
             keys = (TerminalSession.keys(keyCode: Self.anyKey, characters: String(first), control: true, option: false,
                                          shift: false, applicationCursor: false) ?? String(first)) + keys.dropFirst()
         }
@@ -333,14 +336,15 @@ final class TerminalView: UIView, UIKeyInput {
     }
 }
 
-/// The terminal in SwiftUI: the view shows `shell` (the shown terminal's).
+/// A terminal's view in SwiftUI, showing its `shell` (a new one after a restart). Give it an id for its terminal.
 struct TerminalScreenView: UIViewRepresentable {
     let terminals: Terminals
+    let terminal: Terminals.Terminal
     let shell: TerminalSession?
 
     func makeUIView(context: Context) -> TerminalView {
-        let view = TerminalView(terminals: terminals)
-        terminals.view = view
+        let view = TerminalView(terminals: terminals, terminal: terminal)
+        terminal.view = view
         return view
     }
 

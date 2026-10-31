@@ -2,16 +2,25 @@ import AirSCPCore
 import Observation
 import SwiftUI
 
-/// The Terminal tab's shells (2e): AirSCP's own shell on each open server, as the Mac's Terminal tab starts it (bash and
-/// zsh mark their commands), over the server's connection: no second login. New Terminal adds more. The commands run
-/// go into the server's history (Core's `CommandHistory`), which the command line and Search offer again.
+/// The terminals (2e): AirSCP's own shell on each open server, as the Mac's Terminal tab starts it (bash and zsh mark
+/// their commands), over the server's connection: no second login. New Terminal adds more. The commands run go into
+/// the server's history (Core's `CommandHistory`), which the command line and Search offer again.
 @MainActor @Observable final class Terminals {
+    /// One shell on a server, and the state of the view that shows it (`TerminalPane`).
     @MainActor @Observable final class Terminal: Identifiable {
         let id = UUID()
         let session: Session
         let history: CommandHistory
         /// The shell, once it has started; a new one after Return in one that ended.
         fileprivate(set) var shell: TerminalSession?
+        /// The key bar's Ctrl, for the next key.
+        var ctrl = false
+        /// Its view has the keyboard: the key bar shows, not the Stop / Return / Type deck.
+        var typing = false
+        /// Lines that came while its view is scrolled back.
+        var newLines = 0
+        /// The view that shows it, while one does.
+        @ObservationIgnored weak var view: TerminalView?
         /// A command to type once the shell waits at its prompt (Run on, the command line while it starts).
         fileprivate var pending: String?
         fileprivate var starting = false
@@ -24,16 +33,10 @@ import SwiftUI
 
     private(set) var list: [Terminal] = []
     var shownID: Terminal.ID?
+    /// The terminal the Terminal tab shows.
     var shown: Terminal? { list.first { $0.id == shownID } ?? list.first }
-    /// The key bar's Ctrl, for the next key.
-    var ctrl = false
-    /// The terminal has the keyboard (the key bar shows, not the Stop / Return / Type deck).
-    var typing = false
-    /// Lines that came while the terminal is scrolled back.
-    var newLines = 0
     /// Why a shell couldn't start.
     var failure: AirSCPError?
-    @ObservationIgnored weak var view: TerminalView?
     /// One history per server, shared by its terminals (each would otherwise write over the others' file).
     @ObservationIgnored private var histories: [UUID: CommandHistory] = [:]
 
@@ -44,11 +47,11 @@ import SwiftUI
         list.removeAll { terminal in gone.contains { $0 === terminal } }
         for session in app.open where session.state == .connected && session.capabilities.shell
             && !list.contains(where: { $0.session === session }) {
-            _ = add(on: session)
+            add(on: session)
         }
     }
 
-    /// New Terminal: another shell on `session`'s server, shown.
+    /// New Terminal: another shell on `session`'s server.
     @discardableResult func add(on session: Session) -> Terminal {
         let terminal = Terminal(session: session, history: history(for: session.host.id))
         list.append(terminal)
@@ -56,7 +59,7 @@ import SwiftUI
         return terminal
     }
 
-    /// Close Terminal: the shown one, while its server has another.
+    /// Close Terminal, while its server has another.
     func close(_ terminal: Terminal) {
         terminal.shell?.close()
         list.removeAll { $0 === terminal }
@@ -70,7 +73,7 @@ import SwiftUI
         return history
     }
 
-    /// The switcher's name of a terminal: its server's, numbered when the server has several.
+    /// A terminal's name: its server's, numbered when the server has several.
     func name(of terminal: Terminal) -> String {
         let siblings = list.filter { $0.session === terminal.session }
         let name = terminal.session.host.displayName
@@ -80,11 +83,11 @@ import SwiftUI
 
     // MARK: Shells
 
-    /// Starts `terminal`'s shell in the size the view has, as the Mac's Terminal tab does: a new mark token for each.
+    /// Starts `terminal`'s shell in the size its view has, as the Mac's Terminal tab does: a new mark token for each.
     private func start(_ terminal: Terminal) {
         guard !terminal.starting, let transport = terminal.session.transport else { return }
         terminal.starting = true
-        let size = view?.gridSize ?? (columns: 80, rows: 24)
+        let size = terminal.view?.gridSize ?? (columns: 80, rows: 24)
         let screen = TerminalScreen(columns: size.columns, rows: size.rows)
         let token = UUID().uuidString.replacingOccurrences(of: "-", with: "").lowercased()
         screen.markToken = token
@@ -115,7 +118,7 @@ import SwiftUI
             terminal.pending = nil
             type(pending, in: terminal)
         }
-        if terminal === shown { view?.screenChanged() }
+        terminal.view?.screenChanged()
     }
 
     private func ended(_ terminal: Terminal, _ status: Int32) {
@@ -135,20 +138,19 @@ import SwiftUI
     // MARK: Typing
 
     /// A key from the key bar or the deck, as the Mac names its keys (`TerminalSession.keys`), with Ctrl when it is on.
-    func press(keyCode: UInt16, characters: String? = nil) {
-        guard let shell = shown?.shell, shell.running else { return }
-        let control = ctrl
-        ctrl = false
+    func press(_ terminal: Terminal, keyCode: UInt16, characters: String? = nil) {
+        guard let shell = terminal.shell, shell.running else { return }
+        let control = terminal.ctrl
+        terminal.ctrl = false
         guard let keys = TerminalSession.keys(keyCode: keyCode, characters: characters, control: control, option: false,
                                               shift: false, applicationCursor: shell.screen.applicationCursorKeys) else { return }
-        view?.showLive()
+        terminal.view?.showLive()
         shell.send(keys)
     }
 
     /// The deck's Return: Return for the shell, or a new shell where it ended.
-    func pressReturn() {
-        guard let terminal = shown else { return }
-        if terminal.shell?.running == true { press(keyCode: TerminalView.returnKey) } else { restart(terminal) }
+    func pressReturn(_ terminal: Terminal) {
+        if terminal.shell?.running == true { press(terminal, keyCode: TerminalView.returnKey) } else { restart(terminal) }
     }
 
     /// The command line's Return: `command` typed in the shell and run, and kept in the server's history. A shell that
@@ -175,7 +177,7 @@ import SwiftUI
 
     private func type(_ command: String, in terminal: Terminal) {
         terminal.history.add(command)
-        if terminal === shown { view?.showLive() }
+        terminal.view?.showLive()
         terminal.shell?.send(command + "\r")
     }
 }
