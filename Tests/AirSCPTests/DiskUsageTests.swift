@@ -57,12 +57,12 @@ import Testing
     #expect(usage.root.largestFiles(10).map(\.path) == [dir + "/logs/app.log", dir + "/logs/deep/old.log", dir + "/.hidden"])
 }
 
-/// A server: one du, its records as they come, the folder's own items counted.
+/// A server: one du, its records as they come (names as they are: "café"), the folder's own items counted.
 @Test func diskUsageScansAServerFolder() async throws {
     try await withServer { server in
         try write(String(repeating: "x", count: 5_000), to: server.path("du/big.bin"))
         try write("small", to: server.path("du/sub/small.txt"))
-        try write("odd", to: server.path("du/a name with spaces/it's.txt"))
+        try write("odd", to: server.path("du/café with spaces/it's.txt"))
         let session = try await server.connectedSession()
         final class Found: @unchecked Sendable {  // filled on one background thread, read after the scan
             var records: [DiskUsage.Record] = []
@@ -80,7 +80,7 @@ import Testing
         #expect(usage.root.children.first?.name == "big.bin")
         let largest = usage.root.largestFiles(5).map(\.path)
         #expect(largest.first == server.path("du/big.bin")
-                && Set(largest) == [server.path("du/big.bin"), server.path("du/sub/small.txt"), server.path("du/a name with spaces/it's.txt")])
+                && Set(largest) == [server.path("du/big.bin"), server.path("du/sub/small.txt"), server.path("du/café with spaces/it's.txt")])
         // Sizes in kilobytes from macOS's du: at least the bytes, at most a block more each.
         #expect(usage.root.size >= 5_008 && usage.root.size <= 5_008 + 3 * 4096)
     }

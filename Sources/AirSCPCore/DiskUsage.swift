@@ -187,5 +187,5 @@ extension Session {
 
     /// Sets $du to `du -a -x` for every file and folder of one file system, sizes as `du` (above) takes them.
     static let duAll = "if du --version 2>/dev/null | grep -q GNU; then du='du -a -x -0 --apparent-size --block-size=1'; unit=1; "
-        + "else case $(uname -s) in Darwin|*BSD) du='du -a -x -A -k';; *) du='du -a -x -k';; esac; unit=1024; fi;"
+        + "else case $(uname -s) in Darwin|*BSD) du='env LC_CTYPE=UTF-8 du -a -x -A -k';; *) du='du -a -x -k';; esac; unit=1024; fi;"
 }
