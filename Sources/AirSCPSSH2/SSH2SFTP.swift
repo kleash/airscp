@@ -3,7 +3,7 @@ import CSSH2
 import Foundation
 
 /// A batch line that failed, in sftp's words (they go to the error output, where `ErrorMapping` reads them).
-private struct SFTPFailure: Error {
+struct SFTPFailure: Error {
     let message: String
     init(_ message: String) { self.message = message }
 }
@@ -13,12 +13,7 @@ private struct SFTPFailure: Error {
 /// sftp's.
 extension Connection {
     func sftpBatch(_ lines: [String], cancellation: Cancellation) throws -> CommandResult {
-        if sftp == nil {
-            guard let opened = try opened(cancellation, { libssh2_sftp_init(session) }) else {
-                throw failure(libssh2_session_last_errno(session), "Starting sftp")
-            }
-            sftp = opened
-        }
+        try startSFTP(cancellation)
         // Every batch starts in sftp's starting folder.
         var folder = try realPath(".", cancellation)
         var output = Data()
@@ -34,6 +29,15 @@ extension Connection {
             }
         }
         return CommandResult(status: 0, stdout: output, stderr: errors)
+    }
+
+    /// The session's SFTP channel, opened at its first use.
+    func startSFTP(_ cancellation: Cancellation?) throws {
+        guard sftp == nil else { return }
+        guard let opened = try opened(cancellation, { libssh2_sftp_init(session) }) else {
+            throw failure(libssh2_session_last_errno(session), "Starting sftp")
+        }
+        sftp = opened
     }
 
     private func run(_ line: String, in folder: inout String, output: inout Data, _ cancellation: Cancellation) throws {
@@ -292,7 +296,7 @@ extension Connection {
     }
 
     /// An item's attributes (`follow`: a link's target's), nil when there is nothing at `path`.
-    private func attributes(_ path: String, follow: Bool, _ cancellation: Cancellation) throws -> LIBSSH2_SFTP_ATTRIBUTES? {
+    func attributes(_ path: String, follow: Bool, _ cancellation: Cancellation?) throws -> LIBSSH2_SFTP_ATTRIBUTES? {
         var attributes = LIBSSH2_SFTP_ATTRIBUTES()
         let rc = try again(cancellation) {
             libssh2_sftp_stat_ex(sftp, path, UInt32(path.utf8.count), follow ? LIBSSH2_SFTP_STAT : LIBSSH2_SFTP_LSTAT, &attributes)
@@ -307,12 +311,12 @@ extension Connection {
     }
 
     /// Throws for a failed request (`rc` < 0).
-    private func check<T: BinaryInteger>(_ rc: T, _ what: String) throws {
+    func check<T: BinaryInteger>(_ rc: T, _ what: String) throws {
         if rc < 0 { throw error(Int32(rc), what) }
     }
 
     /// The server's answer as sftp words it ("remote mkdir "/a": Permission denied"), or the connection's failure.
-    private func error(_ rc: Int32, _ what: String) -> Error {
+    func error(_ rc: Int32, _ what: String) -> Error {
         guard rc == LIBSSH2_ERROR_SFTP_PROTOCOL else { return failure(rc, what) }
         let messages = ["Success", "End of file", "No such file or directory", "Permission denied", "Failure", "Bad message",
                         "No connection", "Connection lost", "Operation unsupported"]

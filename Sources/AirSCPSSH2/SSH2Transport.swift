@@ -93,12 +93,12 @@ public final class SSH2Transport: RemoteTransport {
         }
     }
 
-    private func connection() throws -> Connection {
+    func connection() throws -> Connection {
         guard let target = lock.withLock({ target }), !target.dead else { throw AirSCPError.disconnected }
         return target
     }
 
-    private func onQueue<T>(_ body: @escaping () throws -> T) async throws -> T {
+    func onQueue<T>(_ body: @escaping () throws -> T) async throws -> T {
         try await withCheckedThrowingContinuation { continuation in
             queue.async { continuation.resume(with: Result(catching: body)) }
         }
