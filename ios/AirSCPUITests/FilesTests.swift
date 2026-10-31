@@ -76,6 +76,15 @@ final class FilesTests: XCTestCase {
         keepScreenshot("Selecting")
         app.buttons["Zip"].tap()
         XCTAssert(app.staticTexts["notes.txt.zip"].waitForExistence(timeout: 15))
+
+        // Add to Tray: the tray's button shows, with what it holds.
+        app.buttons["More"].tap()
+        app.buttons["Select"].tap()
+        app.staticTexts["notes.txt.zip"].tap()
+        app.buttons["Add to Tray"].tap()
+        let tray = app.buttons["Tray"]
+        XCTAssert(tray.waitForExistence(timeout: 5))
+        XCTAssertEqual(tray.value as? String, "1 item")
     }
 
     /// Send goes through the server's transfer queue both ways; what arrives has the same bytes.
@@ -165,7 +174,8 @@ final class FilesTests: XCTestCase {
         let enabled = XCTNSPredicateExpectation(predicate: NSPredicate(format: "exists == true AND isEnabled == true"), object: open)
         await fulfillment(of: [enabled], timeout: 10)
         for _ in 0..<3 where open.exists {  // a tap on Open sometimes doesn't take: again while the picker is up
-            open.coordinate(withNormalizedOffset: CGVector(dx: 0.3, dy: 0.3)).tap()
+            // On the screen, not on the element: the picker's own button is in another process's view.
+            app.coordinate(withNormalizedOffset: .zero).withOffset(CGVector(dx: open.frame.midX, dy: open.frame.midY)).tap()
             _ = open.waitForNonExistence(timeout: 5)
         }
         let arrived = XCTNSPredicateExpectation(predicate: NSPredicate(format: "exists == true"), object: app.staticTexts[name])

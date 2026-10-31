@@ -405,18 +405,20 @@ struct SideView: View {
             if let location { await side.load(session, location) }
         }
         .onChange(of: dir) { side.selection = [] }
-        .alert(namingTitle, isPresented: Binding(get: { naming != nil }, set: { if !$0 { naming = nil } })) {
+        // `presenting`: the buttons get what was asked about, even once dismissing the alert has reset it.
+        .alert(namingTitle, isPresented: Binding(get: { naming != nil }, set: { if !$0 { naming = nil } }), presenting: naming) { naming in
             TextField("Name", text: $name)
                 .textInputAutocapitalization(.never)
                 .autocorrectionDisabled()
-            Button(namingButton) { if let naming { commit(naming) } }
+            Button(namingButton) { commit(naming) }
             Button("Cancel", role: .cancel) {}
         }
-        .alert(deleteTitle, isPresented: Binding(get: { !deleting.isEmpty }, set: { if !$0 { deleting = [] } })) {
-            Button("Delete", role: .destructive) { delete(deleting) }
+        .alert(deleteTitle, isPresented: Binding(get: { !deleting.isEmpty }, set: { if !$0 { deleting = [] } }),
+               presenting: deleting) { entries in
+            Button("Delete", role: .destructive) { delete(entries) }
             Button("Cancel", role: .cancel) {}
-        } message: {
-            Text(deleting.contains { $0.kind == .directory } ? "Folders are deleted with everything in them. This can't be undone."
+        } message: { entries in
+            Text(entries.contains { $0.kind == .directory } ? "Folders are deleted with everything in them. This can't be undone."
                  : "This can't be undone.")
         }
         .fileImporter(isPresented: $importing, allowedContentTypes: [.item], allowsMultipleSelection: true) { result in
@@ -535,6 +537,12 @@ struct SideView: View {
             ToolbarItemGroup(placement: .bottomBar) { selectionBar }
         } else {
             ToolbarItemGroup(placement: .topBarTrailing) {
+                if !app.tray.items.isEmpty {
+                    // The tray sends to the folder each server shows here (this side's first).
+                    TrayButton(folders: Dictionary([side, other].compactMap { side in
+                        side.session(app).flatMap { session in side.dir(app).map { (session.host.id, $0) } }
+                    }) { first, _ in first })
+                }
                 Button("New Folder", systemImage: "folder.badge.plus") {
                     ask(.newFolder, name: Names.unique("untitled folder", existing: side.items.map(\.name)))
                 }
@@ -657,8 +665,8 @@ struct SideView: View {
             present(export ? UIDocumentPickerViewController(forExporting: urls, asCopy: false)  // moves the downloaded copies there
                            : UIActivityViewController(activityItems: urls, applicationActivities: nil))
         }
-        guard let session else { return hand(entries.map { URL(fileURLWithPath: $0.path) }) }
         stopSelecting()
+        guard let session else { return hand(entries.map { URL(fileURLWithPath: $0.path) }) }
         model.download(entries, from: session, then: hand)
     }
 
