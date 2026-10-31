@@ -3,6 +3,7 @@ import Darwin
 import Foundation
 import Security
 import Testing
+@testable import AirSCP
 @testable import AirSCPCore
 
 /// Test-wide isolation, set up once: AirSCP's commands get `-F <test ssh_config>` (not ~/.ssh/config), a scratch HOME
@@ -38,6 +39,7 @@ enum TestEnvironment {
         Session.socketDirectory = root + "/sockets"
         let home = root + "/local-home"
         try? FileManager.default.createDirectory(atPath: home + "/.ssh", withIntermediateDirectories: true)
+        sshDirectory = home + "/.ssh"  // the app's ~/.ssh in this process (host editor's keys, Import's config): never the real one
         Runner.environmentOverrides = ["HOME": home, "SSH_AUTH_SOCK": ""]
         // No window animations (windows zooming in, fading out): while the Mac's screen is locked they don't run, and a
         // window freed while one was under way crashed the test process later (-[_NSWindowTransformAnimation dealloc]).
