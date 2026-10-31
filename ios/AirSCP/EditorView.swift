@@ -11,7 +11,8 @@ struct EditedFile: Identifiable {
 
 /// The editor for a server's text file: Edit (monospaced), Changes (the lines changed since it was opened) and Info.
 /// Save writes it back byte for byte only while the server still has the file as this editor last read or wrote it
-/// (`Session.saveText`, as the Mac's editor does); else it asks: Overwrite, Show Server Version, or Cancel.
+/// (`Session.saveText`, as the Mac's editor does); else it asks: Overwrite, Show Server Version, or Cancel. It sits in a
+/// navigation stack of its container's (a sheet's, or a column's).
 struct EditorView: View {
     let file: EditedFile
     let onSaved: () -> Void
@@ -21,7 +22,8 @@ struct EditorView: View {
     /// The file as the server had it when this editor last read or wrote it (or showed its version since).
     @State private var serverText: String
     @State private var tab = Tab.edit
-    @State private var status = ""
+    /// Size and encoding, then how the last save went.
+    @State private var status: String
     @State private var saving = false
     @State private var closeAfterSaving = false
     @State private var askingToClose = false
@@ -48,6 +50,7 @@ struct EditorView: View {
         _text = State(initialValue: file.text)
         _savedText = State(initialValue: file.text)
         _serverText = State(initialValue: file.text)
+        _status = State(initialValue: "\(file.text.count.formatted()) characters, UTF-8")
         crlf = file.text.contains("\r\n")
     }
 
@@ -55,59 +58,57 @@ struct EditorView: View {
     private var edited: Bool { text != savedText }
 
     var body: some View {
-        NavigationStack {
-            Group {
-                switch tab {
-                case .edit:
-                    TextEditor(text: $text)
-                        .font(.body.monospaced())
-                        .autocorrectionDisabled()  // also no smart quotes and dashes
-                        .textInputAutocapitalization(.never)
-                        .accessibilityIdentifier("editor.text")
-                case .changes: changes
-                case .info: info
-                }
+        Group {
+            switch tab {
+            case .edit:
+                TextEditor(text: $text)
+                    .font(.body.monospaced())
+                    .autocorrectionDisabled()  // also no smart quotes and dashes
+                    .textInputAutocapitalization(.never)
+                    .accessibilityIdentifier("editor.text")
+            case .changes: changes
+            case .info: info
             }
-            .navigationTitle(name)
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Close", systemImage: "xmark") { edited ? askingToClose = true : dismiss() }
-                        .help("Close the editor")
-                        // On the button that asks: iOS shows it as a popover from there.
-                        .confirmationDialog("Save the changes to “\(name)” before closing?", isPresented: $askingToClose,
-                                            titleVisibility: .visible) {
-                            Button("Save") {
-                                closeAfterSaving = true
-                                save(overwriting: false)
-                            }
-                            Button("Don't Save", role: .destructive) { dismiss() }
-                            Button("Cancel", role: .cancel) {}
-                        } message: {
-                            Text("If you don't, your changes are lost.")
+        }
+        .navigationTitle(name)
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .cancellationAction) {
+                Button("Close", systemImage: "xmark") { edited ? askingToClose = true : dismiss() }
+                    .help("Close the editor")
+                    // On the button that asks: iOS shows it as a popover from there.
+                    .confirmationDialog("Save the changes to “\(name)” before closing?", isPresented: $askingToClose,
+                                        titleVisibility: .visible) {
+                        Button("Save") {
+                            closeAfterSaving = true
+                            save(overwriting: false)
                         }
-                }
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("Save") { save(overwriting: false) }
-                        .disabled(!edited || saving)
-                        .help(edited ? "Save to the server" : "Nothing to save: no changes since the last save")
-                }
+                        Button("Don't Save", role: .destructive) { dismiss() }
+                        Button("Cancel", role: .cancel) {}
+                    } message: {
+                        Text("If you don't, your changes are lost.")
+                    }
             }
-            .safeAreaBar(edge: .top) {
-                Picker("View", selection: $tab) {
-                    ForEach(Tab.allCases, id: \.self) { Text($0.rawValue) }
-                }
-                .pickerStyle(.segmented)
-                .padding(.horizontal)
-                .help("Edit the text, see the lines changed since you opened it, or the file's details")
+            ToolbarItem(placement: .confirmationAction) {
+                Button("Save") { save(overwriting: false) }
+                    .disabled(!edited || saving)
+                    .help(edited ? "Save to the server" : "Nothing to save: no changes since the last save")
             }
-            .safeAreaBar(edge: .bottom) {
-                Text(status.isEmpty ? "\(text.count.formatted()) characters, UTF-8" : status)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 6)
+        }
+        .safeAreaBar(edge: .top) {
+            Picker("View", selection: $tab) {
+                ForEach(Tab.allCases, id: \.self) { Text($0.rawValue) }
             }
+            .pickerStyle(.segmented)
+            .padding(.horizontal)
+            .help("Edit the text, see the lines changed since you opened it, or the file's details")
+        }
+        .safeAreaBar(edge: .bottom) {
+            Text(status)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 6)
         }
         .interactiveDismissDisabled(edited)
         .alert("“\(name)” was changed on the server after you opened it",
@@ -189,7 +190,7 @@ struct EditorView: View {
                 LabeledContent("Size", value: FileRow.size(entry.size))
                 LabeledContent("Permissions", value: entry.permissions.isEmpty ? "—" : entry.permissions)
                 LabeledContent("Owner", value: entry.owner.isEmpty ? "—" : "\(entry.owner):\(entry.group)")
-                LabeledContent("Modified", value: entry.modified?.formatted(date: .abbreviated, time: entry.dateOnly ? .omitted : .shortened) ?? "—")
+                LabeledContent("Modified", value: FileRow.date(entry) ?? "—")
             } footer: {
                 Text("As the folder's listing showed the file when you opened it.")
             }

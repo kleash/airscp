@@ -38,6 +38,14 @@ final class LabServer {
         try await session.readText(path(name))
     }
 
+    /// A file's bytes, downloaded.
+    func data(_ name: String) async throws -> Data {
+        let local = FileManager.default.temporaryDirectory.appendingPathComponent("lab-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: local) }
+        try await session.fetch(path(name), to: local)
+        return try Data(contentsOf: local)
+    }
+
     func names(in name: String = "") async throws -> [String] {
         try await session.list(name.isEmpty ? folder : path(name)).map(\.name).sorted()
     }

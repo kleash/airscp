@@ -29,12 +29,12 @@ struct FilesView: View {
                             description: "Open a server in Servers to browse its files.", goToServers: goToServers)
             } else if width == .regular {
                 HStack(spacing: 0) {
-                    SideView(model: model, index: 0, switcher: false)
+                    NavigationStack { SideView(model: model, index: 0, switcher: false) }
                     Divider()
-                    SideView(model: model, index: 1, switcher: false)
+                    NavigationStack { SideView(model: model, index: 1, switcher: false) }
                 }
             } else {
-                SideView(model: model, index: model.shown, switcher: true).id(model.shown)
+                NavigationStack { SideView(model: model, index: model.shown, switcher: true) }.id(model.shown)
             }
         }
         .onReceive(TransferCenter.shared.$jobs) { model.jobsChanged($0) }
@@ -63,7 +63,9 @@ struct FilesView: View {
             Text(question.keepBoth ? "Replace, keep both (the new ones get a number), or skip?" : "Replace, or skip?")
         }
         .sheet(item: $model.editing) { file in
-            EditorView(file: file) { model.reload(file.session.host.id, RemotePath.parent(file.entry.path)) }
+            NavigationStack {
+                EditorView(file: file) { model.reload(file.session.host.id, RemotePath.parent(file.entry.path)) }
+            }
         }
     }
 }
@@ -82,7 +84,7 @@ struct FilesView: View {
     private var finished: Set<UUID> = []
     /// Folders that finished transfers put items into: listed again once their host has no transfer left (a batch of
     /// uploads lists a big folder once, not once per file).
-    private var landed: [(hostID: UUID, source: FileSide.Source, dir: String)] = []
+    private var landed: [(hostID: UUID, download: Bool, dir: String)] = []
 
     enum Choice { case replace, keepBoth, skip }
 
@@ -131,13 +133,11 @@ struct FilesView: View {
             // Relays name the folder they copy into; the others the item itself.
             let download = job.direction == .download
             let dir = !download && !job.names.isEmpty ? job.destination : RemotePath.parent(job.destination)
-            landed.append((job.hostID, download ? .device : .server(job.hostID), dir))
+            landed.append((job.hostID, download, dir))
         }
         finished = done
         let busy = Set(jobs.filter(\.status.isActive).map(\.hostID))
-        for place in landed where !busy.contains(place.hostID) {
-            for side in sides where side.listed == FileSide.Location(source: place.source, dir: place.dir) { side.generation += 1 }
-        }
+        for place in landed where !busy.contains(place.hostID) { reload(place.download ? nil : place.hostID, place.dir) }
         landed.removeAll { !busy.contains($0.hostID) }
     }
 
@@ -155,7 +155,7 @@ struct FilesView: View {
     @discardableResult
     func copy(_ entries: [RemoteEntry], from source: Session?, to target: Session?, into dir: String) async -> [UUID] {
         guard !entries.isEmpty else { return [] }
-        let place = target == nil && dir == deviceFolder ? deviceName : "“\(RemotePath.name(dir))”"
+        let place = "“\(target == nil && dir == deviceFolder ? deviceName : RemotePath.name(dir))”"
         let sameServer = source != nil && source?.host.id == target?.host.id
         if sameServer, let looped = entries.first(where: { dir == $0.path || dir.hasPrefix($0.path + "/") }) {
             fail("Can't copy", AirSCPError(.other, "“\(looped.name)” can't go into itself."))
@@ -290,6 +290,9 @@ struct FilesView: View {
     private(set) var listed: Location?
     /// Changed to list the folder again.
     var generation = 0
+    /// Select mode, and the items selected (paths): kept when the layout changes (rotating, the Duo folding).
+    var selecting = false
+    var selection = Set<String>()
 
     init(source: Source? = nil) {
         self.source = source
@@ -350,15 +353,14 @@ struct FilesView: View {
     }
 }
 
-/// One side: the folder's path, its list with swipe actions and context menus, and in Select mode a bar of actions.
+/// One side: the folder's path, its list with swipe actions and context menus, and in Select mode a bar of actions. It
+/// fits any width, in a navigation stack of its container's.
 struct SideView: View {
     @Environment(AppState.self) private var app
     @Bindable var model: FilesModel
     let index: Int
     /// The two sides share the screen: a switcher at the top shows one or the other.
     let switcher: Bool
-    @State private var editMode = EditMode.inactive
-    @State private var selection = Set<String>()
     @State private var naming: Naming?
     @State private var name = ""
     @State private var deleting: [RemoteEntry] = []
@@ -377,33 +379,32 @@ struct SideView: View {
     private var dir: String? { side.dir(app) }
     private var location: FileSide.Location? { dir.map { FileSide.Location(source: side.current(app), dir: $0) } }
     private var visible: [RemoteEntry] { side.listed == location ? side.items.filter { model.showHidden || !$0.isHidden } : [] }
-    private var selected: [RemoteEntry] { visible.filter { selection.contains($0.path) } }
-    private var editing: Bool { editMode.isEditing }
+    private var selected: [RemoteEntry] { visible.filter { side.selection.contains($0.path) } }
+    private var editing: Bool { side.selecting }
 
     var body: some View {
-        NavigationStack {
-            List(selection: $selection) {
-                ForEach(visible) { entry in
-                    row(entry)
-                        .swipeActions(edge: .trailing, allowsFullSwipe: false) { actions(entry, all: false) }
-                        .contextMenu { actions(entry, all: true) }
-                }
+        List(selection: Binding(get: { side.selection }, set: { side.selection = $0 })) {
+            ForEach(visible) { entry in
+                row(entry)
+                    .swipeActions(edge: .trailing, allowsFullSwipe: false) { actions(entry, all: false) }
+                    .contextMenu { actions(entry, all: true) }
             }
-            .overlay { placeholder }
-            .refreshable { if let location { await side.load(session, location) } }
-            .environment(\.editMode, $editMode)
-            .navigationTitle(side.name(app))
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar { toolbar }
-            .toolbar(editing ? .hidden : .visible, for: .tabBar)
-            .safeAreaBar(edge: .top) {
-                if let dir { PathBar(crumbs: crumbs(dir)) { side.folders[side.current(app)] = $0 } }
-            }
+        }
+        .overlay { placeholder }
+        .refreshable { if let location { await side.load(session, location) } }
+        .environment(\.editMode, Binding(get: { side.selecting ? .active : .inactive }, set: { side.selecting = $0.isEditing }))
+        .navigationTitle(side.name(app))
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar { toolbar }
+        // A narrow screen's bottom bar takes the tab bar's place while selecting.
+        .toolbar(editing && switcher ? .hidden : .visible, for: .tabBar)
+        .safeAreaBar(edge: .top) {
+            if let dir { PathBar(crumbs: crumbs(dir)) { side.folders[side.current(app)] = $0 } }
         }
         .task(id: "\(String(describing: location))|\(side.generation)") {
             if let location { await side.load(session, location) }
         }
-        .onChange(of: dir) { selection = [] }
+        .onChange(of: dir) { side.selection = [] }
         .alert(namingTitle, isPresented: Binding(get: { naming != nil }, set: { if !$0 { naming = nil } })) {
             TextField("Name", text: $name)
                 .textInputAutocapitalization(.never)
@@ -528,11 +529,8 @@ struct SideView: View {
         }
         if editing {
             ToolbarItem(placement: .topBarTrailing) {
-                Button("Done") {
-                    editMode = .inactive
-                    selection = []
-                }
-                .help("Stop selecting")
+                Button("Done", action: stopSelecting)
+                    .help("Stop selecting")
             }
             ToolbarItemGroup(placement: .bottomBar) { selectionBar }
         } else {
@@ -543,7 +541,7 @@ struct SideView: View {
                 .disabled(dir == nil)
                 .help(dir == nil ? "Connect to the server first" : "Make a folder here")
                 Menu("More", systemImage: "ellipsis") {
-                    Button("Select", systemImage: "checkmark.circle") { editMode = .active }
+                    Button("Select", systemImage: "checkmark.circle") { side.selecting = true }
                         .help("Select items to send, share or delete together")
                     Picker(selection: Binding(get: { side.current(app) }, set: { side.source = $0 })) {
                         ForEach(app.open, id: \.host.id) { session in
@@ -573,6 +571,14 @@ struct SideView: View {
         Button("Send", systemImage: "paperplane") { send(selected) }
             .disabled(selected.isEmpty || sendProblem != nil)
             .help(sendProblem ?? "Copy the selected items to the other side (\(other.name(app)))")
+        Spacer()
+        Button("Add to Tray", systemImage: "tray.and.arrow.down") {
+            let host = session?.host.id
+            app.tray.add(selected.map { Tray.Item(hostID: host, path: $0.path, isFolder: $0.kind == .directory) })
+            stopSelecting()
+        }
+        .disabled(selected.isEmpty)
+        .help("Put the selected items in the tray, to take them to another place together")
         Spacer()
         Button("Share", systemImage: "square.and.arrow.up") { share(selected, export: false) }
             .disabled(!files)
@@ -641,8 +647,7 @@ struct SideView: View {
     private func send(_ entries: [RemoteEntry]) {
         guard let target = other.dir(app) else { return }
         let from = session, to = other.session(app)
-        editMode = .inactive
-        selection = []
+        stopSelecting()
         Task { await model.copy(entries, from: from, to: to, into: target) }
     }
 
@@ -653,15 +658,13 @@ struct SideView: View {
                            : UIActivityViewController(activityItems: urls, applicationActivities: nil))
         }
         guard let session else { return hand(entries.map { URL(fileURLWithPath: $0.path) }) }
-        editMode = .inactive
-        selection = []
+        stopSelecting()
         model.download(entries, from: session, then: hand)
     }
 
     private func zip(_ entries: [RemoteEntry]) {
         guard let session, let dir else { return }
-        editMode = .inactive
-        selection = []
+        stopSelecting()
         perform("Can't zip") { _ = try await session.compress(entries.map(\.name), in: dir, format: .zip) }
     }
 
@@ -690,8 +693,7 @@ struct SideView: View {
     }
 
     private func delete(_ entries: [RemoteEntry]) {
-        editMode = .inactive
-        selection = []
+        stopSelecting()
         perform("Can't delete") {
             if let session {
                 try await session.delete(entries)
@@ -699,6 +701,11 @@ struct SideView: View {
                 for entry in entries { try FileManager.default.removeItem(atPath: entry.path) }
             }
         }
+    }
+
+    private func stopSelecting() {
+        side.selecting = false
+        side.selection = []
     }
 
     private func ask(_ naming: Naming, name: String) {
@@ -811,9 +818,12 @@ struct FileRow: View {
     }
 
     private var details: String {
-        let date = entry.modified.map { entry.dateOnly ? Self.day.string(from: $0) : Self.dates.string(from: $0) }
-        let size = entry.kind == .file ? Self.size(entry.size) : nil
-        return [size, date].compactMap { $0 }.joined(separator: " · ")
+        [entry.kind == .file ? Self.size(entry.size) : nil, Self.date(entry)].compactMap { $0 }.joined(separator: " · ")
+    }
+
+    /// When it was modified, as the Mac's panes show it: a date-only entry as its day.
+    static func date(_ entry: RemoteEntry) -> String? {
+        entry.modified.map { entry.dateOnly ? day.string(from: $0) : dates.string(from: $0) }
     }
 
     private static let bytes: ByteCountFormatter = {
