@@ -19,11 +19,13 @@ done
 
 version=$(tr -d '[:space:]' < VERSION)
 app=build/AirSCP.app
-flags=() sign=()
+# shortcut: SwiftPM 6.4's default (swiftbuild) puts every triple in one folder and the constant values elsewhere;
+# the deprecated native one keeps one folder per triple. Move to swiftbuild (a --scratch-path per arch) before it goes.
+flags=(--build-system native) sign=()
 if $appstore; then
     # Its own build folder, so that switching between the two versions doesn't rebuild everything each time.
     app=build/appstore/AirSCP.app
-    flags=(-Xswiftc -DAPPSTORE --scratch-path .build/appstore)
+    flags+=(-Xswiftc -DAPPSTORE --scratch-path .build/appstore)
     sign=(--entitlements Resources/AirSCP-AppStore.entitlements)
 fi
 
