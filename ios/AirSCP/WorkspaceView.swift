@@ -17,8 +17,8 @@ struct WorkspaceView: View {
     @Environment(\.horizontalSizeClass) private var width
     @Environment(\.wide) private var wide
     let session: Session
-    /// The sides, kept here while the window turns or changes size (the server's side first).
-    @State private var files: FilesModel
+    /// The sides (the server's first), kept by RootView: a change of layout keeps them.
+    let files: FilesModel
     @State private var drawerOpen = false
     @State private var drawerHeight: CGFloat = 320
     /// The drawer's height when a drag on its bar started.
@@ -26,11 +26,6 @@ struct WorkspaceView: View {
     @State private var height: CGFloat = 0
     @State private var showingTransfers = false
     @State private var fullWindow = false
-
-    init(session: Session) {
-        self.session = session
-        _files = State(initialValue: FilesModel(server: session.host.id))
-    }
 
     /// The terminal the drawer shows: the one Terminal shows if it is this server's, else this server's first.
     private var terminal: Terminals.Terminal? {
@@ -143,8 +138,20 @@ struct WorkspaceView: View {
     }
 }
 
+/// Each open server's workspace sides, made when first shown and kept above the tabs.
+@MainActor final class WorkspaceFiles {
+    private var models: [UUID: FilesModel] = [:]
+
+    func model(_ server: UUID) -> FilesModel {
+        if let model = models[server] { return model }
+        let model = FilesModel(server: server)
+        models[server] = model
+        return model
+    }
+}
+
 extension View {
-    /// Full Window: `content` fills the window, over the sidebar, the tab bar and the inspector, until Exit Full Window:
+    /// Full Window: `content` fills the window, over the sidebar, the tab bar and Transfers, until Exit Full Window:
     /// its button, or its key: Escape, or ⌘⇧F where Escape is the shell's (`escapeLeaves` false: a terminal, for vim).
     func fullWindow<Content: View>(_ isPresented: Binding<Bool>, escapeLeaves: Bool = true,
                                    @ViewBuilder content: @escaping () -> Content) -> some View {

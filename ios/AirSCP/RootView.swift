@@ -33,9 +33,18 @@ struct RootView: View {
     @SceneStorage("place") private var place = Place.servers
     @State private var app = AppState()
     @State private var terminals = Terminals()
-    /// The Files tab's two sides.
+    /// The Files tab's two sides, and each workspace's.
     @State private var files = FilesModel()
+    @State private var workspaceFiles = WorkspaceFiles()
+    /// The workspace that showed when the window narrowed: the Files tab shows its sides until it widens again.
+    @State private var narrowed: UUID?
     @State private var wide = false
+    @Environment(\.horizontalSizeClass) private var widthClass
+    @Environment(\.verticalSizeClass) private var heightClass
+
+    /// An iPad-sized window (an iPad, the Duo open) lists the open servers' workspaces in its sidebar. A phone's tabs
+    /// stay as they are: there the workspaces' tabs, even hidden, made a More tab in place of Search.
+    private var showsWorkspaces: Bool { widthClass == .regular && heightClass == .regular }
 
     var body: some View {
         tabs
@@ -51,6 +60,16 @@ struct RootView: View {
             // A server closed while its workspace shows (or restored from before: its connection isn't): Servers instead.
             .onChange(of: app.open.map(\.host.id), initial: true) { _, open in
                 if case .server(let id) = place, !open.contains(id) { place = .servers }
+            }
+            // Folded or narrowed: a workspace's files go on in the Files tab; widened again, the workspace is back.
+            .onChange(of: showsWorkspaces) { _, shown in
+                if !shown, case .server(let id) = place {
+                    narrowed = id
+                    place = .files
+                } else if shown, let id = narrowed {
+                    narrowed = nil
+                    if place == .files, app.session(for: id) != nil { place = .server(id) }
+                }
             }
             .environment(app)
             .environment(terminals)
@@ -80,7 +99,7 @@ struct RootView: View {
                 ServersView()
             }
             Tab("Files", systemImage: "folder", value: .files) {
-                FilesView(model: files) { place = .servers }
+                FilesView(model: narrowed.map(workspaceFiles.model) ?? files) { place = .servers }
             }
             Tab("Terminal", systemImage: "apple.terminal", value: .terminal) {
                 TerminalTab { place = .servers }
@@ -104,11 +123,12 @@ struct RootView: View {
     /// Each open server's workspace, in the sidebar.
     private var openServers: some TabContent<Place> {
         TabSection("Open") {
-            ForEach(app.open, id: \.host.id) { session in
+            ForEach(showsWorkspaces ? app.open : [], id: \.host.id) { session in
                 Tab(app.data.hosts.first { $0.id == session.host.id }?.displayName ?? session.host.displayName,
                     systemImage: "server.rack", value: Place.server(session.host.id)) {
-                    WorkspaceView(session: session)
+                    WorkspaceView(session: session, files: workspaceFiles.model(session.host.id))
                 }
+                .defaultVisibility(.hidden, for: .tabBar)  // the sidebar's
                 .accessibilityIdentifier("workspace")
                 .contextMenu {
                     Button("Disconnect", systemImage: "xmark.circle") { app.disconnect(session) }
@@ -116,7 +136,6 @@ struct RootView: View {
                 }
             }
         }
-        .defaultVisibility(.hidden, for: .tabBar)  // the sidebar's: an iPhone's tabs stay as they are
     }
 
     private func go(_ place: Place) {
