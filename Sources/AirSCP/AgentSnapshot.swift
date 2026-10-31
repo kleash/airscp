@@ -290,6 +290,7 @@ extension AgentServer {
                     if texts.last == label + ":" { texts.removeLast() }
                 }
                 if node.isSecure { field["secure"] = true }
+                // shortcut: macOS 27's SwiftUI-drawn pop-ups get none (a wrong set's error lists them), upgrade once their AX node lists them.
                 if let popup = node.view as? NSPopUpButton { field["options"] = popup.itemTitles.filter { !$0.isEmpty } }
                 fields.append(field)
             }

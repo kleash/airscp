@@ -48,7 +48,13 @@ extension FeatureRoundAppTests {
         var kinds: [String] = []
         _ = await eventually(timeout: 10) {  // SwiftUI's controls come a moment after the sheet
             let shown = await call(agent, "snapshot", ["include": ["sheets"]])
-            kinds = field((shown["sheets"] as? [[String: Any]])?.last, "newKey.type")?["options"] as? [String] ?? []
+            guard let type = field((shown["sheets"] as? [[String: Any]])?.last, "newKey.type") else { return false }
+            if let options = type["options"] as? [String] {
+                kinds = options
+            } else {  // a pop-up SwiftUI draws itself (macOS 27) lists its choices only in a wrong set's error
+                let error = await call(agent, "set", ["id": "newKey.type", "value": "no such kind", "in": "window:Keys"]).error ?? ""
+                kinds = error.range(of: "isn't one of the choices: ").map { error[$0.upperBound...].components(separatedBy: ", ") } ?? []
+            }
             return !kinds.isEmpty
         }
         #expect(kinds.contains("Ed25519 (recommended)") && kinds.contains { $0.contains("-SK") } == Keys.securityKeysSupported,
