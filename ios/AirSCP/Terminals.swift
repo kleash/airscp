@@ -93,7 +93,7 @@ import SwiftUI
         screen.markToken = token
         let history = terminal.history
         screen.onCommand = { history.add($0) }
-        Task {
+        Task { [self, terminal] in
             defer { terminal.starting = false }
             do {
                 let shell = try await TerminalSession(transport: transport, command: OpenSSH.terminalShell(in: nil, token: token),

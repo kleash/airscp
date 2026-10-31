@@ -20,74 +20,8 @@ struct SettingsView: View {
     var body: some View {
         NavigationStack {
             Form {
-                Section {
-                    if keys.isEmpty {
-                        Text("No keys yet. A key lets you log in without typing a password.").foregroundStyle(.secondary)
-                    }
-                    ForEach(keys) { key in
-                        HStack {
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text(key.name)
-                                if let type = key.type, let fingerprint = key.fingerprint {
-                                    Text("\(type)  \(fingerprint)")
-                                        .font(.caption.monospaced())
-                                        .foregroundStyle(.secondary)
-                                        .textSelection(.enabled)
-                                } else {
-                                    Text("Encrypted or PEM key: its public key can't be shown. Its passphrase, if any, "
-                                         + "is asked when you log in.")
-                                        .font(.caption)
-                                        .foregroundStyle(.secondary)
-                                }
-                            }
-                            Spacer()
-                            Menu("Public key of \(key.name)", systemImage: "ellipsis.circle") {
-                                Button("Copy Public Key", systemImage: "doc.on.doc") {
-                                    UIPasteboard.general.string = key.publicLine
-                                }
-                                .help("Copy the public key, to paste into a server's authorized_keys")
-                                ShareLink("Share Public Key", item: key.publicLine ?? "")
-                                    .help("Send the public key with another app, such as Mail or Messages")
-                            }
-                            .labelStyle(.iconOnly)
-                            .disabled(key.publicLine == nil)
-                            .help(key.publicLine == nil ? "AirSCP can't read the public key of an encrypted or PEM key"
-                                  : "Copy or share the public key, to add it to a server's authorized_keys")
-                        }
-                    }
-                    .onDelete { deleting = $0.first.map { keys[$0] } }
-                    Button("Make a New Key", systemImage: "plus") {
-                        newName = ""
-                        naming = true
-                    }
-                    .help("Make an Ed25519 key on this device, to log in without a password")
-                    Button("Import from Files", systemImage: "folder") { importing = true }
-                        .help("Import a private key from Files: OpenSSH, PEM or PuTTY (.ppk)")
-                } header: {
-                    Text("Keys")
-                } footer: {
-                    Text("Keys stay on this device, in the Keychain. Face ID or the passcode unlocks a key when AirSCP logs in "
-                         + "with it. To use a key, add its public key to the server's ~/.ssh/authorized_keys.")
-                }
-                Section {
-                    if trusted.isEmpty {
-                        Text("None yet").foregroundStyle(.secondary)
-                    }
-                    ForEach(trusted) { entry in
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text(entry.host)
-                            Text("\(entry.type)  \(entry.fingerprint)")
-                                .font(.caption.monospaced())
-                                .foregroundStyle(.secondary)
-                                .textSelection(.enabled)
-                        }
-                    }
-                    .onDelete(perform: forget)
-                } header: {
-                    Text("Trusted servers")
-                } footer: {
-                    Text("AirSCP asks before it trusts a server the first time. Remove one to be asked again.")
-                }
+                keysSection
+                trustedSection
             }
             .navigationTitle("Settings")
             .toolbar {
@@ -148,6 +82,80 @@ struct SettingsView: View {
             } message: {
                 Text(failure ?? "")
             }
+        }
+    }
+
+    private var keysSection: some View {
+        Section {
+            if keys.isEmpty {
+                Text("No keys yet. A key lets you log in without typing a password.").foregroundStyle(.secondary)
+            }
+            ForEach(keys) { key in
+                HStack {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(key.name)
+                        if let type = key.type, let fingerprint = key.fingerprint {
+                            Text("\(type)  \(fingerprint)")
+                                .font(.caption.monospaced())
+                                .foregroundStyle(.secondary)
+                                .textSelection(.enabled)
+                        } else {
+                            Text("Encrypted or PEM key: its public key can't be shown. Its passphrase, if any, "
+                                 + "is asked when you log in.")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                    Spacer()
+                    Menu("Public key of \(key.name)", systemImage: "ellipsis.circle") {
+                        Button("Copy Public Key", systemImage: "doc.on.doc") {
+                            UIPasteboard.general.string = key.publicLine
+                        }
+                        .help("Copy the public key, to paste into a server's authorized_keys")
+                        ShareLink("Share Public Key", item: key.publicLine ?? "")
+                            .help("Send the public key with another app, such as Mail or Messages")
+                    }
+                    .labelStyle(.iconOnly)
+                    .disabled(key.publicLine == nil)
+                    .help(key.publicLine == nil ? "AirSCP can't read the public key of an encrypted or PEM key"
+                          : "Copy or share the public key, to add it to a server's authorized_keys")
+                }
+            }
+            .onDelete { deleting = $0.first.map { keys[$0] } }
+            Button("Make a New Key", systemImage: "plus") {
+                newName = ""
+                naming = true
+            }
+            .help("Make an Ed25519 key on this device, to log in without a password")
+            Button("Import from Files", systemImage: "folder") { importing = true }
+                .help("Import a private key from Files: OpenSSH, PEM or PuTTY (.ppk)")
+        } header: {
+            Text("Keys")
+        } footer: {
+            Text("Keys stay on this device, in the Keychain. Face ID or the passcode unlocks a key when AirSCP logs in "
+                 + "with it. To use a key, add its public key to the server's ~/.ssh/authorized_keys.")
+        }
+    }
+
+    private var trustedSection: some View {
+        Section {
+            if trusted.isEmpty {
+                Text("None yet").foregroundStyle(.secondary)
+            }
+            ForEach(trusted) { entry in
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(entry.host)
+                    Text("\(entry.type)  \(entry.fingerprint)")
+                        .font(.caption.monospaced())
+                        .foregroundStyle(.secondary)
+                        .textSelection(.enabled)
+                }
+            }
+            .onDelete(perform: forget)
+        } header: {
+            Text("Trusted servers")
+        } footer: {
+            Text("AirSCP asks before it trusts a server the first time. Remove one to be asked again.")
         }
     }
 
