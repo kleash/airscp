@@ -1,6 +1,6 @@
 # Porter lab "minimal" and "bastion": Alpine with OpenSSH and BusyBox (ps, tar and gzip; no zip, unzip or python3).
 # No PAM, so passwords go through ssh's "password" method. The user and password come from docker-compose.yml.
-FROM alpine:latest@sha256:294b683cb724975bec92580e1e685676bd4b50bda910ddb8c51d4cabeaec77e6
+FROM alpine:latest@sha256:be2656061b536c1883c4034790e21d0a09c5aaaf51968b89368a3c0371ea2c9a
 ARG LAB_USER
 ARG LAB_PASSWORD
 # More packages for one service (the "passwd" one: shadow's setuid passwd; BusyBox's isn't setuid), and for the "sudo"
