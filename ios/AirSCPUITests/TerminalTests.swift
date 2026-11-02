@@ -185,9 +185,10 @@ extension XCUIApplication {
         return button
     }
 
-    /// A tab's button in the tab bar or among an iPad's tabs at the top, or its row in an iPad's sidebar.
+    /// A tab's button in the tab bar, in the rail at the side of an iPhone Duo's outer screen (outside the tab bar it also
+    /// has), or among an iPad's tabs at the top, or its row in an iPad's sidebar.
     private func tab(_ name: String) -> XCUIElement {
-        if tabBars.firstMatch.exists { return tabBars.buttons[name] }
+        if tabBars.buttons[name].exists { return tabBars.buttons[name] }
         let row = cells.matching(NSPredicate(format: "label == %@", name)).firstMatch
         return row.exists ? row : buttons[name].firstMatch
     }
