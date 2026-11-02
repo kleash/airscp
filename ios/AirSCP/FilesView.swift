@@ -95,7 +95,15 @@ struct FilesView: View {
     }
 
     private func side(_ index: Int) -> some View {
-        NavigationStack { SideView(model: model, index: index, switcher: width != .regular) }
+        // iOS 27 gives a NavigationStack's content the window's safe area even on edges the stack doesn't reach (the
+        // iPhone Duo's rail on the right), so the side's list stopped that far short of the divider: those edges get none.
+        GeometryReader { outside in
+            NavigationStack {
+                SideView(model: model, index: index, switcher: width != .regular)
+                    .ignoresSafeArea(.container, edges: [outside.safeAreaInsets.leading == 0 ? .leading : [],
+                                                         outside.safeAreaInsets.trailing == 0 ? .trailing : []])
+            }
+        }
     }
 
     private func editor(_ file: EditedFile) -> some View {
