@@ -41,6 +41,7 @@ struct RootView: View {
     @State private var wide = false
     @Environment(\.horizontalSizeClass) private var widthClass
     @Environment(\.verticalSizeClass) private var heightClass
+    @Environment(\.scenePhase) private var phase
 
     /// An iPad-sized window (an iPad, the Duo open) lists the open servers' workspaces in its sidebar. A phone's tabs
     /// stay as they are: there the workspaces' tabs, even hidden, made a More tab in place of Search.
@@ -50,6 +51,9 @@ struct RootView: View {
         tabs
             .tabViewStyle(.sidebarAdaptable)
             .tabBarMinimizeBehavior(.onScrollDown)
+            // Back in front, each connection checks it is still there (iOS may have let it go in the background): a lost
+            // one reconnects by itself, or says why it can't.
+            .onChange(of: phase) { if phase == .active { for session in app.open { Task { _ = await session.check() } } } }
             .transfersAccessory { place = .transfers }
             .traySheet(app.tray)
             .onGeometryChange(for: Bool.self) { $0.size.width >= 1100 } action: { wide = $0 }
@@ -110,7 +114,7 @@ struct RootView: View {
             Tab(value: .search, role: .search) {
                 SearchView { host in
                     place = .servers
-                    if host.s3 == nil { app.connect(host) }  // S3 storage doesn't open here yet: Servers says so when it is tapped
+                    app.connect(host)
                 } run: { command, session in
                     terminals.run(command, on: session)
                     place = .terminal

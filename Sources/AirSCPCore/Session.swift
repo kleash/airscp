@@ -401,11 +401,15 @@ public final class Session {
 
     /// Asks the master whether it is still there; marks the session Disconnected when it isn't. AirSCP sees its own
     /// master exit, but not an adopted one: call this now and then (e.g. when the window becomes active).
+    /// Over a transport (the iOS app, coming back to the front), a command's round trip: a connection lost meanwhile
+    /// fails it, which makes the session Disconnected or reconnecting, as at any call.
     public func check() async -> Bool {
         guard state == .connected else { return false }
-        // shortcut: a transport's lost connection shows at its next call; send a keepalive here when the iOS app checks
-        // its connections on coming back to the front (2.0, step 2h).
-        if s3 != nil || transport != nil { return true }
+        if s3 != nil { return true }
+        if transport != nil {
+            _ = try? await remote("true", slot: .transfer)  // not after a long command of the control lane's
+            return state == .connected
+        }
         if await masterAlive() { return true }
         lost(AirSCPError.disconnected)
         return false

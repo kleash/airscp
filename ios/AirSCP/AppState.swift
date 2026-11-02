@@ -30,6 +30,8 @@ import SwiftUI
     }
     /// Connections whose question the user cancelled: their connect failing then needs no alert.
     private var declined: Set<ObjectIdentifier> = []
+    /// Each open connection's system monitor, shared by its Monitor screen and its figures in Servers.
+    @ObservationIgnored private var monitors: [ObjectIdentifier: HostMonitor] = [:]
 
     /// A connection's question: answer it once (`answer`); nil cancels.
     final class Question: Identifiable {
@@ -122,16 +124,25 @@ import SwiftUI
         }
     }
 
+    @MainActor func monitor(for session: Session) -> HostMonitor {
+        if let monitor = monitors[ObjectIdentifier(session)] { return monitor }
+        let monitor = HostMonitor(session: session)
+        monitors[ObjectIdentifier(session)] = monitor
+        return monitor
+    }
+
     func disconnect(_ session: Session) {
         open.removeAll { $0 === session }
         states[session.host.id] = nil
+        monitors[ObjectIdentifier(session)] = nil
         for question in questions where question.session === session { answer(question, nil) }
         Task { await session.disconnect() }
     }
 
     private func makeSession(_ host: SSHHost) -> Session {
         let jump = jump(for: host)
-        let transport = SSH2Transport(host: host, jump: jump, knownHosts: knownHostsPath, privateKey: KeyStore.privateKey)
+        // S3 storage goes over HTTPS (its secret: the host's Keychain password), not SSH.
+        let transport = host.s3 != nil ? nil : SSH2Transport(host: host, jump: jump, knownHosts: knownHostsPath, privateKey: KeyStore.privateKey)
         let session = Session(host: host, jump: jump, askpass: nil, transport: transport)
         session.onStateChange = { [weak self, weak session] state in
             guard let self, let session, open.contains(where: { $0 === session }) else { return }

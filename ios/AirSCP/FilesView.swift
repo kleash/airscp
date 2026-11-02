@@ -449,6 +449,8 @@ struct SideView: View {
     /// What a drag is over: a row or a folder of the path bar (its path), or this side's empty folder (the folder's path).
     /// A folder lights up; over a file row or the empty folder, the whole side does (the drop goes into the folder shown).
     @State private var dropTarget: String?
+    /// The server whose Monitor screen shows.
+    @State private var monitoring: UUID?
 
     private enum Naming {
         case newFolder, rename(RemoteEntry)
@@ -537,15 +539,17 @@ struct SideView: View {
             }
         }
         .quickLookPreview($preview)
+        .navigationDestination(item: $monitoring) { MonitorView(hostID: $0) }
     }
 
     // MARK: Rows
 
     @ViewBuilder private func row(_ entry: RemoteEntry) -> some View {
+        let tint = session?.s3 == nil ? Color.teal : .orange  // the mockups: teal servers, amber S3
         if editing {
-            FileRow(entry: entry, busy: false)
+            FileRow(entry: entry, busy: false, tint: tint)
         } else {
-            Button { open(entry) } label: { FileRow(entry: entry, busy: opening == entry.path) }
+            Button { open(entry) } label: { FileRow(entry: entry, busy: opening == entry.path, tint: tint) }
                 .help(entry.kind == .directory ? "Open this folder" : session == nil ? "Preview this file" : "Edit this file")
         }
     }
@@ -677,6 +681,10 @@ struct SideView: View {
                         .help(session == nil ? "Copy files from the Files app here" : "Upload files from the Files app into this folder")
                     Toggle("Show Hidden Files", systemImage: "eye", isOn: $model.showHidden)
                         .help("Show the files and folders whose names start with a dot")
+                    if let session, session.s3 == nil {
+                        Button("Monitor", systemImage: "gauge.with.dots.needle.33percent") { monitoring = session.host.id }
+                            .help("Show this server's CPU, memory, disks and processes")
+                    }
                 }
                 .help("Select, choose what this side shows, import, hidden files")
             }
@@ -685,7 +693,9 @@ struct SideView: View {
 
     @ViewBuilder private var selectionBar: some View {
         let files = !selected.isEmpty && selected.allSatisfy { $0.kind != .directory }
-        let zipProblem = session.map { $0.compressUnavailableReason(.zip) } ?? "Zip works on a server's files"
+        // S3 storage's items are zipped with this device's ditto, which iOS doesn't let an app run.
+        let zipProblem = session?.s3 != nil ? "Zip works on a server's files, not on S3 storage"
+            : session.map { $0.compressUnavailableReason(.zip) } ?? "Zip works on a server's files"
         Button("Send", systemImage: "paperplane") { send(selected) }
             .disabled(selected.isEmpty || sendProblem != nil)
             .help(sendProblem ?? "Copy the selected items to the other side (\(other.name(app)))")
@@ -1084,21 +1094,25 @@ struct FileRow: View {
     let entry: RemoteEntry
     /// Being opened: a spinner in place of the icon.
     let busy: Bool
+    /// A folder's colour: its server's kind.
+    var tint = Color.teal
 
     var body: some View {
         // Colors, not .primary and .secondary: in a button's label those would be the tint's.
         Label {
             Text(entry.name)
                 .foregroundStyle(entry.isHidden ? Color.secondary : Color.primary)
-            Text(details)
-                .font(.caption)
-                .foregroundStyle(Color.secondary)
+            if !details.isEmpty {  // an S3 folder has neither size nor date
+                Text(details)
+                    .font(.caption)
+                    .foregroundStyle(Color.secondary)
+            }
         } icon: {
             if busy {
                 ProgressView()
             } else {
                 Image(systemName: entry.kind == .directory ? "folder.fill" : entry.kind == .symlink ? "arrow.up.right.square" : "doc")
-                    .foregroundStyle(entry.kind == .directory ? Color.teal : Color.secondary)
+                    .foregroundStyle(entry.kind == .directory ? tint : Color.secondary)
             }
         }
     }
