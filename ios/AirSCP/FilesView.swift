@@ -644,6 +644,11 @@ struct SideView: View {
                 .fixedSize()
                 .help("Switch between the two sides: Send copies to the side not shown")
             }
+        } else if session == nil {
+            // This device's side next to the other: its path starts with its name ("On iPhone"), which a title said
+            // again where the bar had room for one (an iPad, the Duo open on its side). A hidden title, not none: with
+            // no title the bar went, and on the Duo the buttons it had put in the rail.
+            ToolbarItem(placement: .principal) { Text(side.name(app)).hidden() }
         }
         if editing {
             ToolbarItem(placement: .topBarTrailing) {
