@@ -139,7 +139,6 @@ struct RootView: View {
                     systemImage: "server.rack", value: Place.server(session.host.id)) {
                     WorkspaceView(session: session, files: workspaceFiles.model(session.host.id))
                 }
-                .defaultVisibility(.hidden, for: .tabBar)  // the sidebar's
                 .accessibilityIdentifier("workspace")
                 .contextMenu {
                     Button("Disconnect", systemImage: "xmark.circle") { app.disconnect(session) }
@@ -147,6 +146,7 @@ struct RootView: View {
                 }
             }
         }
+        .defaultVisibility(.hidden, for: .tabBar)  // the sidebar's: in an iPad's tabs at the top it paged out Servers
     }
 
     private func go(_ place: Place) {
