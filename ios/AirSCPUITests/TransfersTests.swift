@@ -129,7 +129,6 @@ final class TransfersTests: XCTestCase {
     /// keeps showing, above the tab bar and in Transfers; the tray shows in both too.
     func testARunningTransferKeepsGoingWhileTheDeviceTurns() {
         let app = connect(downloading: ["/usr/bin/bash"], tray: ["/etc/hostname"], bytesPerSecond: 60_000)  // about 24 s
-        defer { XCUIDevice.shared.orientation = .portrait }
         let accessory = app.buttons["transferAccessory"]
         XCTAssert(accessory.waitForExistence(timeout: 30), "No transfer above the tab bar")
         for orientation in [UIDeviceOrientation.landscapeLeft, .portrait] {

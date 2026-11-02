@@ -10,7 +10,6 @@ final class TerminalTests: XCTestCase {
         continueAfterFailure = false
         try XCTSkipUnless(labIsReachable(), "The Docker lab's target doesn't answer on 127.0.0.1:42201 (testenv/up.sh starts it)")
         folder = try labFolder()
-        XCUIDevice.shared.orientation = .portrait
     }
 
     override func tearDownWithError() throws {
