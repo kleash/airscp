@@ -4,7 +4,7 @@ import UIKit
 
 /// A terminal's screen (Core's `TerminalScreen`), drawn cell by cell as the Mac's TerminalView draws it: colours, bold,
 /// the cursor; one view for each terminal shown. Typing goes to the shell (UIKeyInput), and so do a hardware keyboard's arrows, Escape, Tab and
-/// Control keys (repeated while held). A drag goes through the scrollback (full-screen programs get arrow keys), a pinch
+/// Control keys; a held key repeats. A drag goes through the scrollback (full-screen programs get arrow keys), a pinch
 /// changes the size, touch and hold selects text (Copy, Paste, Select All), and the shell's terminal gets the columns and
 /// rows that fit.
 final class TerminalView: UIView, UIKeyInput {
@@ -287,6 +287,10 @@ final class TerminalView: UIView, UIKeyInput {
             guard let key = press.key, let keys = Self.keys(for: key, applicationCursor: session.screen.applicationCursorKeys)
             else {
                 others.insert(press)
+                // What goes on to `insertText` repeats here too: UIKit doesn't repeat a held key for a view like this.
+                if let key = press.key, !key.characters.isEmpty, !key.modifierFlags.contains(.command) {
+                    repeatWhileHeld(key.keyCode, key.characters)
+                }
                 continue
             }
             showLive()
@@ -307,21 +311,21 @@ final class TerminalView: UIView, UIKeyInput {
         if !others.isEmpty { super.pressesCancelled(others, with: event) }
     }
 
-    /// The presses `pressesBegan` took end here too (passed on, their ends turned a later Control-C into a plain C), and a
-    /// held one stops repeating; the others are returned, to pass on.
+    /// A held key let go stops repeating. The presses `pressesBegan` took end here too (passed on, their ends turned a
+    /// later Control-C into a plain C); the others are returned, to pass on.
     private func release(_ presses: Set<UIPress>) -> Set<UIPress> {
         presses.filter { press in
-            guard let code = press.key?.keyCode, taken.remove(code) != nil else { return true }
+            guard let code = press.key?.keyCode else { return true }
             if repeating?.key == code {
                 repeating?.task.cancel()
                 repeating = nil
             }
-            return false
+            return taken.remove(code) == nil
         }
     }
 
     /// A key held down sends its keys again after a moment, then about 20 times a second until it is let go, as a
-    /// keyboard repeats: UIKit repeats only what goes to `insertText`.
+    /// keyboard repeats.
     private func repeatWhileHeld(_ code: UIKeyboardHIDUsage, _ keys: String) {
         repeating?.task.cancel()
         repeating = (code, Task { [weak self] in
