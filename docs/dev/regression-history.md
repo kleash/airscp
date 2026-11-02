@@ -120,12 +120,26 @@ changing the code.
   picker style) in a program built with a recent SDK (the app, the test runner; not SwiftPM's debug AirSCP, which
   records SDK 13.0, so AgentLabTests sees it only with a fresh build/AirSCP.app), and takes a choice only in the menu
   a press opens a moment later (`accessibilityValue`, increment and AXPick choose nothing; arrow keys open the menu),
-  so an agent's `set` silently did nothing. `set` presses it and chooses once the menu tracks
-  (`NSMenu.didBeginTrackingNotification`), closing it from the request: closed inside that notification, the menu went
-  on tracking and no other opened. That menu's event loop starts HIToolbox's pulling of window-server events
-  (`CGEventThreadStartPullingEvents`), and from then on each event queues a `CFRunLoopStop` block on the main run
-  loop, which ended the test process at the next sheet. On macOS 27 the test process keeps its main run loop running
-  (`TestEnvironment.isolated`: `RunLoop.main.run()` from a timer, as `NSApp.run` does): a stop ends one pass.
+  so an agent's `set` silently did nothing. `set` presses it and chooses as the menu starts tracking
+  (`NSMenu.didBeginTrackingNotification`), closing it from a timer in the menu's own run loop: closed inside that
+  notification, the menu went on tracking and no other opened. That menu's event loop starts HIToolbox's pulling of
+  window-server events (`CGEventThreadStartPullingEvents`), and from then on each event queues a `CFRunLoopStop` block
+  on the main run loop, which ended the test process at the next sheet. On macOS 27 the test process keeps its main
+  run loop running (`TestEnvironment.isolated`: as the bottom run loop ends, `RunLoop.main.run()` takes its place, as
+  `NSApp.run` does): a stop ends one pass.
+- macOS 27.2, the full lab suite (2026-11-02): about one run in three hung in its first minutes; most others failed
+  the same 11 agent-control tests, each fine alone. The hang: `RunLoop.main.run()` started from a timer, which fired
+  wherever the main thread next ran timers, at times inside a run loop that a main-actor test ran
+  (`Process.waitUntilExit`: `theIndicatorKeepsAClientThatIsStillConnected` alone hung every time, the certificate
+  fixtures' `openssl` runs). It never returned there, and CFRunLoop drains the main queue in no run loop that a
+  main-queue block runs: every main-actor test stopped. It starts now as the bottom run loop ends (a
+  `CFRunLoopObserver` on exit, with no task current). The 11: two `set`s on SwiftUI pop-ups at once (tests in
+  parallel, one window each) both took the first menu that began tracking; one chose in the other's menu, whose own
+  menu then opened with nobody left to close it. An open menu tracks in a mode of its own: later pop-ups "didn't open",
+  and default-mode timers stopped (the Monitor's refresh; a search field's delayed search, so Terminal's find counted
+  nothing and History inserted its newest command). `set` chooses in one pop-up's menu at a time, until it has closed;
+  a menu that opens inside a run loop a main-queue block runs (where the request can't go on) closes from its own
+  run loop's timer.
 - macOS 27.2 (1.4.0): BSD `du` without a UTF-8 locale (an ssh session has none) prints a name's "é" as the one
   Latin-1 byte 0xE9, so Folder Sizes lost "café" (`folderSizes`). `Session.du` and `duAll` run BSD du with
   `env LC_CTYPE=UTF-8`; GNU and BusyBox du print the bytes as they are and ignore the name.
