@@ -275,7 +275,7 @@ struct SpeedChart: View {
     }
 
     static func speed(_ bytes: Double) -> String {
-        ByteCountFormatter.string(fromByteCount: Int64(bytes), countStyle: .file) + "/s"
+        FileRow.size(Int64(bytes)) + "/s"  // "0 KB/s", not "Zero KB/s"
     }
 }
 
