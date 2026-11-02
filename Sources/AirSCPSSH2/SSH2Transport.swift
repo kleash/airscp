@@ -364,6 +364,7 @@ final class Connection {
         var eofSent = false
         var stdout = Data(), stderr = Data()
         var buffer = [CChar](repeating: 0, count: 32768)
+        var signalled: Bool?  // a cancel's signal: nil not sent, false half sent
         while true {
             var progress = false
             if !pending.isEmpty {
@@ -392,8 +393,15 @@ final class Connection {
                 }
             }
             if !progress {
-                if libssh2_channel_eof(channel) == 1 { break }
-                try wait(cancellation)
+                // Cancelled: the command is signalled on the server (sshd ends its process group) and read to its end,
+                // as the channel's close waits for that anyway. Only once our input and EOF have gone, and a signal half
+                // sent goes on till it has: libssh2 takes no other packet meanwhile (it says "again").
+                let ended = libssh2_channel_eof(channel) == 1
+                if cancellation.isCancelled, pending.isEmpty, eofSent, signalled == false || signalled == nil && !ended {
+                    signalled = libssh2_channel_signal_ex(channel, "TERM", 4) != LIBSSH2_ERROR_EAGAIN
+                }
+                if ended && signalled != false { break }
+                try wait(nil)
             }
         }
         _ = try again(cancellation) { libssh2_channel_close(channel) }
