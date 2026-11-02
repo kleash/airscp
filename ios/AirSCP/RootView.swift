@@ -121,6 +121,8 @@ struct RootView: View {
             Tab("Transfers", systemImage: "arrow.up.arrow.down", value: .transfers) {
                 TransfersView()
             }
+            // Before Search: after it, an open server's tab made an iPad's Search field let go of every key typed (iOS 27).
+            openServers
             Tab(value: .search, role: .search) {
                 SearchView { host in
                     place = .servers
@@ -130,7 +132,6 @@ struct RootView: View {
                     place = .terminal
                 }
             }
-            openServers
         }
         // Search's or the terminal's file: shown in this window's Files tab (though workspaces have Files views too).
         .onChange(of: requests.reveal) {
