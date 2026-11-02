@@ -21,8 +21,7 @@ final class NearbyTests: XCTestCase {
         app.launchEnvironment["AIRSCP_SUPPORT_DIR"] = folder.path
         app.launch()
         XCTAssert(app.navigationBars["Servers"].waitForExistence(timeout: 10))
-        guard app.buttons["Nearby"].exists else { throw XCTSkip("Servers has no Nearby button yet") }
-        app.buttons["Nearby"].tap()
+        app.barButton("Nearby").tap()
 
         // The first look on the network may ask for Local Network access.
         let allow = XCUIApplication(bundleIdentifier: "com.apple.springboard").alerts.buttons["Allow"]

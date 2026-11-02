@@ -27,7 +27,7 @@ final class LinksTests: XCTestCase {
         let name = "zz-links-\(UUID().uuidString.prefix(8).lowercased()).txt"
         _ = try await lab.session.run("cd \(Quote.shell(lab.folder)) && touch $(seq -f 'a-%02g.txt' 0 39) \(name)")
         let app = launchConnectedToLab(folder)
-        app.tab("Search").tap()
+        app.show("Search")
         let field = app.searchFields.firstMatch
         XCTAssert(field.waitForExistence(timeout: 5))
         field.tap()
@@ -175,7 +175,7 @@ final class LinksTests: XCTestCase {
 
     /// Opens the file from the test's folder in the editor (Files ▸ the folder ▸ the file).
     @MainActor private func openFile(_ name: String, in app: XCUIApplication) {
-        app.tab("Files").tap()
+        app.show("Files")
         let mine = app.staticTexts[RemotePath.name(lab.folder)]
         XCTAssert(mine.waitForExistence(timeout: 30), "The test's folder isn't listed in the home folder")
         mine.tap()

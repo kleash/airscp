@@ -25,13 +25,13 @@ final class ShellTests: XCTestCase {
     func testEmptyTabsSayWhatToDoNext() {
         let app = launch()
         XCTAssert(app.staticTexts["No servers yet"].waitForExistence(timeout: 10))
-        app.tabBars.buttons["Files"].tap()
+        app.show("Files")
         XCTAssert(app.staticTexts["No server open"].waitForExistence(timeout: 5))
         app.buttons["Go to Servers"].tap()
         XCTAssert(app.staticTexts["No servers yet"].waitForExistence(timeout: 5))
-        app.tabBars.buttons["Terminal"].tap()
+        app.show("Terminal")
         XCTAssert(app.staticTexts["No terminal open"].waitForExistence(timeout: 5))
-        app.tabBars.buttons["Transfers"].tap()
+        app.show("Transfers")
         XCTAssert(app.staticTexts["No transfers"].waitForExistence(timeout: 5))
     }
 
@@ -44,7 +44,7 @@ final class ShellTests: XCTestCase {
         XCTAssert(app.staticTexts["web-01"].waitForExistence(timeout: 10))
         XCTAssert(app.staticTexts["admin@db.example.com"].exists)
 
-        app.tabBars.buttons["Search"].tap()
+        app.show("Search")
         let field = app.searchFields.firstMatch
         XCTAssert(field.waitForExistence(timeout: 5))
         field.tap()

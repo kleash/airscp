@@ -41,13 +41,13 @@ final class TransfersTests: XCTestCase {
         let copy = try? FileManager.default.attributesOfItem(atPath: folder.appendingPathComponent("bash").path)
         XCTAssertEqual(copy?[.size] as? Int, 1_412_096)  // the lab's /usr/bin/bash
         keepScreenshot("Done")
-        app.buttons["Clear Done"].tap()
+        app.barButton("Clear Done").tap()
         XCTAssert(app.staticTexts["No transfers"].waitForExistence(timeout: 10))
     }
 
     func testAPausedDownloadResumesAndAFailedOneNeedsYou() {
         let app = connect(downloading: ["/usr/bin/bash", "/etc/shadow"], bytesPerSecond: 100_000)  // about 14 s
-        openTransfers(app)
+        app.show("Transfers")
         let row = transfer("bash", in: app)
         XCTAssert(waitUntil(row, says: "Downloading", timeout: 30), row.label)
         row.swipeLeft()
@@ -74,7 +74,7 @@ final class TransfersTests: XCTestCase {
     /// the share sheet. Send offers the open server (sending itself is in Core's tests: it would write on the lab).
     func testTheTrayHoldsFilesAndSharesThem() {
         let app = connect(tray: ["/usr/bin/bash", "/etc/hostname", "/etc/os-release"])
-        openTransfers(app)
+        app.show("Transfers")
         let tray = app.buttons["Tray"]
         XCTAssert(tray.waitForExistence(timeout: 10))
         XCTAssert((tray.value as? String) == "3 items", String(describing: tray.value))
@@ -111,7 +111,7 @@ final class TransfersTests: XCTestCase {
         try await lab.write("from the tray\n", to: name)
 
         let app = connect(tray: [lab.path(name)], trusted: true)
-        openTransfers(app)
+        app.show("Transfers")
         app.buttons["Tray"].tap()
         app.buttons["Send"].tap()
         app.buttons["dev@127.0.0.1:42201 — dev"].tap()
@@ -136,7 +136,7 @@ final class TransfersTests: XCTestCase {
             XCTAssert(accessory.waitForExistence(timeout: 10), "No transfer above the tab bar in \(Self.name(orientation))")
             keepScreenshot("Accessory, " + Self.name(orientation))
         }
-        openTransfers(app)
+        app.show("Transfers")
         let row = transfer("bash", in: app)
         XCTAssert(waitUntil(row, says: "Downloading", timeout: 30), row.label)
         for orientation in [UIDeviceOrientation.landscapeLeft, .portrait, .landscapeLeft] {
@@ -161,12 +161,6 @@ final class TransfersTests: XCTestCase {
 
     private static func name(_ orientation: UIDeviceOrientation) -> String {
         orientation.isLandscape ? "landscape" : "portrait"
-    }
-
-    /// The Transfers tab: in the tab bar (iPhone), or among the tabs at the top (iPad).
-    private func openTransfers(_ app: XCUIApplication) {
-        let tab = app.tabBars.buttons["Transfers"]
-        (tab.exists ? tab : app.buttons["Transfers"].firstMatch).tap()
     }
 
     /// Launches a throwaway AirSCP that downloads `paths` once connected (at most `bytesPerSecond`) and puts the server's

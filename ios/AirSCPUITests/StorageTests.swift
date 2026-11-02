@@ -61,7 +61,7 @@ final class StorageTests: XCTestCase {
         row.tap()
         XCTAssert(app.staticTexts["Connected"].waitForExistence(timeout: 30))
         keepScreenshot("Servers with storage")
-        app.tab("Files").tap()
+        app.show("Files")
         XCTAssert(app.staticTexts["Empty folder"].waitForExistence(timeout: 30))
 
         // From this iPhone to the bucket, and back once this iPhone's copy is gone.

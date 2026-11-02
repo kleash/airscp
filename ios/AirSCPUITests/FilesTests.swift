@@ -418,8 +418,7 @@ final class FilesTests: XCTestCase {
         password.tap()  // focused already, unless the sheet is still on its way
         password.typeText("porter-dev\n")
         XCTAssert(app.staticTexts["Connected"].waitForExistence(timeout: 30))
-        // The iPad's tabs are buttons at the top, not a tab bar.
-        (app.tabBars.firstMatch.exists ? app.tabBars.buttons["Files"] : app.buttons["Files"].firstMatch).tap()
+        app.show("Files")
         let mine = app.staticTexts[RemotePath.name(lab.folder)]
         XCTAssert(mine.waitForExistence(timeout: 30), "The test's folder isn't listed in the home folder")
         mine.tap()

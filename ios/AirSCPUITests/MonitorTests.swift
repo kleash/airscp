@@ -69,7 +69,8 @@ final class MonitorTests: XCTestCase {
         openMonitor(app)
 
         // Away (the Monitor screen stays under the Servers tab): once a read under way is done, the connection is quiet.
-        show("Transfers", until: app.navigationBars["Transfers"], in: app)
+        app.show("Transfers")
+        XCTAssert(app.navigationBars["Transfers"].waitForExistence(timeout: 10), "Transfers doesn't show")
         var quiet = try await lab.wakeups(of: mine)
         for _ in 0..<10 {
             try await Task.sleep(for: .seconds(1))
@@ -83,7 +84,8 @@ final class MonitorTests: XCTestCase {
         XCTAssertEqual(after, quiet, "The app read the server while nothing of it showed")
 
         // Back: the screen reads again.
-        show("Servers", until: app.descendants(matching: .any)["monitor.cpu"], in: app)
+        app.show("Servers")
+        XCTAssert(app.descendants(matching: .any)["monitor.cpu"].waitForExistence(timeout: 10), "The Monitor screen isn't there")
         let read = await eventually { try await self.lab.wakeups(of: mine) > after }
         XCTAssert(read, "No read after coming back")
     }
@@ -168,20 +170,6 @@ final class MonitorTests: XCTestCase {
             _ = cpu.waitForExistence(timeout: 20)
         }
         XCTAssert(cpu.exists, "No Monitor screen")
-    }
-
-    /// Shows a place by its tab (a tab bar's button, an iPad's tabs at the top, or a row of an iPad-sized window's
-    /// sidebar) until `element` is there: an iPad's floating tabs can shift under a tap.
-    @MainActor private func show(_ name: String, until element: XCUIElement, in app: XCUIApplication) {
-        for _ in 0..<3 where !element.exists {
-            let button = app.tab(name), row = app.cells.matching(NSPredicate(format: "label == %@", name)).firstMatch
-            if !button.exists && !row.exists {  // paged out of the floating tabs: the sidebar has it
-                app.buttons.matching(NSPredicate(format: "label CONTAINS[c] 'sidebar'")).firstMatch.tap()
-            }
-            (button.exists ? button : row).tap()
-            _ = element.waitForExistence(timeout: 5)
-        }
-        XCTAssert(element.exists, "\(name) doesn't show")
     }
 
     /// The app's connection on the lab: the one dev's connection that wasn't there before it logged in.

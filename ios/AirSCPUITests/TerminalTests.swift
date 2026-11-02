@@ -136,7 +136,7 @@ extension XCTestCase {
 
     /// The Terminal tab, once its shell waits at its prompt.
     func showTerminal(_ app: XCUIApplication) -> XCUIElement {
-        app.tab("Terminal").tap()
+        app.show("Terminal")
         let terminal = app.descendants(matching: .any)["terminal"]
         XCTAssert(terminal.waitForExistence(timeout: 10), "No terminal")
         XCTAssert(terminal.shows("dev@"), "No prompt: \(terminal.text)")
@@ -158,9 +158,34 @@ extension XCTestCase {
 }
 
 extension XCUIApplication {
-    /// A tab's button: in the tab bar, or at the top on iPad, which has no tab bar.
-    func tab(_ name: String) -> XCUIElement {
-        tabBars.firstMatch.exists ? tabBars.buttons[name] : buttons[name].firstMatch
+    /// Shows a place by its tab: in the iPhone's tab bar, among an iPad's tabs at the top, or in the sidebar an iPad shows
+    /// on its side. Tapped again until it is selected (an iPad's tabs at the top can move under a tap); through the
+    /// sidebar when the tabs at the top have paged it out.
+    func show(_ name: String) {
+        for _ in 0..<3 {
+            if !tabBars.firstMatch.exists && !tab(name).exists {
+                buttons.matching(NSPredicate(format: "label CONTAINS[c] 'sidebar'")).firstMatch.tap()
+            }
+            let tab = tab(name)
+            if !tab.isSelected { tab.tap() }
+            if tab.wait(for: \.isSelected, toEqual: true, timeout: 5) { return }
+        }
+        XCTFail("The \(name) tab doesn't show")
+    }
+
+    /// A navigation bar's button, from the bar's More menu when the bar has no room for it (an iPad's tabs at the top take
+    /// the middle of the bar).
+    func barButton(_ name: String) -> XCUIElement {
+        let button = buttons[name].firstMatch, more = buttons["OverflowBarButtonItem"]
+        if !button.exists && more.exists { more.tap() }
+        return button
+    }
+
+    /// A tab's button in the tab bar or among an iPad's tabs at the top, or its row in an iPad's sidebar.
+    private func tab(_ name: String) -> XCUIElement {
+        if tabBars.firstMatch.exists { return tabBars.buttons[name] }
+        let row = cells.matching(NSPredicate(format: "label == %@", name)).firstMatch
+        return row.exists ? row : buttons[name].firstMatch
     }
 }
 

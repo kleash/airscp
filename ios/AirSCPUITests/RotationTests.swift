@@ -44,7 +44,7 @@ final class RotationTests: XCTestCase {
         keepScreenshot("Terminal, portrait, typing")
         app.buttons["Hide Keyboard"].tap()  // the iPhone's keyboard covers the tabs
 
-        app.tab("Search").tap()
+        app.show("Search")
         let field = app.searchFields.firstMatch
         XCTAssert(field.waitForExistence(timeout: 5))
         field.tap()
