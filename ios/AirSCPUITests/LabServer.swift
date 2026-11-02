@@ -24,7 +24,8 @@ final class LabServer {
             }
         }
         try await session.connect()
-        folder = RemotePath.join(session.capabilities.home, "ui-files-" + UUID().uuidString.prefix(8).lowercased())
+        // "_" sorts first, so the folder's row is on screen above what other runs left in the home folder.
+        folder = RemotePath.join(session.capabilities.home, "_ui-files-" + UUID().uuidString.prefix(8).lowercased())
         try await session.makeDirectory(folder)
     }
 
