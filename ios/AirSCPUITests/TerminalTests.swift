@@ -34,9 +34,11 @@ final class TerminalTests: XCTestCase {
         app.typeText("echo after-$((1+1))\n")
         XCTAssert(terminal.shows("after-2"), terminal.text)
 
-        // A hardware keyboard's Control-C, and its up arrow: the command before, again.
+        // A hardware keyboard's Control-C, and its up arrow: the command before, again. The Simulator lets the first
+        // Control or ⌘ key after a launch through as the plain key (Settings' search field does it too): then again.
         app.typeText("sleep 100\n")
         app.typeKey("c", modifierFlags: .control)
+        if !terminal.shows("^C", times: 2, within: 5) { app.typeKey("c", modifierFlags: .control) }
         app.typeText("echo keys-$((2+2))\n")
         XCTAssert(terminal.shows("keys-4"), terminal.text)
         app.typeKey(.upArrow, modifierFlags: [])
@@ -193,9 +195,9 @@ extension XCUIElement {
     /// The terminal's text (its accessibility value: the scrollback and the screen).
     var text: String { value as? String ?? "" }
 
-    /// Waits until the terminal's text holds `needle` `times` times (30 s at most).
-    func shows(_ needle: String, times: Int = 1) -> Bool {
-        let deadline = Date().addingTimeInterval(30)
+    /// Waits until the terminal's text holds `needle` `times` times (`seconds` at most).
+    func shows(_ needle: String, times: Int = 1, within seconds: TimeInterval = 30) -> Bool {
+        let deadline = Date().addingTimeInterval(seconds)
         repeat {
             if text.components(separatedBy: needle).count - 1 >= times { return true }
             Thread.sleep(forTimeInterval: 0.5)

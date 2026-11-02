@@ -158,6 +158,8 @@ final class LinksTests: XCTestCase {
         hold(terminal, menuItem: "Copy", in: app)
         line.tap()
         app.typeKey("v", modifierFlags: .command)
+        // The Simulator lets the first ⌘ or Control key after a launch through as the plain key (Settings does it too).
+        if line.value as? String != "copyme" { app.typeKey("v", modifierFlags: .command) }
         XCTAssertEqual(line.value as? String, "copyme")
         // Emptied, and Return lets go of it: a tap on a field that has the keyboard shows the system's Paste callout,
         // which XCUITest can't read (another process), and every query after it waits.
