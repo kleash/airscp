@@ -48,7 +48,8 @@ fi
 bins=()
 for arch in "${archs[@]}"; do
     triple=$arch-apple-macosx13.1
-    swift build -c release --triple "$triple" ${flags[@]+"${flags[@]}"}
+    # The app's product only: libssh2's target (vendor/ssh2, the iPhone and iPad app's) has no x86_64 Mac slice.
+    swift build -c release --triple "$triple" --product AirSCP ${flags[@]+"${flags[@]}"}
     bin=$(swift build -c release --triple "$triple" ${flags[@]+"${flags[@]}"} --show-bin-path)
     bins+=("$bin/AirSCP")
 done
