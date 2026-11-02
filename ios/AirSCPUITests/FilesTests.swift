@@ -356,6 +356,8 @@ final class FilesTests: XCTestCase {
             let made = "made-\(turn.0)", later = "later-\(turn.0).txt"
             app.typeKey("n", modifierFlags: .command)
             let name = app.alerts.textFields.firstMatch
+            // The Simulator lets the first ⌘ or Control key after a launch through as the plain key (Settings does it too).
+            if !name.waitForExistence(timeout: 5) { app.typeKey("n", modifierFlags: .command) }
             XCTAssert(name.waitForExistence(timeout: 5), "⌘N doesn't ask for the new folder's name")
             name.clearAndType(made)
             app.alerts.buttons["Create"].tap()
