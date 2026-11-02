@@ -38,7 +38,6 @@ struct RootView: View {
     @State private var workspaceFiles = WorkspaceFiles()
     /// The workspace that showed when the window narrowed: the Files tab shows its sides until it widens again.
     @State private var narrowed: UUID?
-    @State private var wide = false
     @Environment(\.horizontalSizeClass) private var widthClass
     @Environment(\.verticalSizeClass) private var heightClass
     @Environment(\.scenePhase) private var phase
@@ -56,8 +55,7 @@ struct RootView: View {
             .onChange(of: phase) { if phase == .active { for session in app.open { Task { _ = await session.check() } } } }
             .transfersAccessory { place = .transfers }
             .traySheet(app.tray)
-            .onGeometryChange(for: Bool.self) { $0.size.width >= 1100 } action: { wide = $0 }
-            .environment(\.wide, wide)
+            .modifier(WideWindow())
             // The menu bar's shortcuts (AppCommands) act on this window.
             .focusedSceneValue(\.go, go)
             .focusedSceneValue(\.newTerminal, terminalServer.map { session in { newTerminal(on: session) } })
@@ -166,6 +164,18 @@ struct RootView: View {
         terminals.shownID = terminals.add(on: session).id
         if case .server = place { return }
         place = .terminal
+    }
+}
+
+/// `\.wide` for the window's views: 1100 pt or more across. Its own state, not RootView's: RootView's body made again
+/// during an iPad's turn left the turn never finishing its animation (XCUITest waited on it in vain).
+private struct WideWindow: ViewModifier {
+    @State private var wide = false
+
+    func body(content: Content) -> some View {
+        content
+            .onGeometryChange(for: Bool.self) { $0.size.width >= 1100 } action: { wide = $0 }
+            .environment(\.wide, wide)
     }
 }
 
