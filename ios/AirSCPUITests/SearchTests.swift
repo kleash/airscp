@@ -49,6 +49,64 @@ final class SearchTests: XCTestCase {
         XCTAssert(app.buttons["/home/dev/.bashrc"].waitForExistence(timeout: 60), "The file isn't found")  // it opens in Files
     }
 
+    /// Run on ▸ Several Servers…: a snippet run at once on the servers picked (the lab twice, as two saved servers), each
+    /// one's exit status and output, error output too, shown together; Stop stops a command on both.
+    func testASnippetRunsOnSeveralServers() throws {
+        try """
+        {"hosts":[{"id":"\(labHost)","label":"lab","hostname":"127.0.0.1","port":42201,"username":"dev","auth":"password",
+                   "hostKeyCheck":"acceptNew"},
+                  {"id":"\(UUID())","label":"lab 2","hostname":"127.0.0.1","port":42201,"username":"dev","auth":"password",
+                   "hostKeyCheck":"acceptNew"}],
+         "snippets":[{"id":"\(UUID())","name":"Status","command":"echo ran-$((5*5)); echo warned >&2; exit 3","runInTerminal":false},
+                     {"id":"\(UUID())","name":"Long","command":"sleep 100","runInTerminal":false}]}
+        """.write(to: folder.appendingPathComponent("airscp.json"), atomically: true, encoding: .utf8)
+        let app = launchConnectedToLab(folder)
+        app.staticTexts["lab 2"].tap()
+        let password = app.secureTextFields["answer"]
+        XCTAssert(password.waitForExistence(timeout: 30), "No password question")
+        password.tap()
+        password.typeText("porter-dev\n")
+        let both = expectation(for: NSPredicate(format: "count == 2"), evaluatedWith: app.staticTexts.matching(identifier: "Connected"))
+        XCTAssertEqual(XCTWaiter.wait(for: [both], timeout: 30), .completed, "Not both connected")
+
+        let field = search(app, for: "Status")
+        XCTAssert(app.staticTexts["echo ran-$((5*5)); echo warned >&2; exit 3"].waitForExistence(timeout: 10), "The snippet isn't found")
+        runOnSeveral(app)
+        let run = app.buttons["Run"]
+        XCTAssert(run.waitForExistence(timeout: 10), "No Run on Several Servers")
+        XCTAssertFalse(run.isEnabled, "Run works before a server is picked")
+        app.buttons["server lab"].tap()
+        app.buttons["server lab 2"].tap()
+        run.tap()
+        for name in ["lab", "lab 2"] {
+            let row = app.buttons["server " + name]
+            XCTAssert(waitUntil(row, says: "Exit status 3", timeout: 30), row.label)
+            let output = app.staticTexts["output " + name]
+            XCTAssert(output.waitForExistence(timeout: 10), "No output of \(name)")
+            XCTAssert(output.label.contains("ran-25") && output.label.contains("warned"), output.label)
+        }
+        keepScreenshot("Run on several servers")
+        XCUIDevice.shared.orientation = XCUIDevice.shared.orientation.isLandscape ? .portrait : .landscapeLeft
+        XCTAssert(app.staticTexts["output lab 2"].waitForExistence(timeout: 10), "The output is gone after turning")
+        keepScreenshot("Run on several servers, turned")
+
+        // A command that goes on: Stop stops it on both.
+        app.navigationBars["Run on Several Servers"].buttons.element(boundBy: 0).tap()  // back to Search
+        retype(field, "Long")
+        XCTAssert(app.staticTexts["sleep 100"].waitForExistence(timeout: 10), "The snippet isn't found")
+        runOnSeveral(app)
+        app.buttons["server lab"].tap()
+        app.buttons["server lab 2"].tap()
+        run.tap()
+        let stop = app.buttons["Stop"]
+        XCTAssert(stop.waitForExistence(timeout: 10), "No Stop")
+        stop.tap()
+        for name in ["lab", "lab 2"] {
+            let row = app.buttons["server " + name]
+            XCTAssert(waitUntil(row, says: "Stopped.", timeout: 30), row.label)
+        }
+    }
+
     private func search(_ app: XCUIApplication, for text: String) -> XCUIElement {
         app.show("Search")
         let field = app.searchFields.firstMatch
@@ -61,6 +119,20 @@ final class SearchTests: XCTestCase {
     private func retype(_ field: XCUIElement, _ text: String) {
         field.tap()
         field.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: (field.value as? String ?? "").count) + text)
+    }
+
+    /// Waits until the element's label says `text`.
+    private func waitUntil(_ element: XCUIElement, says text: String, timeout: TimeInterval) -> Bool {
+        let found = expectation(for: NSPredicate(format: "label CONTAINS %@", text), evaluatedWith: element)
+        return XCTWaiter.wait(for: [found], timeout: timeout) == .completed
+    }
+
+    /// Run on ▸ Several Servers…, in the one result that has it.
+    private func runOnSeveral(_ app: XCUIApplication) {
+        app.buttons["Run on"].firstMatch.tap()
+        let several = app.buttons["Several Servers…"]
+        XCTAssert(several.waitForExistence(timeout: 5), "No Several Servers… in Run on")
+        several.tap()
     }
 
     /// Run on ▸ lab, in the one result that has it.

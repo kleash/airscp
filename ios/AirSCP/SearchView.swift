@@ -3,7 +3,7 @@ import SwiftUI
 
 /// Search (2f, mockup screen 4): one field over the saved servers, the snippets, every saved server's command history,
 /// and the files on an open server (Core's Find Files). A server opens; a snippet or a command runs on an open server,
-/// typed in its terminal (as the Mac's Run Command runs a snippet in Terminal).
+/// typed in its terminal (as the Mac's Run Command runs a snippet in Terminal), or on several at once (`RunOnServers`).
 struct SearchView: View {
     @Environment(AppState.self) private var app
     /// Opens a saved server: connects, and shows Servers.
@@ -14,6 +14,8 @@ struct SearchView: View {
     @State private var text = ""
     /// Every saved server's history, read each time Search shows.
     @State private var histories: [(host: SSHHost, commands: [String])] = []
+    /// The command Run on ▸ Several Servers… runs.
+    @State private var several: String?
 
     var body: some View {
         let servers = app.data.hosts.filter { $0.displayName.localizedStandardContains(text) || $0.hostname.localizedStandardContains(text) }
@@ -81,6 +83,7 @@ struct SearchView: View {
                 }
             }
             .navigationTitle("Search")
+            .navigationDestination(item: $several) { RunOnServers(command: $0) }
         }
         // The iPad would show only a search button in its bar: the field itself, under the title.
         .searchable(text: $text, placement: horizontalSizeClass == .regular ? .navigationBarDrawer(displayMode: .always) : .automatic,
@@ -102,12 +105,17 @@ struct SearchView: View {
         }
     }
 
-    /// Run on: the open servers that run commands; the command is typed in the chosen one's terminal.
+    /// Run on: the open servers that run commands; the command is typed in the chosen one's terminal, or run on several.
     private func runOn(_ command: String, shells: [Session]) -> some View {
         Menu("Run on", systemImage: "play") {
             ForEach(shells, id: \.host.id) { session in
                 Button(session.host.displayName) { run(command, session) }
                     .help("Run it in this server's terminal")
+            }
+            if shells.count > 1 {
+                Divider()
+                Button("Several Servers…", systemImage: "square.stack.3d.up") { several = command }
+                    .help("Pick open servers to run it on at once, and read each one's output together")
             }
         }
         .labelStyle(.iconOnly)
@@ -157,5 +165,125 @@ struct FoundFiles: View {
                 failure = (error as? AirSCPError)?.message ?? error.localizedDescription
             }
         }
+    }
+}
+
+/// Run on ▸ Several Servers…: a snippet or a command run at once on the open servers picked, each in the account's login
+/// shell without a terminal (Core's `Session.run`, as the Mac's Run Command), with each one's output and exit status.
+/// Leaving the screen stops what still runs, as closing the Mac's Run Command does.
+struct RunOnServers: View {
+    @Environment(AppState.self) private var app
+    @Environment(\.isPresented) private var isPresented
+    let command: String
+    @State private var picked: Set<UUID> = []
+    /// Each server's run since Run: nil while under way, then its result or why it didn't run.
+    @State private var runs: [UUID: Result<CommandResult, AirSCPError>?] = [:]
+    @State private var cancellation: Cancellation?
+
+    var body: some View {
+        let shells = app.open.filter { app.states[$0.host.id] == .connected && $0.capabilities.shell }
+        let running = runs.values.contains { $0 == nil }
+        Group {
+            if shells.isEmpty {
+                ContentUnavailableView("No server open", systemImage: "server.rack",
+                                       description: Text("Open servers in Servers to run commands on them."))
+            } else {
+                List {
+                    Section {
+                        Text(command).font(.body.monospaced()).textSelection(.enabled)
+                    } footer: {
+                        Text("Runs in each account's login shell, without a terminal. For sudo, top and editors, choose one "
+                             + "server in Run on: it runs in that server's terminal.")
+                    }
+                    Section {
+                        ForEach(shells, id: \.host.id) { rows($0, running: running) }
+                    } header: {
+                        Text("Servers")
+                    } footer: {
+                        Text("Pick the servers, then Run. Each one's output appears under it; error output in red.")
+                    }
+                }
+            }
+        }
+        .navigationTitle("Run on Several Servers")
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            if running {
+                Button("Stop", systemImage: "stop.fill") { cancellation?.cancel() }
+                    .help("Stop the command on every server")
+            } else {
+                Button("Run", systemImage: "play.fill") { run(on: shells.filter { picked.contains($0.host.id) }) }
+                    .disabled(!shells.contains { picked.contains($0.host.id) })
+                    .help(shells.contains { picked.contains($0.host.id) } ? "Run it on the servers picked and show each one's output here"
+                          : "Pick the servers to run it on first")
+            }
+        }
+        .onChange(of: isPresented) { if !isPresented { cancellation?.cancel() } }
+    }
+
+    /// A server's row, picked or not, with how its run went; under it, what the run printed.
+    @ViewBuilder private func rows(_ session: Session, running: Bool) -> some View {
+        let id = session.host.id, name = app.data.hosts.first { $0.id == id }?.displayName ?? session.host.displayName
+        Button {
+            if picked.remove(id) == nil { picked.insert(id) }
+        } label: {
+            HStack {
+                Label {
+                    Text(name).foregroundStyle(Color.primary)  // a row, not a link (.primary would be the tint's)
+                } icon: {
+                    Image(systemName: picked.contains(id) ? "checkmark.circle.fill" : "circle")
+                        .foregroundStyle(picked.contains(id) ? Color.teal : Color.secondary)
+                }
+                Spacer()
+                switch runs[id] {
+                case nil: EmptyView()
+                case .some(nil):
+                    ProgressView().controlSize(.small)
+                    Text("Running…").foregroundStyle(.secondary)
+                case .some(.success(let result)?):
+                    Text("Exit status \(result.status)").foregroundStyle(result.status == 0 ? Color.secondary : .red)
+                        .help("0 means it worked; anything else is the command's own error code")
+                case .some(.failure(let error)?):
+                    Text(error.kind == .cancelled ? "Stopped." : error.message).foregroundStyle(.red).lineLimit(2)
+                }
+            }
+        }
+        .disabled(running)
+        .accessibilityIdentifier("server " + name)
+        .accessibilityAddTraits(picked.contains(id) ? .isSelected : [])
+        .help(running ? "Wait for the run to end, or stop it" : picked.contains(id) ? "Leave this server out" : "Run it on this server too")
+        if case .success(let result)?? = runs[id] {
+            let (output, errors) = (Self.shown(result.output), Self.shown(result.stderr))
+            if !output.isEmpty || !errors.isEmpty {
+                Text("\(output)\(output.isEmpty || errors.isEmpty ? "" : "\n")\(Text(errors).foregroundStyle(.red))")
+                    .font(.callout.monospaced())
+                    .textSelection(.enabled)
+                    .accessibilityIdentifier("output " + name)
+            }
+        }
+    }
+
+    /// Runs the command on `sessions` at once; Stop stops them all.
+    private func run(on sessions: [Session]) {
+        let cancellation = Cancellation()
+        self.cancellation = cancellation
+        runs = [:]
+        for session in sessions {
+            let id = session.host.id
+            runs[id] = .some(nil)
+            Task {
+                do {
+                    runs[id] = .success(try await session.run(command, cancellation: cancellation))
+                } catch {
+                    runs[id] = .failure(error as? AirSCPError ?? AirSCPError(.other, error.localizedDescription))
+                }
+            }
+        }
+    }
+
+    /// Output as shown: without its last line break, and its end only when long (laying out a long one takes seconds).
+    private static func shown(_ text: String) -> String {
+        let text = text.replacingOccurrences(of: "\n+$", with: "", options: .regularExpression)
+        return text.count <= 20_000 ? text : "… (the start isn't shown: run it in the server's terminal to see it all)\n" + text.suffix(20_000)
     }
 }
