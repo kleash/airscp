@@ -161,16 +161,18 @@ extension XCTestCase {
 
 extension XCUIApplication {
     /// Shows a place by its tab: in the iPhone's tab bar, among an iPad's tabs at the top, or in the sidebar an iPad shows
-    /// on its side. Tapped again until it is selected (an iPad's tabs at the top can move under a tap); through the
-    /// sidebar when the tabs at the top have paged it out.
+    /// on its side. Tapped again until it is selected (an iPad's tabs at the top can move under a tap), or gone (the
+    /// iPhone's Search turns into the search field); through the sidebar when the tabs at the top have paged it out.
     func show(_ name: String) {
         for _ in 0..<3 {
-            if !tabBars.firstMatch.exists && !tab(name).exists {
+            if !tabBars.firstMatch.exists && !tab(name).waitForExistence(timeout: 2) {
                 buttons.matching(NSPredicate(format: "label CONTAINS[c] 'sidebar'")).firstMatch.tap()
             }
             let tab = tab(name)
+            XCTAssert(tab.waitForExistence(timeout: 10), "No \(name) tab")
             if !tab.isSelected { tab.tap() }
-            if tab.wait(for: \.isSelected, toEqual: true, timeout: 5) { return }
+            let shown = NSPredicate(format: "exists == false OR isSelected == true")
+            if XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: shown, object: tab)], timeout: 5) == .completed { return }
         }
         XCTFail("The \(name) tab doesn't show")
     }
