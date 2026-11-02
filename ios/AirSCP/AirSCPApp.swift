@@ -3,6 +3,11 @@ import SwiftUI
 
 @main
 struct AirSCPApp: App {
+    /// What every window shows (an iPad has several): the saved servers, the open connections with their questions and
+    /// the tray, and the terminals. What a window shows of them is its own (RootView).
+    @State private var app = AppState()
+    @State private var terminals = Terminals()
+
     init() {
         // known_hosts and airscp.json live here; libssh2 writes known_hosts but doesn't make its folder.
         try? FileManager.default.createDirectory(at: Store.directory, withIntermediateDirectories: true)
@@ -14,8 +19,13 @@ struct AirSCPApp: App {
     }
 
     var body: some Scene {
-        WindowGroup { RootView() }
-            .commands { AppCommands() }
+        // A window that Open in New Window opened for a server has its id (nil once shown, and for the others).
+        WindowGroup(for: UUID.self) { $server in
+            RootView(server: $server)
+                .environment(app)
+                .environment(terminals)
+        }
+        .commands { AppCommands() }
     }
 }
 

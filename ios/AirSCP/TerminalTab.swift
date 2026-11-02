@@ -7,13 +7,15 @@ struct TerminalTab: View {
     @Environment(AppState.self) private var app
     @Environment(Terminals.self) private var terminals
     @Environment(\.horizontalSizeClass) private var width
+    /// The terminal this window shows.
+    @Binding var shownID: Terminals.Terminal.ID?
     let goToServers: () -> Void
     @State private var fullWindow = false
 
     var body: some View {
         NavigationStack {
             Group {
-                if let terminal = terminals.shown {
+                if let terminal = terminals.shown(shownID) {
                     // Full Window shows it, and one view for a terminal at a time.
                     (fullWindow ? nil : TerminalPane(terminal: terminal))
                         .navigationTitle(terminals.list.count > 1 ? "" : terminals.name(of: terminal))  // else the switcher's
@@ -28,7 +30,7 @@ struct TerminalTab: View {
         .onAppear { terminals.sync(with: app) }
         .onChange(of: app.states) { terminals.sync(with: app) }
         .fullWindow($fullWindow, escapeLeaves: false) {
-            if let terminal = terminals.shown { TerminalPane(terminal: terminal).navigationTitle(terminals.name(of: terminal)) }
+            if let terminal = terminals.shown(shownID) { TerminalPane(terminal: terminal).navigationTitle(terminals.name(of: terminal)) }
         }
     }
 
@@ -36,12 +38,15 @@ struct TerminalTab: View {
     @ToolbarContentBuilder private func toolbar(_ terminal: Terminals.Terminal) -> some ToolbarContent {
         ToolbarItemGroup(placement: .topBarLeading) {
             if terminals.list.contains(where: { $0 !== terminal && $0.session === terminal.session }) {  // the last one stays
-                Button("Close Terminal", systemImage: "xmark") { terminals.close(terminal) }
-                    .help("Close this terminal and end its shell")
+                Button("Close Terminal", systemImage: "xmark") {
+                    shownID = terminals.list.first { $0 !== terminal && $0.session === terminal.session }?.id
+                    terminals.close(terminal)
+                }
+                .help("Close this terminal and end its shell")
             }
             if terminals.list.count > 1 {
-                Picker("Terminal", selection: Binding(get: { terminals.shown?.id }, set: { terminals.shownID = $0 })) {
-                    ForEach(terminals.list) { Text(terminals.name(of: $0)).tag(Optional($0.id)) }
+                Picker("Terminal", selection: Binding(get: { terminal.id }, set: { shownID = $0 })) {
+                    ForEach(terminals.list) { Text(terminals.name(of: $0)).tag($0.id) }
                 }
                 .pickerStyle(.menu)
                 .help("Show another terminal")
@@ -57,7 +62,7 @@ struct TerminalTab: View {
         ToolbarItem(placement: .topBarTrailing) {
             Menu("New Terminal", systemImage: "plus") {
                 ForEach(app.open.filter { $0.state == .connected && $0.capabilities.shell }, id: \.host.id) { session in
-                    Button(session.host.displayName) { terminals.shownID = terminals.add(on: session).id }
+                    Button(session.host.displayName) { shownID = terminals.add(on: session).id }
                         .help("Open another shell on this server")
                 }
             }
@@ -69,15 +74,16 @@ struct TerminalTab: View {
 /// One terminal (mockup screens 10 and 11) at any size: its screen, and under it the command line with the server's
 /// history as suggestions, then the key bar while the terminal has the keyboard, or the Stop / Return / Type deck.
 struct TerminalPane: View {
-    @Environment(AppState.self) private var app
     @Environment(Terminals.self) private var terminals
     @Environment(\.verticalSizeClass) private var verticalSizeClass
+    @Environment(WindowRequests.self) private var window
     let terminal: Terminals.Terminal
     @State private var command = ""
     @FocusState private var commandFocused: Bool
+    @State private var pane = PaneView()
 
     var body: some View {
-        TerminalScreenView(terminals: terminals, terminal: terminal, shell: terminal.shell)
+        TerminalScreenView(terminals: terminals, terminal: terminal, shell: terminal.shell, pane: pane)
             .id(terminal.id)  // a view of its own for each terminal
             .overlay(alignment: .bottom) { newLines }
             .safeAreaInset(edge: .bottom) { bar }
@@ -88,7 +94,7 @@ struct TerminalPane: View {
     @ViewBuilder private var newLines: some View {
         if terminal.newLines > 0 {
             Button(terminal.newLines == 1 ? "1 new line" : "\(terminal.newLines) new lines", systemImage: "arrow.down") {
-                terminal.view?.showLive()
+                terminal.showLive()
             }
             .buttonStyle(.glass)
             .padding(.bottom, 8)
@@ -162,7 +168,7 @@ struct TerminalPane: View {
             HStack {
                 ForEach(Array(terminal.fileLines.enumerated()), id: \.offset) { _, place in
                     Button("\(RemotePath.name(place.path)):\(place.line)", systemImage: "doc.text") {
-                        app.reveal = AppState.Reveal(hostID: terminal.session.host.id, path: place.path, line: place.line)
+                        window.reveal = AppState.Reveal(hostID: terminal.session.host.id, path: place.path, line: place.line)
                     }
                     .font(.callout.monospaced())
                     .buttonStyle(.glass)
@@ -184,7 +190,7 @@ struct TerminalPane: View {
             Button("Return", systemImage: "return") { terminals.pressReturn(terminal) }
                 .buttonStyle(.glass)
                 .help("Press Return in the shell; a new shell where it ended")
-            Button("Type", systemImage: "keyboard") { _ = terminal.view?.becomeFirstResponder() }
+            Button("Type", systemImage: "keyboard") { _ = pane.view?.becomeFirstResponder() }
                 .buttonStyle(.glass)
                 .help("Show the keyboard to type in the shell")
         }
@@ -227,10 +233,12 @@ struct KeyBar: View {
             }
             .scrollClipDisabled()  // the glass keys' light goes past the bar's top and bottom: only its sides cut them
             .mask { Rectangle().padding(.vertical, -16) }
-            Button("Hide Keyboard", systemImage: "keyboard.chevron.compact.down") { _ = terminal.view?.resignFirstResponder() }
-                .labelStyle(.iconOnly)
-                .buttonStyle(.glass)
-                .help("Hide the keyboard")
+            Button("Hide Keyboard", systemImage: "keyboard.chevron.compact.down") {
+                for view in terminal.views.allObjects { _ = view.resignFirstResponder() }  // in every window that shows it
+            }
+            .labelStyle(.iconOnly)
+            .buttonStyle(.glass)
+            .help("Hide the keyboard")
         }
         .controlSize(.regular)  // small enough to show most of the keys at once, as a keyboard's own keys
     }

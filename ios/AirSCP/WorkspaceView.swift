@@ -19,6 +19,8 @@ struct WorkspaceView: View {
     let session: Session
     /// The sides (the server's first), kept by RootView: a change of layout keeps them.
     let files: FilesModel
+    /// The terminal the window shows: the drawer's too when it is this server's.
+    @Binding var shownID: Terminals.Terminal.ID?
     @State private var drawerOpen = false
     @State private var drawerHeight: CGFloat = 320
     /// The drawer's height when a drag on its bar started.
@@ -29,7 +31,7 @@ struct WorkspaceView: View {
 
     /// The terminal the drawer shows: the one Terminal shows if it is this server's, else this server's first.
     private var terminal: Terminals.Terminal? {
-        terminals.shown.flatMap { $0.session === session ? $0 : nil } ?? terminals.list.first { $0.session === session }
+        terminals.shown(shownID).flatMap { $0.session === session ? $0 : nil } ?? terminals.list.first { $0.session === session }
     }
 
     var body: some View {
@@ -58,7 +60,7 @@ struct WorkspaceView: View {
         .onAppear { terminals.sync(with: app) }
         .onChange(of: app.states) { terminals.sync(with: app) }
         // New Terminal (⌘T) on this server: in the drawer.
-        .onChange(of: terminals.shownID) { if terminals.shown?.session === session { drawerOpen = true } }
+        .onChange(of: shownID) { if terminals.shown(shownID)?.session === session { drawerOpen = true } }
         .onReceive(TransferCenter.shared.$jobs.map { $0.contains(where: \.status.isActive) }.removeDuplicates()) { active in
             if active && wide { showingTransfers = true }
         }
@@ -98,7 +100,7 @@ struct WorkspaceView: View {
             .accessibilityIdentifier("drawer")
             .help(drawerOpen ? "Push the terminal down" : "Pull up the terminal of this server")
             if let terminal, terminals.list.filter({ $0.session === session }).count > 1 {
-                Picker("Terminal", selection: Binding(get: { terminal.id }, set: { terminals.shownID = $0 })) {
+                Picker("Terminal", selection: Binding(get: { terminal.id }, set: { shownID = $0 })) {
                     ForEach(terminals.list.filter { $0.session === session }) { Text(terminals.name(of: $0)).tag($0.id) }
                 }
                 .pickerStyle(.menu)
@@ -106,7 +108,7 @@ struct WorkspaceView: View {
                 .help("Show another terminal of this server")
             }
             Spacer(minLength: 0)
-            Button("New Terminal", systemImage: "plus") { terminals.shownID = terminals.add(on: session).id }
+            Button("New Terminal", systemImage: "plus") { shownID = terminals.add(on: session).id }
                 .disabled(!shell)
                 .help(shell ? "Open another shell on this server" : "Connect to a server that runs commands first")
             Button("Full Window", systemImage: "arrow.up.left.and.arrow.down.right") { fullWindow = true }

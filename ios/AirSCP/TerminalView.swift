@@ -80,12 +80,12 @@ final class TerminalView: UIView, UIKeyInput {
         resizeShell()
     }
 
-    /// Shown again (its tab chosen again; another tab may show the same terminal meanwhile): the output is drawn here, in
-    /// this view's size.
+    /// Shown again (its tab chosen again; another tab or window may show the same terminal meanwhile): the output is drawn
+    /// here too, and the shell gets this view's size.
     override func didMoveToWindow() {
         super.didMoveToWindow()
         guard window != nil else { return }
-        terminal?.view = self
+        terminal?.views.add(self)
         resizeShell()
     }
 
@@ -247,7 +247,7 @@ final class TerminalView: UIView, UIKeyInput {
     override func resignFirstResponder() -> Bool {
         let resigned = super.resignFirstResponder()
         if resigned {
-            terminal?.typing = false
+            terminal?.typing = terminal?.views.allObjects.contains { $0 !== self && $0.isFirstResponder } == true  // another window's
             repeating?.task.cancel()
             repeating = nil
             taken = []
@@ -489,14 +489,22 @@ struct TerminalScreenView: UIViewRepresentable {
     let terminals: Terminals
     let terminal: Terminals.Terminal
     let shell: TerminalSession?
+    /// Where the pane keeps this view, for its Type button: another window may show the terminal in a view of its own.
+    let pane: PaneView
 
     func makeUIView(context: Context) -> TerminalView {
         let view = TerminalView(terminals: terminals, terminal: terminal)
-        terminal.view = view
+        terminal.views.add(view)
+        pane.view = view
         return view
     }
 
     func updateUIView(_ view: TerminalView, context: Context) {
         if view.session !== shell { view.session = shell }
     }
+}
+
+/// A pane's terminal view (`TerminalScreenView`).
+final class PaneView {
+    weak var view: TerminalView?
 }

@@ -25,17 +25,26 @@ enum Place: Hashable, RawRepresentable {
     }
 }
 
-/// The window: tabs on an iPhone; on a regular or wide window (an iPad, the Duo open) the same tabs as a sidebar that
+/// A window: tabs on an iPhone; on a regular or wide window (an iPad, the Duo open) the same tabs as a sidebar that
 /// also lists the open servers, each with its workspace. The layout follows the window's width, not the device, so
-/// Split View, Stage Manager and the Duo's fold come out right; what it shows lives in models, not in the layout.
+/// Split View, Stage Manager and the Duo's fold come out right; what it shows lives in models, not in the layout. An
+/// iPad has several windows: the servers, connections, transfers, tray and terminals are the app's (AirSCPApp), what a
+/// window shows of them is its own (here).
 struct RootView: View {
     // The place each window was in comes back when iOS restores it (and when the Duo folds or opens).
     @SceneStorage("place") private var place = Place.servers
-    @State private var app = AppState()
-    @State private var terminals = Terminals()
+    @Environment(AppState.self) private var app
+    @Environment(Terminals.self) private var terminals
+    @Environment(\.openWindow) private var openWindow
+    @Environment(\.supportsMultipleWindows) private var supportsMultipleWindows
+    /// The server whose workspace this window opened for (Open in New Window); nil once shown.
+    @Binding var server: UUID?
     /// The Files tab's two sides, and each workspace's.
     @State private var files = FilesModel()
     @State private var workspaceFiles = WorkspaceFiles()
+    /// The terminal this window shows: in the Terminal tab, and in a workspace's drawer when it is that server's.
+    @State private var shownTerminal: Terminals.Terminal.ID?
+    @State private var requests = WindowRequests()
     /// The workspace that showed when the window narrowed: the Files tab shows its sides until it widens again.
     @State private var narrowed: UUID?
     /// Whether the open servers' tabs are listed: `showsWorkspaces`, but going a moment later. Gone in the same change as
@@ -58,7 +67,7 @@ struct RootView: View {
             // one reconnects by itself, or says why it can't.
             .onChange(of: phase) { if phase == .active { for session in app.open { Task { _ = await session.check() } } } }
             .transfersAccessory { place = .transfers }
-            .traySheet(app.tray)
+            .traySheet($requests.tray)
             .modifier(WideWindow())
             // The menu bar's shortcuts (AppCommands) act on this window.
             .focusedSceneValue(\.go, go)
@@ -77,8 +86,6 @@ struct RootView: View {
                     if place == .files, app.session(for: id) != nil { place = .server(id) }
                 }
             }
-            .environment(app)
-            .environment(terminals)
             // A connection's question (Trust, password, passphrase, code), whichever tab is showing.
             .sheet(item: Binding(get: { app.questions.first }, set: { if $0 == nil, let first = app.questions.first { app.answer(first, nil) } })) {
                 QuestionSheet(question: $0).environment(app)
@@ -96,6 +103,7 @@ struct RootView: View {
             } message: { failure in
                 Text(failure.message)
             }
+            .environment(requests)
             .tint(.teal)  // after the sheet and alerts, so they get it too
     }
 
@@ -108,7 +116,7 @@ struct RootView: View {
                 FilesView(model: narrowed.map(workspaceFiles.model) ?? files) { place = .servers }
             }
             Tab("Terminal", systemImage: "apple.terminal", value: .terminal) {
-                TerminalTab { place = .servers }
+                TerminalTab(shownID: $shownTerminal) { place = .servers }
             }
             Tab("Transfers", systemImage: "arrow.up.arrow.down", value: .transfers) {
                 TransfersView()
@@ -118,21 +126,27 @@ struct RootView: View {
                     place = .servers
                     app.connect(host)
                 } run: { command, session in
-                    terminals.run(command, on: session)
+                    shownTerminal = terminals.run(command, on: session, shown: terminals.shown(shownTerminal)).id
                     place = .terminal
                 }
             }
             openServers
         }
-        // Search's or the terminal's file: shown in the Files tab (one taker, though workspaces have Files views too).
-        .onChange(of: app.reveal?.id) {
-            guard let reveal = app.reveal else { return }
-            app.reveal = nil
+        // Search's or the terminal's file: shown in this window's Files tab (though workspaces have Files views too).
+        .onChange(of: requests.reveal) {
+            guard let reveal = requests.reveal else { return }
+            requests.reveal = nil
             (narrowed.map(workspaceFiles.model) ?? files).show(reveal, app)
             place = .files
         }
         .onChange(of: showsWorkspaces, initial: true) { _, shown in
             if shown { listsWorkspaces = true } else { Task { listsWorkspaces = false } }
+        }
+        // Opened for a server: its workspace, or on a narrow window its files in the Files tab.
+        .onAppear {
+            guard let id = server else { return }
+            server = nil
+            if showsWorkspaces { place = .server(id) } else { (narrowed, place) = (id, .files) }
         }
     }
 
@@ -142,10 +156,14 @@ struct RootView: View {
             ForEach(listsWorkspaces ? app.open : [], id: \.host.id) { session in
                 Tab(app.data.hosts.first { $0.id == session.host.id }?.displayName ?? session.host.displayName,
                     systemImage: "server.rack", value: Place.server(session.host.id)) {
-                    WorkspaceView(session: session, files: workspaceFiles.model(session.host.id))
+                    WorkspaceView(session: session, files: workspaceFiles.model(session.host.id), shownID: $shownTerminal)
                 }
                 .accessibilityIdentifier("workspace")
                 .contextMenu {
+                    if supportsMultipleWindows {
+                        Button("Open in New Window", systemImage: "macwindow.badge.plus") { openWindow(value: session.host.id) }
+                            .help("Show this server in a window of its own, next to this one")
+                    }
                     Button("Disconnect", systemImage: "xmark.circle") { app.disconnect(session) }
                         .help("Close the connection to this server")
                 }
@@ -163,15 +181,23 @@ struct RootView: View {
     private var terminalServer: Session? {
         let shells = app.open.filter { app.states[$0.host.id] == .connected && $0.capabilities.shell }
         if case .server(let id) = place { return shells.first { $0.host.id == id } }
-        return shells.first { $0 === terminals.shown?.session } ?? shells.last
+        return shells.first { $0 === terminals.shown(shownTerminal)?.session } ?? shells.last
     }
 
     /// New Terminal (⌘T): shown in the workspace's drawer, else in the Terminal tab.
     private func newTerminal(on session: Session) {
-        terminals.shownID = terminals.add(on: session).id
+        shownTerminal = terminals.add(on: session).id
         if case .server = place { return }
         place = .terminal
     }
+}
+
+/// What a window's views ask of the window (one for each, kept by RootView, which does it).
+@Observable final class WindowRequests {
+    /// Show a server's file or folder in the Files tab: Search's files found, the terminal's file:line.
+    var reveal: AppState.Reveal?
+    /// Show the tray's sheet, with the folder each open server shows in Files (Send puts the items there).
+    var tray: [UUID: String]?
 }
 
 /// `\.wide` for the window's views: 1100 pt or more across. Its own state, not RootView's: RootView's body made again

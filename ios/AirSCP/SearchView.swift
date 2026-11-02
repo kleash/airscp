@@ -119,7 +119,7 @@ struct SearchView: View {
 /// Find Files on an open server (Core's `Session.find`): what is below the home folder whose name holds the text. One
 /// opens in Files: a folder shown, a file selected in its folder.
 struct FoundFiles: View {
-    @Environment(AppState.self) private var app
+    @Environment(WindowRequests.self) private var window
     let session: Session
     let text: String
     @State private var found: [FoundItem]?
@@ -134,7 +134,7 @@ struct FoundFiles: View {
             } else if let found {
                 List(found, id: \.path) { item in
                     Button {
-                        app.reveal = AppState.Reveal(hostID: session.host.id, path: item.path, isFolder: item.isFolder)
+                        window.reveal = AppState.Reveal(hostID: session.host.id, path: item.path, isFolder: item.isFolder)
                     } label: {
                         Label(item.path, systemImage: item.isFolder ? "folder" : "doc").foregroundStyle(Color.primary)
                     }

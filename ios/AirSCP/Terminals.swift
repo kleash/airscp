@@ -4,9 +4,11 @@ import SwiftUI
 
 /// The terminals (2e): AirSCP's own shell on each open server, as the Mac's Terminal tab starts it (bash and zsh mark
 /// their commands), over the server's connection: no second login. New Terminal adds more. The commands run go into
-/// the server's history (Core's `CommandHistory`), which the command line and Search offer again.
+/// the server's history (Core's `CommandHistory`), which the command line and Search offer again. The app's, as the
+/// connections are: every window shows them, and they outlive the window that opened them; which one a window shows is
+/// its own (RootView).
 @MainActor @Observable final class Terminals {
-    /// One shell on a server, and the state of the view that shows it (`TerminalPane`).
+    /// One shell on a server, and the state of the views that show it (`TerminalPane`).
     @MainActor @Observable final class Terminal: Identifiable {
         let id = UUID()
         let session: Session
@@ -15,15 +17,15 @@ import SwiftUI
         fileprivate(set) var shell: TerminalSession?
         /// The key bar's Ctrl, for the next key.
         var ctrl = false
-        /// Its view has the keyboard: the key bar shows, not the Stop / Return / Type deck.
+        /// A view of it has the keyboard: the key bar shows, not the Stop / Return / Type deck.
         var typing = false
-        /// Lines that came while its view is scrolled back.
+        /// Lines that came while a view of it is scrolled back.
         var newLines = 0
         /// The files on the server that the last command named with a line ("src/main.c:12"): "Open file:line".
         var fileLines: [(path: String, line: Int)] = []
         @ObservationIgnored fileprivate var finding: Task<Void, Never>?
-        /// The view that shows it, while one does.
-        @ObservationIgnored weak var view: TerminalView?
+        /// The views that show it: one in each window that does.
+        let views = NSHashTable<TerminalView>.weakObjects()
         /// A command to type once the shell waits at its prompt (Run on, the command line while it starts).
         fileprivate var pending: String?
         fileprivate var starting = false
@@ -32,12 +34,16 @@ import SwiftUI
             self.session = session
             self.history = history
         }
+
+        /// Its views back at the live screen (where typing shows).
+        func showLive() {
+            for view in views.allObjects { view.showLive() }
+        }
     }
 
     private(set) var list: [Terminal] = []
-    var shownID: Terminal.ID?
-    /// The terminal the Terminal tab shows.
-    var shown: Terminal? { list.first { $0.id == shownID } ?? list.first }
+    /// The terminal a window shows: the one it chose, else the first.
+    func shown(_ id: Terminal.ID?) -> Terminal? { list.first { $0.id == id } ?? list.first }
     /// Why a shell couldn't start.
     var failure: AirSCPError?
     /// One history per server, shared by its terminals (each would otherwise write over the others' file).
@@ -66,7 +72,6 @@ import SwiftUI
     func close(_ terminal: Terminal) {
         terminal.shell?.close()
         list.removeAll { $0 === terminal }
-        if shownID == terminal.id { shownID = list.first { $0.session === terminal.session }?.id }
     }
 
     func history(for host: UUID) -> CommandHistory {
@@ -90,7 +95,7 @@ import SwiftUI
     private func start(_ terminal: Terminal) {
         guard !terminal.starting, let transport = terminal.session.transport else { return }
         terminal.starting = true
-        let size = terminal.view?.gridSize ?? (columns: 80, rows: 24)
+        let size = terminal.views.anyObject?.gridSize ?? (columns: 80, rows: 24)
         let screen = TerminalScreen(columns: size.columns, rows: size.rows)
         let token = UUID().uuidString.replacingOccurrences(of: "-", with: "").lowercased()
         screen.markToken = token
@@ -125,7 +130,7 @@ import SwiftUI
             terminal.pending = nil
             type(pending, in: terminal)
         }
-        terminal.view?.screenChanged()
+        for view in terminal.views.allObjects { view.screenChanged() }
     }
 
     private func ended(_ terminal: Terminal, _ status: Int32) {
@@ -173,7 +178,7 @@ import SwiftUI
         terminal.ctrl = false
         guard let keys = TerminalSession.keys(keyCode: keyCode, characters: characters, control: control, option: false,
                                               shift: false, applicationCursor: shell.screen.applicationCursorKeys) else { return }
-        terminal.view?.showLive()
+        terminal.showLive()
         shell.send(keys)
     }
 
@@ -193,20 +198,21 @@ import SwiftUI
         }
     }
 
-    /// Search's Run on: `command` at an empty prompt of a terminal on `session`'s server (the shown one first), else in a
-    /// new terminal there once its shell waits at its prompt, as the Mac's Run in Terminal never types into a program.
-    func run(_ command: String, on session: Session) {
+    /// Search's Run on: `command` at an empty prompt of a terminal on `session`'s server (`shown` first), else in a new
+    /// terminal there once its shell waits at its prompt, as the Mac's Run in Terminal never types into a program. Returns
+    /// the terminal, for the window to show.
+    func run(_ command: String, on session: Session, shown: Terminal?) -> Terminal {
         let ready = ([shown].compactMap { $0 } + list).first {
             $0.session === session && $0.shell?.running == true && $0.shell?.screen.waitsAtPrompt == true
         }
         let terminal = ready ?? add(on: session)
-        shownID = terminal.id
         if ready != nil { type(command, in: terminal) } else { terminal.pending = command }
+        return terminal
     }
 
     private func type(_ command: String, in terminal: Terminal) {
         terminal.history.add(command)
-        terminal.view?.showLive()
+        terminal.showLive()
         terminal.shell?.send(command + "\r")
     }
 }

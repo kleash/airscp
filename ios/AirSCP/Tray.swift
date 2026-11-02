@@ -14,10 +14,6 @@ import SwiftUI
     }
 
     private(set) var items: [Item] = []
-    /// The tray's sheet is showing (over everything: `traySheet()` on the root view), with the folder each open server
-    /// shows in Files.
-    var showing = false
-    var folders: [UUID: String] = [:]
 
     /// Adds the items that aren't in the tray yet.
     func add(_ new: [Item]) {
@@ -33,23 +29,24 @@ import SwiftUI
 /// (Send puts the items there; elsewhere into the server's home folder).
 struct TrayButton: View {
     @Environment(AppState.self) private var app
+    @Environment(WindowRequests.self) private var window
     var folders: [UUID: String] = [:]
 
     var body: some View {
-        Button("Tray", systemImage: app.tray.items.isEmpty ? "tray" : "tray.full") {
-            app.tray.folders = folders
-            app.tray.showing = true
-        }
-        .badge(app.tray.items.count)
-        .accessibilityValue(app.tray.items.count == 1 ? "1 item" : "\(app.tray.items.count) items")
-        .help("Show the files in the tray, to send, save or share them together")
+        Button("Tray", systemImage: app.tray.items.isEmpty ? "tray" : "tray.full") { window.tray = folders }
+            .badge(app.tray.items.count)
+            .accessibilityValue(app.tray.items.count == 1 ? "1 item" : "\(app.tray.items.count) items")
+            .help("Show the files in the tray, to send, save or share them together")
     }
 }
 
 extension View {
-    /// The tray's sheet, from the root view: a sheet of a toolbar button goes when the toolbar is made again.
-    func traySheet(_ tray: Tray) -> some View {
-        sheet(isPresented: Binding(get: { tray.showing }, set: { tray.showing = $0 })) { TraySheet(folders: tray.folders) }
+    /// The tray's sheet in a window (`folders` while it shows), from its root view: a sheet of a toolbar button goes when the
+    /// toolbar is made again.
+    func traySheet(_ folders: Binding<[UUID: String]?>) -> some View {
+        sheet(isPresented: Binding(get: { folders.wrappedValue != nil }, set: { if !$0 { folders.wrappedValue = nil } })) {
+            TraySheet(folders: folders.wrappedValue ?? [:])
+        }
     }
 }
 

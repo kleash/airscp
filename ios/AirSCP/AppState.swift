@@ -3,8 +3,8 @@ import AirSCPSSH2
 import Observation
 import SwiftUI
 
-/// The saved servers and the open connections, with the questions they ask (shown one at a time as a sheet).
-/// Session callbacks arrive on the main queue.
+/// The saved servers and the open connections, with the questions they ask (shown one at a time as a sheet). The app's:
+/// every window (several on an iPad) shows the same. Session callbacks arrive on the main queue.
 @Observable final class AppState {
     var data = Store.load()
     /// Open connections, saved servers' and quick connects', in the order opened.
@@ -17,12 +17,10 @@ import SwiftUI
     var failure: AirSCPError?
     /// Files picked to carry elsewhere together.
     let tray = Tray()
-    /// "Show this" from Search or the terminal: the Files tab shows it (a folder opened, a file selected in its folder, or
-    /// with a `line` edited there), then sets it back to nil.
-    var reveal: Reveal?
 
+    /// "Show this" from Search or the terminal, for a window's Files tab (`WindowRequests`): a folder opened, a file
+    /// selected in its folder, or with a `line` edited there.
     struct Reveal: Equatable {
-        let id = UUID()
         let hostID: UUID
         let path: String
         var isFolder = false
