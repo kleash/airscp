@@ -90,12 +90,18 @@ struct ServersView: View {
                     }
             }
             .toolbar {
-                Button("Settings", systemImage: "gearshape") { showingSettings = true }
-                    .help("Show settings: your keys and the servers you trust")
-                Button("Nearby", systemImage: "dot.radiowaves.left.and.right") { showingNearby = true }
-                    .help("Find servers on this network")
-                Button("Add Server", systemImage: "plus") { editing = SSHHost() }
-                    .help("Add a server to log in to")
+                // Settings at the leading edge: an iPad's tabs at the top leave room for two buttons at the trailing
+                // edge, and put a third in a More menu.
+                ToolbarItem(placement: .topBarLeading) {
+                    Button("Settings", systemImage: "gearshape") { showingSettings = true }
+                        .help("Show settings: your keys and the servers you trust")
+                }
+                ToolbarItemGroup {
+                    Button("Nearby", systemImage: "dot.radiowaves.left.and.right") { showingNearby = true }
+                        .help("Find servers on this network")
+                    Button("Add Server", systemImage: "plus") { editing = SSHHost() }
+                        .help("Add a server to log in to")
+                }
             }
             .sheet(isPresented: $showingSettings) { SettingsView() }
             .sheet(isPresented: $showingNearby) {

@@ -57,14 +57,20 @@ struct TransfersList: View {
             }
         }
         .toolbar {
-            TrayButton()
-            if background.stoppedByIOS, now.contains(where: TransferText.canResume) {
-                Button("Resume All") { center.resume(Set(now.filter(TransferText.canResume).map(\.id))) }
-                    .help("Continue every paused transfer")
+            // Clear Done at the leading edge: an iPad's tabs at the top leave room for two buttons at the trailing edge,
+            // and put a third in a More menu.
+            ToolbarItem(placement: .topBarLeading) {
+                Button("Clear Done") { done.forEach { center.remove($0.id) } }
+                    .disabled(done.isEmpty)
+                    .help(done.isEmpty ? "Nothing is done yet" : "Take the finished transfers off the list")
             }
-            Button("Clear Done") { done.forEach { center.remove($0.id) } }
-                .disabled(done.isEmpty)
-                .help(done.isEmpty ? "Nothing is done yet" : "Take the finished transfers off the list")
+            ToolbarItemGroup {
+                TrayButton()
+                if background.stoppedByIOS, now.contains(where: TransferText.canResume) {
+                    Button("Resume All") { center.resume(Set(now.filter(TransferText.canResume).map(\.id))) }
+                        .help("Continue every paused transfer")
+                }
+            }
         }
         .task(id: running) {
             speeds = SpeedHistory()
