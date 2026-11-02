@@ -69,7 +69,7 @@ final class MonitorTests: XCTestCase {
         openMonitor(app)
 
         // Away (the Monitor screen stays under the Servers tab): once a read under way is done, the connection is quiet.
-        place("Transfers", in: app).tap()
+        show("Transfers", until: app.navigationBars["Transfers"], in: app)
         var quiet = try await lab.wakeups(of: mine)
         for _ in 0..<10 {
             try await Task.sleep(for: .seconds(1))
@@ -83,8 +83,7 @@ final class MonitorTests: XCTestCase {
         XCTAssertEqual(after, quiet, "The app read the server while nothing of it showed")
 
         // Back: the screen reads again.
-        place("Servers", in: app).tap()
-        XCTAssert(app.descendants(matching: .any)["monitor.cpu"].waitForExistence(timeout: 10))
+        show("Servers", until: app.descendants(matching: .any)["monitor.cpu"], in: app)
         let read = await eventually { try await self.lab.wakeups(of: mine) > after }
         XCTAssert(read, "No read after coming back")
     }
@@ -171,10 +170,18 @@ final class MonitorTests: XCTestCase {
         XCTAssert(cpu.exists, "No Monitor screen")
     }
 
-    /// A place's tab: a tab bar's button, an iPad's tabs at the top, or a row of an iPad-sized window's sidebar.
-    @MainActor private func place(_ name: String, in app: XCUIApplication) -> XCUIElement {
-        let button = app.tab(name)
-        return button.exists ? button : app.cells.matching(NSPredicate(format: "label == %@", name)).firstMatch
+    /// Shows a place by its tab (a tab bar's button, an iPad's tabs at the top, or a row of an iPad-sized window's
+    /// sidebar) until `element` is there: an iPad's floating tabs can shift under a tap.
+    @MainActor private func show(_ name: String, until element: XCUIElement, in app: XCUIApplication) {
+        for _ in 0..<3 where !element.exists {
+            let button = app.tab(name), row = app.cells.matching(NSPredicate(format: "label == %@", name)).firstMatch
+            if !button.exists && !row.exists {  // paged out of the floating tabs: the sidebar has it
+                app.buttons.matching(NSPredicate(format: "label CONTAINS[c] 'sidebar'")).firstMatch.tap()
+            }
+            (button.exists ? button : row).tap()
+            _ = element.waitForExistence(timeout: 5)
+        }
+        XCTAssert(element.exists, "\(name) doesn't show")
     }
 
     /// The app's connection on the lab: the one dev's connection that wasn't there before it logged in.
