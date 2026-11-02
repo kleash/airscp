@@ -28,10 +28,9 @@ final class ServersTests: XCTestCase {
         return (file as? [String: Any])?["hosts"] as? [[String: Any]] ?? []
     }
 
-    /// Tapped again until it has the keyboard: on an iPad, the first tap after the port only closes its number pad (a
-    /// popover over the whole window).
     private func type(_ text: String, into field: XCUIElement) {
-        field.typeWithFocus(text)
+        field.tap()
+        field.typeText(text)
     }
 
     func testAServerIsAddedEditedAndDeleted() throws {
@@ -40,6 +39,8 @@ final class ServersTests: XCTestCase {
         XCTAssert(app.textFields["Address"].waitForExistence(timeout: 5))
         type("web-01.example.com", into: app.textFields["Address"])
         type("2222", into: app.textFields["Port"])
+        // An iPad's number pad for the port is a popover over the whole window: a tap on the title bar closes it.
+        app.navigationBars["New Server"].coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
         let save = app.navigationBars.buttons["Save"]
         XCTAssertFalse(save.isEnabled)  // no user yet
         type("deploy", into: app.textFields["User"])
@@ -98,7 +99,9 @@ final class ServersTests: XCTestCase {
         let alert = app.alerts["Can't connect"]
         XCTAssert(alert.waitForExistence(timeout: 15))
         alert.buttons["OK"].tap()
-        let row = app.staticTexts["admin@127.0.0.1:1"]
+        // Servers' row: an iPad on its side lists the open server in the sidebar too (a "workspace" row).
+        let row = app.cells.matching(NSPredicate(format: "identifier != 'workspace'"))
+            .containing(.staticText, identifier: "admin@127.0.0.1:1").firstMatch
         XCTAssert(row.waitForExistence(timeout: 5))
         // A failed connect leaves the session idle ("Not connected"); one that drops says why ("Disconnected: …").
         let disconnected = app.staticTexts.matching(NSPredicate(format: "label == 'Not connected' OR label BEGINSWITH 'Disconnected: '"))
