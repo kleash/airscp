@@ -62,6 +62,8 @@ final class TerminalView: UIView, UIKeyInput {
         addGestureRecognizer(UILongPressGestureRecognizer(target: self, action: #selector(pressed(_:))))
         let rightClick = UITapGestureRecognizer(target: self, action: #selector(rightClicked(_:)))
         rightClick.buttonMaskRequired = .secondary
+        // A pointer's only: the button mask doesn't hold back a finger's tap, which then showed the menu, not the keyboard.
+        rightClick.allowedTouchTypes = [UITouch.TouchType.indirectPointer.rawValue as NSNumber]
         addGestureRecognizer(rightClick)
         addInteraction(editMenu)
         addInteraction(UIPointerInteraction(delegate: self))
@@ -99,6 +101,8 @@ final class TerminalView: UIView, UIKeyInput {
         let size = gridSize
         if size.columns != session.screen.columns || size.rows != session.screen.rows {
             session.resize(columns: size.columns, rows: size.rows)
+            // A taller screen takes lines back from the scrollback: not a clear, which shows the live screen.
+            scrollbackSeen = session.screen.scrollback.count
         }
         setNeedsDisplay()
     }

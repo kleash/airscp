@@ -103,7 +103,7 @@ final class TerminalTests: XCTestCase {
         let terminal = showTerminal(app)
         let line = app.textFields["commandLine"]
         line.tap()
-        line.typeText("seq 1 200; sleep 6; echo late-$((5*5))\n")
+        line.typeText("seq 1 200; for i in $(seq 10); do sleep 1; echo tick-$i; done\n")  // a line a second, then the prompt
         XCTAssert(terminal.shows("200"), terminal.text)
         terminal.scroll(byDeltaX: 0, deltaY: -300)  // back, as a list scrolls up
         let newLines = app.buttons.matching(NSPredicate(format: "label ENDSWITH 'new line' OR label ENDSWITH 'new lines'")).firstMatch
