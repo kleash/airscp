@@ -167,7 +167,9 @@ final class FilesTests: XCTestCase {
                           || app.navigationBars.buttons.containing(NSPredicate(format: "label BEGINSWITH %@", place)).firstMatch.exists)
             }
         }
-        XCTAssert(file.waitForExistence(timeout: 30), "The saved file isn't in the document picker")
+        // Earlier runs' files are there too, in name order: scrolled to when a name of this run's sorts further down.
+        for _ in 0..<10 where !file.waitForExistence(timeout: 5) { app.swipeUp() }
+        XCTAssert(file.exists, "The saved file isn't in the document picker")
         keepScreenshot("Import from Files")
         file.tap()  // several can be picked: it's selected, and Open takes the selection
         let enabled = XCTNSPredicateExpectation(predicate: NSPredicate(format: "exists == true AND isEnabled == true"), object: open)
