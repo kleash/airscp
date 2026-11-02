@@ -95,6 +95,34 @@ final class TerminalTests: XCTestCase {
         XCTAssert(close.waitForNonExistence(timeout: 10), "The last terminal can be closed")
     }
 
+    /// An iPad's pointer: scrolling (a trackpad's, a mouse's) goes back through the scrollback, so output that comes
+    /// meanwhile is counted; a right-click shows the edit menu that touch and hold shows.
+    @MainActor func testAPointerScrollsBackAndRightClickShowsTheEditMenu() throws {
+        try XCTSkipUnless(UIDevice.current.userInterfaceIdiom == .pad, "iPad only: an iPhone has no pointer")
+        let app = launchConnectedToLab(folder)
+        let terminal = showTerminal(app)
+        let line = app.textFields["commandLine"]
+        line.tap()
+        line.typeText("seq 1 200; sleep 6; echo late-$((5*5))\n")
+        XCTAssert(terminal.shows("200"), terminal.text)
+        terminal.scroll(byDeltaX: 0, deltaY: -300)  // back, as a list scrolls up
+        let newLines = app.buttons.matching(NSPredicate(format: "label ENDSWITH 'new line' OR label ENDSWITH 'new lines'")).firstMatch
+        XCTAssert(newLines.waitForExistence(timeout: 20), "Scrolling didn't go back: no new lines counted")
+        keepScreenshot("Scrolled back")
+        newLines.tap()
+        XCTAssert(newLines.waitForNonExistence(timeout: 10))
+
+        // A pointer's menu has buttons; the one Select All shows again may have menu items.
+        terminal.rightClick()
+        let selectAll = app.buttons["Select All"]
+        XCTAssert(selectAll.waitForExistence(timeout: 10), "No edit menu on a right-click")
+        keepScreenshot("Right-click")
+        selectAll.tap()
+        let copy = NSPredicate(format: "label == 'Copy' AND (elementType == %d OR elementType == %d)",
+                               XCUIElement.ElementType.button.rawValue, XCUIElement.ElementType.menuItem.rawValue)
+        XCTAssert(app.descendants(matching: .any).matching(copy).firstMatch.waitForExistence(timeout: 10), "Select All selected nothing")
+    }
+
     /// Keeps a screenshot in the test's results, to look at the terminal in light and dark.
     private func keepScreenshot(_ name: String) {
         let screenshot = XCTAttachment(screenshot: XCUIScreen.main.screenshot())

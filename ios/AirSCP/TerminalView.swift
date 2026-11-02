@@ -4,9 +4,9 @@ import UIKit
 
 /// A terminal's screen (Core's `TerminalScreen`), drawn cell by cell as the Mac's TerminalView draws it: colours, bold,
 /// the cursor; one view for each terminal shown. Typing goes to the shell (UIKeyInput), and so do a hardware keyboard's arrows, Escape, Tab and
-/// Control keys; a held key repeats. A drag goes through the scrollback (full-screen programs get arrow keys), a pinch
-/// changes the size, touch and hold selects text (Copy, Paste, Select All), and the shell's terminal gets the columns and
-/// rows that fit.
+/// Control keys; a held key repeats. A drag, or a trackpad's or mouse's scrolling, goes through the scrollback (full-screen
+/// programs get arrow keys), a pinch changes the size, touch and hold selects text (Copy, Paste, Select All; a right-click
+/// shows them too), and the shell's terminal gets the columns and rows that fit. A pointer over it is a text cursor.
 final class TerminalView: UIView, UIKeyInput {
     /// The Mac's key codes that `TerminalSession.keys` takes; `anyKey` is none of them: the characters count.
     static let returnKey: UInt16 = 36, anyKey = UInt16.max
@@ -56,10 +56,15 @@ final class TerminalView: UIView, UIKeyInput {
         addGestureRecognizer(UITapGestureRecognizer(target: self, action: #selector(tapped)))
         let drag = UIPanGestureRecognizer(target: self, action: #selector(dragged(_:)))
         drag.maximumNumberOfTouches = 1  // two are a pinch
+        drag.allowedScrollTypesMask = .all
         addGestureRecognizer(drag)
         addGestureRecognizer(UIPinchGestureRecognizer(target: self, action: #selector(pinched(_:))))
         addGestureRecognizer(UILongPressGestureRecognizer(target: self, action: #selector(pressed(_:))))
+        let rightClick = UITapGestureRecognizer(target: self, action: #selector(rightClicked(_:)))
+        rightClick.buttonMaskRequired = .secondary
+        addGestureRecognizer(rightClick)
         addInteraction(editMenu)
+        addInteraction(UIPointerInteraction(delegate: self))
     }
 
     required init?(coder: NSCoder) { fatalError("not used") }
@@ -438,6 +443,11 @@ final class TerminalView: UIView, UIKeyInput {
         setNeedsDisplay()
     }
 
+    /// A right-click: the edit menu there, as touch and hold shows it.
+    @objc private func rightClicked(_ click: UITapGestureRecognizer) {
+        editMenu.presentEditMenu(with: UIEditMenuConfiguration(identifier: nil, sourcePoint: click.location(in: self)))
+    }
+
     @objc private func dragged(_ drag: UIPanGestureRecognizer) {
         guard let session else { return }
         let screen = session.screen
@@ -481,6 +491,13 @@ extension TerminalView: UIEditMenuInteractionDelegate {
             actions.append(UIAction(title: "Select All") { [weak self] _ in self?.selectAll(nil) })
         }
         return UIMenu(children: actions)
+    }
+}
+
+extension TerminalView: UIPointerInteractionDelegate {
+    /// A pointer over the text is a text cursor, a line tall.
+    func pointerInteraction(_ interaction: UIPointerInteraction, styleFor region: UIPointerRegion) -> UIPointerStyle? {
+        UIPointerStyle(shape: .verticalBeam(length: cellHeight))
     }
 }
 
