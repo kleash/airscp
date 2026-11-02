@@ -33,8 +33,11 @@ struct TrayButton: View {
     var folders: [UUID: String] = [:]
 
     var body: some View {
-        Button("Tray", systemImage: app.tray.items.isEmpty ? "tray" : "tray.full") { window.tray = folders }
+        // An image for a label: iOS 27 gives a Button("Tray", systemImage:) in a bar its badge's value in place of this one,
+        // none for an empty tray.
+        Button { window.tray = folders } label: { Image(systemName: app.tray.items.isEmpty ? "tray" : "tray.full") }
             .badge(app.tray.items.count)
+            .accessibilityLabel("Tray")
             .accessibilityValue(app.tray.items.count == 1 ? "1 item" : "\(app.tray.items.count) items")
             .help("Show the files in the tray, to send, save or share them together")
     }
