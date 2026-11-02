@@ -638,7 +638,10 @@ struct SideView: View {
                     Text(model.sides[1].name(app)).tag(1)
                 }
                 .pickerStyle(.segmented)
-                .frame(maxWidth: 280)
+                // Its own width, up to what a phone's bar has room for next to its buttons: sized by the bar, it kept
+                // the width the bar had while the Duo folded, and cut “On iPhone” short.
+                .frame(maxWidth: 200)
+                .fixedSize()
                 .help("Switch between the two sides: Send copies to the side not shown")
             }
         }
