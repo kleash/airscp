@@ -38,6 +38,10 @@ struct RootView: View {
     @State private var workspaceFiles = WorkspaceFiles()
     /// The workspace that showed when the window narrowed: the Files tab shows its sides until it widens again.
     @State private var narrowed: UUID?
+    /// Whether the open servers' tabs are listed: `showsWorkspaces`, but going a moment later. Gone in the same change as
+    /// the tab bar's style while one showed (folding a Duo), UIKit stopped the app; by then the handler below has moved
+    /// the window to Files.
+    @State private var listsWorkspaces = false
     @Environment(\.horizontalSizeClass) private var widthClass
     @Environment(\.verticalSizeClass) private var heightClass
     @Environment(\.scenePhase) private var phase
@@ -127,12 +131,15 @@ struct RootView: View {
             (narrowed.map(workspaceFiles.model) ?? files).show(reveal, app)
             place = .files
         }
+        .onChange(of: showsWorkspaces, initial: true) { _, shown in
+            if shown { listsWorkspaces = true } else { Task { listsWorkspaces = false } }
+        }
     }
 
     /// Each open server's workspace, in the sidebar.
     private var openServers: some TabContent<Place> {
         TabSection("Open") {
-            ForEach(showsWorkspaces ? app.open : [], id: \.host.id) { session in
+            ForEach(listsWorkspaces ? app.open : [], id: \.host.id) { session in
                 Tab(app.data.hosts.first { $0.id == session.host.id }?.displayName ?? session.host.displayName,
                     systemImage: "server.rack", value: Place.server(session.host.id)) {
                     WorkspaceView(session: session, files: workspaceFiles.model(session.host.id))
