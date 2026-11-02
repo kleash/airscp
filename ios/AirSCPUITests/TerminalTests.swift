@@ -35,10 +35,10 @@ final class TerminalTests: XCTestCase {
         XCTAssert(terminal.shows("after-2"), terminal.text)
 
         // A hardware keyboard's Control-C, and its up arrow: the command before, again. The Simulator lets the first
-        // Control or ⌘ key after a launch through as the plain key (Settings' search field does it too): then again.
+        // Control or ⌘ keys after a launch through as plain keys (Settings' search field does it too): then again.
         app.typeText("sleep 100\n")
         app.typeKey("c", modifierFlags: .control)
-        if !terminal.shows("^C", times: 2, within: 5) { app.typeKey("c", modifierFlags: .control) }
+        for _ in 0..<3 where !terminal.shows("^C", times: 2, within: 5) { app.typeKey("c", modifierFlags: .control) }
         app.typeText("echo keys-$((2+2))\n")
         XCTAssert(terminal.shows("keys-4"), terminal.text)
         app.typeKey(.upArrow, modifierFlags: [])
