@@ -28,9 +28,10 @@ final class ServersTests: XCTestCase {
         return (file as? [String: Any])?["hosts"] as? [[String: Any]] ?? []
     }
 
+    /// Tapped again until it has the keyboard: on an iPad, the first tap after the port only closes its number pad (a
+    /// popover over the whole window).
     private func type(_ text: String, into field: XCUIElement) {
-        field.tap()
-        field.typeText(text)
+        field.typeWithFocus(text)
     }
 
     func testAServerIsAddedEditedAndDeleted() throws {
