@@ -213,6 +213,13 @@ extension XCUIApplication {
         return button
     }
 
+    /// A sheet's Save or Cancel, once the sheet shows: in its navigation bar, or in the rail at the side of an iPhone Duo's
+    /// outer screen (a toolbar).
+    func sheetButton(_ name: String) -> XCUIElement {
+        let button = navigationBars.buttons[name]
+        return button.exists ? button : toolbars.buttons[name]
+    }
+
     /// A tab's button in the tab bar, in the rail at the side of an iPhone Duo's outer screen (outside the tab bar it also
     /// has), or among an iPad's tabs at the top, or its row in an iPad's sidebar.
     private func tab(_ name: String) -> XCUIElement {

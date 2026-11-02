@@ -28,9 +28,10 @@ final class ServersTests: XCTestCase {
         return (file as? [String: Any])?["hosts"] as? [[String: Any]] ?? []
     }
 
+    /// Tapped again until it has the keyboard: on an iPad the first tap can land while the keyboard changes (the port's
+    /// number pad closing) and the editor moves.
     private func type(_ text: String, into field: XCUIElement) {
-        field.tap()
-        field.typeText(text)
+        field.typeWithFocus(text)
     }
 
     func testAServerIsAddedEditedAndDeleted() throws {
@@ -41,7 +42,7 @@ final class ServersTests: XCTestCase {
         type("2222", into: app.textFields["Port"])
         // An iPad's number pad for the port is a popover over the whole window: a tap on the title bar closes it.
         app.navigationBars["New Server"].coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
-        let save = app.navigationBars.buttons["Save"]
+        let save = app.sheetButton("Save")
         XCTAssertFalse(save.isEnabled)  // no user yet
         type("deploy", into: app.textFields["User"])
         save.tap()
@@ -59,7 +60,7 @@ final class ServersTests: XCTestCase {
         XCTAssert(app.navigationBars["Edit Server"].waitForExistence(timeout: 5))
         XCTAssertEqual(app.textFields["Address"].value as? String, "web-01.example.com")
         type("web-01", into: app.textFields["Name"])
-        app.navigationBars.buttons["Save"].tap()
+        app.sheetButton("Save").tap()
         XCTAssert(app.staticTexts["web-01"].waitForExistence(timeout: 5))
         XCTAssertFalse(row.exists)
         XCTAssertEqual(try savedHosts().map { $0["label"] as? String }, ["web-01"])
@@ -75,8 +76,9 @@ final class ServersTests: XCTestCase {
     func testSaveStaysOffWithoutAnAddress() {
         let app = launch()
         app.buttons["Add Server"].firstMatch.tap()
-        let save = app.navigationBars.buttons["Save"]
-        XCTAssert(save.waitForExistence(timeout: 5))
+        XCTAssert(app.textFields["Address"].waitForExistence(timeout: 5))
+        let save = app.sheetButton("Save")
+        XCTAssert(save.exists)
         XCTAssertFalse(save.isEnabled)
         type("web-01", into: app.textFields["Name"])
         type("deploy", into: app.textFields["User"])
@@ -86,7 +88,7 @@ final class ServersTests: XCTestCase {
         XCTAssertFalse(save.isEnabled)
         XCTAssert(app.staticTexts["Take the spaces out of the address"].exists)
 
-        app.navigationBars.buttons["Cancel"].tap()
+        app.sheetButton("Cancel").tap()
         XCTAssert(app.staticTexts["No servers yet"].waitForExistence(timeout: 5))
         XCTAssertFalse(FileManager.default.fileExists(atPath: folder.appendingPathComponent("airscp.json").path))
     }
@@ -114,7 +116,7 @@ final class ServersTests: XCTestCase {
         XCTAssertEqual(app.textFields["Address"].value as? String, "127.0.0.1")
         XCTAssertEqual(app.textFields["Port"].value as? String, "1")
         XCTAssertEqual(app.textFields["User"].value as? String, "admin")
-        app.navigationBars.buttons["Save"].tap()
+        app.sheetButton("Save").tap()
         XCTAssert(app.navigationBars["Servers"].waitForExistence(timeout: 5))
         XCTAssertEqual(try savedHosts().map { $0["hostname"] as? String }, ["127.0.0.1"])
 

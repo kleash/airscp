@@ -45,7 +45,7 @@ final class StorageTests: XCTestCase {
         type("http://127.0.0.1:\(LabStorage.port)", into: app.textFields["Endpoint"])
         type("us-east-1", into: app.textFields["Region"])
         type(storage.bucket, into: app.textFields["Bucket"])
-        let save = app.navigationBars.buttons["Save"]
+        let save = app.sheetButton("Save")
         XCTAssertFalse(save.isEnabled)
         type(LabStorage.accessKey, into: app.textFields["Access key ID"])
         XCTAssertFalse(save.isEnabled)
