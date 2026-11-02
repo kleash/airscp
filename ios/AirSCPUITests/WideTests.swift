@@ -231,7 +231,9 @@ final class WideTests: XCTestCase {
 
     /// The server's workspace, from its entry in the sidebar.
     @MainActor private func openWorkspace(_ app: XCUIApplication) {
-        let entry = app.cells["workspace"]
+        let entry = app.cells["workspace"], show = app.buttons["ToggleSideBar"]  // the tabs at the top's sidebar button
+        // The sidebar comes back as the app last left it: hidden, the tabs at the top show it.
+        if !entry.waitForExistence(timeout: 10) && show.exists { show.tap() }
         XCTAssert(entry.waitForExistence(timeout: 30), "The open server isn't in the sidebar")
         entry.tap()
         XCTAssert(app.buttons["drawer"].waitForExistence(timeout: 30), "No workspace")
