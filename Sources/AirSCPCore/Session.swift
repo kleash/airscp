@@ -514,7 +514,7 @@ public final class Session {
             default: needsUser = silentRefused
             }
             if needsUser || Date().timeIntervalSince(reconnectSince) >= reconnectWindow {
-                let message = needsUser ? "The connection to the server was lost. Logging in again needs you: click Reconnect."
+                let message = needsUser ? "The connection to the server was lost. Logging in again needs you: \(Device.reconnect)."
                     : AirSCPError.disconnected.message
                 let details = [error.message, error.details].filter { !$0.isEmpty }.joined(separator: "\n")
                 _state = .disconnected(AirSCPError(.disconnected, message, details: details))
@@ -875,7 +875,7 @@ public final class Session {
         case .reconnecting:
             throw AirSCPError.disconnected
         case .idle, .connecting:
-            throw AirSCPError(.disconnected, "Not connected. Click Connect in the banner first.")
+            throw AirSCPError(.disconnected, "Not connected. \(Device.connectFirst)")
         }
     }
 

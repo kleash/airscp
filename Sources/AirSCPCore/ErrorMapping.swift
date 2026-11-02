@@ -4,8 +4,10 @@ import Foundation
 public enum Device {
     #if os(macOS)
     public static let this = "this Mac", refresh = "Refresh the list (⌘R)", getInfo = " (Get Info)", settings = "System Settings"
+    public static let click = "click", reconnect = "click Reconnect", connectFirst = "Click Connect in the banner first."
     #else
     public static let this = "this device", refresh = "Pull the list down", getInfo = "", settings = "Settings"
+    public static let click = "tap", reconnect = "tap the server in Servers", connectFirst = "Tap the server in Servers first."
     #endif
 }
 
@@ -72,7 +74,7 @@ public enum ErrorMapping {
         }
         if has("Host key verification failed") {
             return error(.hostKeyRejected, "The server's host key was not accepted, so AirSCP didn't connect. Connect again and "
-                + "click Trust if the fingerprint is the one you expect.")
+                + "\(Device.click) Trust if the fingerprint is the one you expect.")
         }
         // An option ssh doesn't know, from the host's Other options ("command-line: line 0: Bad configuration option: x").
         if let range = text.range(of: #"Bad configuration option: \S+"#, options: .regularExpression) {
