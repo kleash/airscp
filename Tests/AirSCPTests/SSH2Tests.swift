@@ -43,6 +43,13 @@ extension TestServer {
         #expect(input.status == 0 && input.output.trimmingCharacters(in: .whitespaces).hasPrefix("0"))
 
         #expect(try await ssh2.list(folder) == ssh.list(folder))
+
+        // Stopped: the server ends the command, so the connection is free again long before it would have finished.
+        let cancellation = Cancellation(), started = Date()
+        Task { try await Task.sleep(nanoseconds: 1_000_000_000); cancellation.cancel() }
+        _ = try? await ssh2.run("sleep 60", cancellation: cancellation)
+        #expect(Date().timeIntervalSince(started) < 30)
+        #expect(try await ssh2.run("echo free").output == "free\n")
         await ssh2.disconnect()
         #expect(ssh2.state == .idle)
     }
