@@ -6,7 +6,7 @@
   "documentNamespace": "https://github.com/kleash/airscp/releases/download/v2.0.0/sbom.spdx.json",
   "comment": "The third-party code built into AirSCP: in the Mac app FreeRDP and OpenSSL, pinned and checksummed in scripts/build-freerdp.sh; in the iPhone and iPad app libssh2 and the same OpenSSL, pinned in scripts/build-libssh2.sh; all linked statically. AirSCP has no package-manager dependencies. At run time the Mac app also uses the OpenSSH that is part of macOS (/usr/bin/ssh, scp, sftp), which Apple updates with macOS; it isn't shipped with AirSCP. Written by scripts/sbom.sh.",
   "creationInfo": {
-    "created": "2026-11-03T01:31:44Z",
+    "created": "2026-11-03T09:18:15Z",
     "creators": ["Tool: scripts/sbom.sh"]
   },
   "packages": [
@@ -66,20 +66,19 @@
     {
       "SPDXID": "SPDXRef-libssh2",
       "name": "libssh2",
-      "versionInfo": "1.11.1",
+      "versionInfo": "70864b47b33ba330a6ba0fa5e7da9a9a6da8efb7",
       "supplier": "Organization: libssh2",
-      "downloadLocation": "https://github.com/libssh2/libssh2/releases/download/libssh2-1.11.1/libssh2-1.11.1.tar.gz",
+      "downloadLocation": "https://github.com/libssh2/libssh2/archive/70864b47b33ba330a6ba0fa5e7da9a9a6da8efb7.tar.gz",
       "homepage": "https://libssh2.org",
       "filesAnalyzed": false,
-      "checksums": [{"algorithm": "SHA256", "checksumValue": "d9ec76cbe34db98eec3539fe2c899d26b0c837cb3eb466a56b0f109cabf658f7"}],
+      "checksums": [{"algorithm": "SHA256", "checksumValue": "3a4495de43f8d18b180554e18068136b89c7ec3bcffc7580b6d527d042bd9c3c"}],
       "licenseConcluded": "BSD-3-Clause",
       "licenseDeclared": "BSD-3-Clause",
       "copyrightText": "Copyright the libssh2 contributors",
-      "comment": "The iPhone and iPad app only (its SSH, SCP and SFTP), over OpenSSL; see scripts/build-libssh2.sh. The Mac app uses macOS's OpenSSH.",
+      "comment": "The iPhone and iPad app only (its SSH, SCP and SFTP), over OpenSSL; see scripts/build-libssh2.sh. A commit on libssh2's master after 1.11.1: the fixes of 1.11.1's CVEs are in no release yet. The Mac app uses macOS's OpenSSH.",
       "primaryPackagePurpose": "LIBRARY",
       "externalRefs": [
-        {"referenceCategory": "PACKAGE-MANAGER", "referenceType": "purl", "referenceLocator": "pkg:git/github.com/libssh2/libssh2@libssh2-1.11.1"},
-        {"referenceCategory": "SECURITY", "referenceType": "cpe23Type", "referenceLocator": "cpe:2.3:a:libssh2:libssh2:1.11.1:*:*:*:*:*:*:*"}
+        {"referenceCategory": "PACKAGE-MANAGER", "referenceType": "purl", "referenceLocator": "pkg:git/github.com/libssh2/libssh2@70864b47b33ba330a6ba0fa5e7da9a9a6da8efb7"}
       ]
     }
   ],

@@ -3,7 +3,8 @@
 # FreeRDP and OpenSSL as scripts/build-freerdp.sh pins them (version, download, SHA-256) in the Mac app, and libssh2 as
 # scripts/build-libssh2.sh pins it in the iPhone and iPad app (over the same OpenSSL), all linked statically. AirSCP has
 # no package-manager dependencies, and CMake only builds them. The purls (pkg:git with the release tag) are what
-# OSV-Scanner looks up in security.yml; the CPEs are for scanners that use NVD. Run it after changing a pin or VERSION:
+# OSV-Scanner looks up in security.yml (libssh2's names a commit, which security.yml looks up in OSV's API itself); the
+# CPEs are for scanners that use NVD. Run it after changing a pin or VERSION:
 # a test fails while sbom.spdx.json and those disagree. release.yml attaches the file to every release.
 #   scripts/sbom.sh [file]    (default: sbom.spdx.json)
 # shellcheck disable=SC2154 # downloads and the *_version pins are the build scripts' (the eval below)
@@ -41,8 +42,8 @@ pins build-libssh2.sh
 # One OpenSSL in the SBOM: build-libssh2.sh insists on build-freerdp.sh's too.
 [ "$openssl_version" = "$freerdp_openssl" ] ||
     { echo "sbom.sh: build-libssh2.sh's OpenSSL $openssl_version isn't build-freerdp.sh's $freerdp_openssl" >&2; exit 1; }
-libssh2_url=$(pin "libssh2-$libssh2_version.tar.gz" 1)
-libssh2_sha=$(pin "libssh2-$libssh2_version.tar.gz" 2)
+libssh2_url=$(pin "libssh2-$libssh2_commit.tar.gz" 1)
+libssh2_sha=$(pin "libssh2-$libssh2_commit.tar.gz" 2)
 
 cat > "$out" <<EOF
 {
@@ -113,7 +114,7 @@ cat > "$out" <<EOF
     {
       "SPDXID": "SPDXRef-libssh2",
       "name": "libssh2",
-      "versionInfo": "$libssh2_version",
+      "versionInfo": "$libssh2_commit",
       "supplier": "Organization: libssh2",
       "downloadLocation": "$libssh2_url",
       "homepage": "https://libssh2.org",
@@ -122,11 +123,10 @@ cat > "$out" <<EOF
       "licenseConcluded": "BSD-3-Clause",
       "licenseDeclared": "BSD-3-Clause",
       "copyrightText": "Copyright the libssh2 contributors",
-      "comment": "The iPhone and iPad app only (its SSH, SCP and SFTP), over OpenSSL; see scripts/build-libssh2.sh. The Mac app uses macOS's OpenSSH.",
+      "comment": "The iPhone and iPad app only (its SSH, SCP and SFTP), over OpenSSL; see scripts/build-libssh2.sh. A commit on libssh2's master after 1.11.1: the fixes of 1.11.1's CVEs are in no release yet. The Mac app uses macOS's OpenSSH.",
       "primaryPackagePurpose": "LIBRARY",
       "externalRefs": [
-        {"referenceCategory": "PACKAGE-MANAGER", "referenceType": "purl", "referenceLocator": "pkg:git/github.com/libssh2/libssh2@libssh2-$libssh2_version"},
-        {"referenceCategory": "SECURITY", "referenceType": "cpe23Type", "referenceLocator": "cpe:2.3:a:libssh2:libssh2:$libssh2_version:*:*:*:*:*:*:*"}
+        {"referenceCategory": "PACKAGE-MANAGER", "referenceType": "purl", "referenceLocator": "pkg:git/github.com/libssh2/libssh2@$libssh2_commit"}
       ]
     }
   ],
@@ -138,4 +138,4 @@ cat > "$out" <<EOF
   ]
 }
 EOF
-echo "sbom.sh: wrote $out (AirSCP $version: FreeRDP $freerdp_version, OpenSSL $openssl_version, libssh2 $libssh2_version)"
+echo "sbom.sh: wrote $out (AirSCP $version: FreeRDP $freerdp_version, OpenSSL $openssl_version, libssh2 $libssh2_commit)"

@@ -11,7 +11,10 @@ cd "$(dirname "$0")/.."
 
 cmake_version=4.4.3
 openssl_version=3.5.9
-libssh2_version=1.11.1
+# A commit on libssh2's master, not a release: 1.11.1 (October 2024, still the latest release) has CVEs from 2025 and
+# 2026 that only master fixes (CVE-2026-55200, CVE-2026-66032, CVE-2026-66035 and more). security.yml checks this commit
+# against OSV. Move back to a release once one has the fixes.
+libssh2_commit=70864b47b33ba330a6ba0fa5e7da9a9a6da8efb7
 # name, URL, SHA-256
 downloads=(
     "cmake-$cmake_version-macos-universal.tar.gz"
@@ -20,9 +23,9 @@ downloads=(
     "openssl-$openssl_version.tar.gz"
     "https://github.com/openssl/openssl/releases/download/openssl-$openssl_version/openssl-$openssl_version.tar.gz"
     603f5602e2eef00d77fbd429d34dcd5822bb301757a1bc9cdb24c670f1eb859a
-    "libssh2-$libssh2_version.tar.gz"
-    "https://github.com/libssh2/libssh2/releases/download/libssh2-$libssh2_version/libssh2-$libssh2_version.tar.gz"
-    d9ec76cbe34db98eec3539fe2c899d26b0c837cb3eb466a56b0f109cabf658f7
+    "libssh2-$libssh2_commit.tar.gz"
+    "https://github.com/libssh2/libssh2/archive/$libssh2_commit.tar.gz"
+    3a4495de43f8d18b180554e18068136b89c7ec3bcffc7580b6d527d042bd9c3c
 )
 ios_min=26.0
 macos_min=13.1
@@ -72,7 +75,7 @@ for ((i = 0; i < ${#downloads[@]}; i += 3)); do
 done
 cmake=$work/src/cmake-$cmake_version-macos-universal/CMake.app/Contents/bin/cmake
 openssl_src=$work/src/openssl-$openssl_version
-libssh2_src=$work/src/libssh2-$libssh2_version
+libssh2_src=$work/src/libssh2-$libssh2_commit
 
 xcf_args=()
 for line in "${slices[@]}"; do
@@ -90,7 +93,7 @@ for line in "${slices[@]}"; do
         logged "openssl-$slice-build" make -j"$jobs" &&
         logged "openssl-$slice-install" make install_sw)
 
-    step "libssh2 $libssh2_version ($slice)"
+    step "libssh2 $libssh2_commit ($slice)"
     deploy=${minflag#*=}
     logged "libssh2-$slice-configure" "$cmake" -S "$libssh2_src" -B "$work/build/libssh2-$slice" -G "Unix Makefiles" \
         -DCMAKE_SYSTEM_NAME="$system" -DCMAKE_OSX_SYSROOT="$sysroot" -DCMAKE_OSX_ARCHITECTURES=arm64 \
@@ -122,4 +125,4 @@ mkdir -p "$vendor/ssh2"
 logged xcframework xcodebuild -create-xcframework "${xcf_args[@]}" -output "$vendor/ssh2/CSSH2.xcframework"
 shasum -a 256 scripts/build-libssh2.sh | cut -d' ' -f1 > "$vendor/ssh2/stamp"
 rm -rf "$work"
-step "built vendor/ssh2/CSSH2.xcframework (libssh2 $libssh2_version, OpenSSL $openssl_version)"
+step "built vendor/ssh2/CSSH2.xcframework (libssh2 $libssh2_commit, OpenSSL $openssl_version)"

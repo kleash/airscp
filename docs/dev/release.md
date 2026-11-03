@@ -201,13 +201,15 @@ Three workflows put live results behind the README's badges (each badge is the l
 | Workflow (badge) | What it checks | When |
 |---|---|---|
 | `codeql.yml` (CodeQL) | AirSCP's Swift and C with the `security-extended` queries. FreeRDP and OpenSSL are built before CodeQL starts watching, so only `swift build` is analysed. | Pushes to `main`, pull requests, by hand |
-| `security.yml` (Vulnerability scan) | OSV-Scanner on `sbom.spdx.json` against osv.dev, after showing it flags FreeRDP 3.5.0, OpenSSL 3.5.0 and libssh2 1.10.0; FreeRDP's own GitHub security advisories against the pinned release (OSV's FreeRDP records list no release after 3.5.1); gitleaks over every commit | Pushes to `main`, pull requests, by hand, and before every release (release.yml calls it) |
+| `security.yml` (Vulnerability scan) | OSV-Scanner on `sbom.spdx.json` against osv.dev, after showing it flags FreeRDP 3.5.0 and OpenSSL 3.5.0; libssh2's pinned commit in OSV's API, after showing it flags 1.11.1's commit; FreeRDP's own GitHub security advisories against the pinned release (OSV's FreeRDP records list no release after 3.5.1); gitleaks over every commit | Pushes to `main`, pull requests, by hand, and before every release (release.yml calls it) |
 | `scorecard.yml` (OpenSSF Scorecard) | Supply-chain practices; publishes the score behind the badge | Pushes to `main`, by hand |
 
 - `sbom.spdx.json` (SPDX 2.3) is written by `scripts/sbom.sh`: FreeRDP and OpenSSL as `scripts/build-freerdp.sh` pins
   them (version, download, SHA-256), and the iPhone and iPad app's libssh2 as `scripts/build-libssh2.sh` does, with
-  purls (`pkg:git/…@<tag>`, what OSV looks up) and CPEs. Run it after changing a pin or `VERSION`; `SBOMTests` fails
-  until you do. release.yml attaches a fresh one to every release.
+  purls (`pkg:git/…@<tag>`, what OSV looks up) and CPEs. libssh2 is a commit on its master for now (1.11.1's CVEs are
+  fixed in no release yet): its purl names the commit, which OSV-Scanner can't look up, so security.yml asks OSV's API
+  about it, and it has no CPE. Run it after changing a pin or `VERSION`; `SBOMTests` fails until you do. release.yml
+  attaches a fresh one to every release.
 - A finding fails the run. For a CVE in FreeRDP or OpenSSL: the pin in `scripts/build-freerdp.sh` to the fixed release
   (libssh2: `scripts/build-libssh2.sh`), `scripts/sbom.sh`, the gates, then a release. Only a verified false positive
   may be allowed, with the reason next to it: `.gitleaks.toml`, or `REVIEWED` in security.yml for a FreeRDP advisory
