@@ -114,12 +114,43 @@ jobs:
         run: |
           export DEVELOPER_DIR=$XCODE26
           unset SDKROOT
+          # A run that prints nothing for 10 minutes has hung: what was still running, the processes and their stacks go
+          # to build/hang (the test-hang artifact), and it is stopped, so the job says so instead of reaching its limit.
+          watch() {
+            while sleep 60; do
+              [ $(( $(date +%s) - $(stat -f %m build/test.log) )) -lt 600 ] && continue
+              mkdir -p build/hang
+              sed -n -E 's/^. Test ([A-Za-z0-9_]+)\(.* started\.$/\1/p' build/test.log | sort -u > build/hang/started
+              sed -n -E 's/^. Test ([A-Za-z0-9_]+)\(.* (passed|failed) after .*/\1/p' build/test.log | sort -u > build/hang/ended
+              echo "::error::No test output for 10 minutes. Still running: $(comm -23 build/hang/started build/hang/ended | paste -sd ' ' -)"
+              ps -axo pid,ppid,etime,command > build/hang/ps.txt
+              helper="swiftpm-testing-helper --test-bundle-path $PWD/"  # this checkout's, no other run's
+              for pid in $(pgrep -f "$helper"); do sample "$pid" 5 -file "build/hang/sample-$pid.txt"; done
+              pkill -f "$helper"
+              return
+            done
+          }
+          touch build/test.log
+          watch & watcher=$!
+          trap 'kill $watcher 2>/dev/null' EXIT
           if ./test.sh 2>&1 | tee build/test.log; then exit 0; fi
+          [ -d build/hang ] && exit 1
           grep -qE '^. Test run with [0-9]+ tests? ' build/test.log || exit 1
           failed=$(sed -n -E 's/^✘ Test ([A-Za-z0-9_]+)\(.*/\1/p' build/test.log | sort -u | paste -sd '|' -)
           [ -n "$failed" ] || exit 1
           echo "::warning::Failed under the full suite, running them again alone: $failed"
           ./test.sh --filter "$failed"
+
+      - name: Upload what a hung test run was doing
+        if: failure()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: test-hang
+          path: |
+            build/hang
+            build/test.log
+          if-no-files-found: ignore
+          retention-days: 14
 
       - name: App (./build.sh --native)
         run: ./build.sh --native
