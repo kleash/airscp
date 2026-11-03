@@ -36,6 +36,8 @@ final class TerminalTests: XCTestCase {
 
         // A hardware keyboard's Control-C, and its up arrow: the command before, again. The Simulator lets the first
         // Control or ⌘ keys after a launch through as plain keys (Settings' search field does it too): then again.
+        // Not where the on-screen keyboard shows: that Simulator has no hardware keyboard (the iPhone Duo).
+        guard !app.keyboards.firstMatch.exists else { return }
         app.typeText("sleep 100\n")
         app.typeKey("c", modifierFlags: .control)
         for _ in 0..<3 where !terminal.shows("^C", times: 2, within: 5) { app.typeKey("c", modifierFlags: .control) }

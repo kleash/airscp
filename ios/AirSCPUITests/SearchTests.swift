@@ -102,7 +102,9 @@ final class SearchTests: XCTestCase {
         keepScreenshot("Run on several servers, turned")
 
         // A command that goes on: Stop stops it on both.
-        app.navigationBars["Run on Several Servers"].buttons.element(boundBy: 0).tap()  // back to Search
+        // Back to Search: turned, iOS 27 shows the bar's buttons in a column at the side, outside the navigation bar.
+        let back = app.navigationBars["Run on Several Servers"].buttons.element(boundBy: 0)
+        (back.exists ? back : app.buttons["BackButton"]).tap()
         retype(field, "Long")
         XCTAssert(app.staticTexts["sleep 100"].waitForExistence(timeout: 10), "The snippet isn't found")
         runOnSeveral(app)
