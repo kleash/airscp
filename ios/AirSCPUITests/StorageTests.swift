@@ -72,14 +72,14 @@ final class StorageTests: XCTestCase {
         // From this iPhone to the bucket, and back once this iPhone's copy is gone.
         app.segmentedControls.buttons["On iPhone"].tap()
         XCTAssert(app.staticTexts["photo.bin"].waitForExistence(timeout: 10))
-        send("photo.bin", in: app)
+        send("photo.bin", in: app, with: "Upload")
         app.segmentedControls.buttons["lab storage"].tap()
         XCTAssert(app.staticTexts["photo.bin"].waitForExistence(timeout: 30))
         let uploaded = try await storage.data("photo.bin")
         XCTAssertEqual(uploaded, bytes)
 
         try FileManager.default.removeItem(at: local)
-        send("photo.bin", in: app)
+        send("photo.bin", in: app, with: "Download")
         let arrived = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in (try? Data(contentsOf: local)) == bytes }, object: nil)
         await fulfillment(of: [arrived], timeout: 30)
 
@@ -90,15 +90,15 @@ final class StorageTests: XCTestCase {
         keepScreenshot("Storage in Files")
     }
 
-    /// The row's Send, from its swipe actions: swiped again when they didn't open (a swipe while the side is still
-    /// coming in gets lost).
-    @MainActor private func send(_ name: String, in app: XCUIApplication) {
+    /// The row's Upload or Download, from its swipe actions: swiped again when they didn't open (a swipe while the side
+    /// is still coming in gets lost).
+    @MainActor private func send(_ name: String, in app: XCUIApplication, with button: String) {
         let row = app.cells.containing(.staticText, identifier: name).firstMatch
         for _ in 0..<3 {
             row.swipeLeft()
-            if app.buttons["Send"].waitForExistence(timeout: 3) { break }
+            if app.buttons[button].waitForExistence(timeout: 3) { break }
         }
-        app.buttons["Send"].tap()
+        app.buttons[button].tap()
     }
 
     private func type(_ text: String, into field: XCUIElement) {

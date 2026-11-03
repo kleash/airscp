@@ -69,6 +69,17 @@ final class SearchTests: XCTestCase {
         let both = expectation(for: NSPredicate(format: "count == 2"), evaluatedWith: app.staticTexts.matching(identifier: "Connected"))
         XCTAssertEqual(XCTWaiter.wait(for: [both], timeout: 30), .completed, "Not both connected")
 
+        // Files shows the newest open server; the menu over its folders switches to the other.
+        app.show("Files")
+        let server = app.buttons["server"].firstMatch
+        XCTAssert(server.waitForExistence(timeout: 10), "No server menu with two servers open")
+        XCTAssert(server.label.contains("lab 2"), server.label)
+        server.tap()
+        app.buttons["lab"].firstMatch.tap()
+        let switched = expectation(for: NSPredicate(format: "label CONTAINS 'lab' AND NOT label CONTAINS 'lab 2'"), evaluatedWith: server)
+        XCTAssertEqual(XCTWaiter.wait(for: [switched], timeout: 10), .completed, server.label)
+        keepScreenshot("Files switched to the other server")
+
         let field = search(app, for: "Status")
         XCTAssert(app.staticTexts["echo ran-$((5*5)); echo warned >&2; exit 3"].waitForExistence(timeout: 10), "The snippet isn't found")
         runOnSeveral(app)

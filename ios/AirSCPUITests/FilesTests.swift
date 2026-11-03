@@ -104,7 +104,7 @@ final class FilesTests: XCTestCase {
         XCTAssert(app.staticTexts["photo.bin"].waitForExistence(timeout: 10))
         keepScreenshot("On iPhone")
         row("photo.bin", in: app).swipeLeft()
-        app.buttons["Send"].tap()
+        app.buttons["Upload"].tap()
         app.segmentedControls.buttons["lab"].tap()
         XCTAssert(app.staticTexts["photo.bin"].waitForExistence(timeout: 30))
         let uploaded = try await lab.data("photo.bin")
@@ -113,12 +113,12 @@ final class FilesTests: XCTestCase {
         // And back, once this device's copy is gone.
         try FileManager.default.removeItem(at: local)
         row("photo.bin", in: app).swipeLeft()
-        app.buttons["Send"].tap()
+        app.buttons["Download"].tap()
         await arrival(of: local, bytes)
 
-        // Sent again: it is there already, so the app asks; Keep Both gives the new one a number.
+        // Downloaded again: it is there already, so the app asks; Keep Both gives the new one a number.
         row("photo.bin", in: app).swipeLeft()
-        app.buttons["Send"].tap()
+        app.buttons["Download"].tap()
         let question = app.alerts["“photo.bin” already exists in “On iPhone”."]
         XCTAssert(question.waitForExistence(timeout: 15))
         keepScreenshot("Already there")
@@ -132,14 +132,23 @@ final class FilesTests: XCTestCase {
         keepScreenshot("Share")
     }
 
-    /// Save to Files puts a server file in the Files app (through a queued download); Import from Files uploads it into
-    /// the folder showing. The file stays in the simulator's On My iPhone ▸ AirSCP (a name of its own each run).
+    /// A server file downloaded to this device, and from there Save to Files puts it in the Files app (a server's rows
+    /// have no Save to Files: they download); Import from Files uploads it into the folder showing. The file stays in the
+    /// simulator's On My iPhone ▸ AirSCP (a name of its own each run).
     @MainActor func testSaveToFilesThenImportFromFiles() async throws {
         let name = "export-\(UUID().uuidString.prefix(8)).txt", text = "saved through the Files app \(UUID())\n"
         try await lab.write(text, to: name)
         let app = openTestFolder()
         XCTAssert(app.staticTexts[name].waitForExistence(timeout: 10))
         app.staticTexts[name].press(forDuration: 1)
+        XCTAssertFalse(app.buttons["Save to Files"].exists, "A server's file offers Save to Files")
+        app.buttons["Download"].tap()
+        // This device's copy: its side shown on an iPhone; on an iPad, the second, next to the server's.
+        let device = app.segmentedControls.buttons["On \(UIDevice.current.model)"]
+        if device.exists { device.tap() }
+        let copy = app.staticTexts.matching(identifier: name).element(boundBy: device.exists ? 0 : 1)
+        XCTAssert(copy.waitForExistence(timeout: 30), "Not downloaded")
+        copy.press(forDuration: 1)
         app.buttons["Save to Files"].tap()
         let save = app.navigationBars.buttons["Save"]
         XCTAssert(save.waitForExistence(timeout: 30), "No document picker")

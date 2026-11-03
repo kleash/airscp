@@ -505,7 +505,10 @@ struct SideView: View {
         .toolbar(editing && switcher ? .hidden : .visible, for: .tabBar)
         .safeAreaBar(edge: .top) {
             if let dir {
-                PathBar(crumbs: crumbs(dir), targeted: dropTarget) { side.folders[side.current(app)] = $0 } drop: { drop(into: $0, over: $0) }
+                HStack(spacing: 0) {
+                    if session != nil && app.open.count > 1 { serverMenu }
+                    PathBar(crumbs: crumbs(dir), targeted: dropTarget) { side.folders[side.current(app)] = $0 } drop: { drop(into: $0, over: $0) }
+                }
             }
         }
         .task(id: "\(String(describing: location))|\(side.generation)") {
@@ -542,6 +545,27 @@ struct SideView: View {
         .navigationDestination(item: $monitoring) { MonitorView(hostID: $0) }
     }
 
+    /// The open server this side shows, to choose another, while more than one is open (More ▸ Show does it too).
+    private var serverMenu: some View {
+        Menu {
+            Picker("Server", selection: Binding(get: { side.current(app) }, set: { side.source = $0 })) {
+                ForEach(app.open, id: \.host.id) { session in
+                    Text(app.data.hosts.first { $0.id == session.host.id }?.displayName ?? session.host.displayName)
+                        .tag(FileSide.Source.server(session.host.id))
+                }
+            }
+        } label: {
+            HStack(spacing: 2) {
+                Text(side.name(app)).lineLimit(1)
+                Image(systemName: "chevron.up.chevron.down").imageScale(.small)
+            }
+            .font(.subheadline.weight(.semibold))
+        }
+        .padding(.leading)
+        .accessibilityIdentifier("server")
+        .help("Choose which open server this side shows")
+    }
+
     // MARK: Rows
 
     @ViewBuilder private func row(_ entry: RemoteEntry) -> some View {
@@ -560,24 +584,35 @@ struct SideView: View {
             Button("Edit", systemImage: "pencil.line") { edit(entry) }
                 .help("Edit this text file")
         }
-        Button("Send", systemImage: "paperplane") { send([entry]) }
+        Button(sendWords.title, systemImage: sendWords.image) { send([entry]) }
             .tint(.teal)
             .disabled(sendProblem != nil)
             .help(sendProblem ?? "Copy to the other side (\(other.name(app)))")
         Button("Rename", systemImage: "character.cursor.ibeam") { ask(.rename(entry), name: entry.name) }
             .tint(.gray)
             .help("Change this item's name")
-        if all && entry.kind != .directory {
+        // A server's file is shared once downloaded; this device's files and folders also go to the Files app from here
+        // (a server's are downloaded here first, not straight to the Files app).
+        if all && (session == nil || entry.kind != .directory) {
             Button("Share", systemImage: "square.and.arrow.up") { share([entry], export: false) }
-                .help("Send this file with another app, such as Mail or Messages")
-            if session != nil {
-                Button("Save to Files", systemImage: "folder") { share([entry], export: true) }
-                    .help("Save a copy of this file in the Files app")
-            }
+                .help("Send this item with another app, such as Mail or Messages")
+        }
+        if all && session == nil {
+            Button("Save to Files", systemImage: "folder") { share([entry], export: true) }
+                .help("Save a copy of this item in the Files app, outside AirSCP")
         }
         Button("Delete", systemImage: "trash", role: .destructive) { deleting = [entry] }
             .tint(.red)  // the app's teal tint would colour a swipe button's red too
             .help("Delete this item")
+    }
+
+    /// Send's name: from a server to this device it downloads, the other way it uploads, between two servers it sends.
+    private var sendWords: (title: String, image: String) {
+        switch (session == nil, other.session(app) == nil) {
+        case (false, true): ("Download", "arrow.down.circle")
+        case (true, false): ("Upload", "arrow.up.circle")
+        default: ("Send", "paperplane")
+        }
     }
 
     /// Why Send can't copy to the other side now; nil when it can.
@@ -704,7 +739,7 @@ struct SideView: View {
         // S3 storage's items are zipped with this device's ditto, which iOS doesn't let an app run.
         let zipProblem = session?.s3 != nil ? "Zip works on a server's files, not on S3 storage"
             : session.map { $0.compressUnavailableReason(.zip) } ?? "Zip works on a server's files"
-        Button("Send", systemImage: "paperplane") { send(selected) }
+        Button(sendWords.title, systemImage: sendWords.image) { send(selected) }
             .disabled(selected.isEmpty || sendProblem != nil)
             .help(sendProblem ?? "Copy the selected items to the other side (\(other.name(app)))")
         Spacer()
@@ -716,9 +751,12 @@ struct SideView: View {
         .disabled(selected.isEmpty)
         .help("Put the selected items in the tray, to take them to another place together")
         Spacer()
+        // This device's folders too; a server's files only (each is downloaded first).
+        let shareable = !selected.isEmpty && (session == nil || files)
         Button("Share", systemImage: "square.and.arrow.up") { share(selected, export: false) }
-            .disabled(!files)
-            .help(files ? "Send the selected files with another app" : "Select files to share them (not folders)")
+            .disabled(!shareable)
+            .help(shareable ? "Send the selected items with another app, or save them in the Files app"
+                            : "Select files to share them (not a server's folders)")
         Spacer()
         Button("Zip", systemImage: "doc.zipper") { zip(selected) }
             .disabled(selected.isEmpty || zipProblem != nil)
@@ -951,7 +989,8 @@ struct SideView: View {
     /// Share (the share sheet) or Save to Files (`export`): a server's files are downloaded first, through the queue.
     private func share(_ entries: [RemoteEntry], export: Bool) {
         let hand: ([URL]) -> Void = { urls in
-            present(export ? UIDocumentPickerViewController(forExporting: urls, asCopy: false)  // moves the downloaded copies there
+            // A server's downloaded copies are moved there; this device's own items are copied, and stay here too.
+            present(export ? UIDocumentPickerViewController(forExporting: urls, asCopy: session == nil)
                            : UIActivityViewController(activityItems: urls, applicationActivities: nil))
         }
         stopSelecting()

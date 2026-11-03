@@ -60,7 +60,7 @@ final class WideTests: XCTestCase {
         // Sent to this iPad's side: a download, which the inspector shows on its own.
         _ = reveal("bash", under: path, app)
         app.cells.containing(.staticText, identifier: "bash").firstMatch.swipeLeft()
-        app.buttons["Send"].tap()
+        app.buttons["Download"].tap()
         XCTAssert(app.navigationBars["Transfers"].waitForExistence(timeout: 30), "Transfers didn't show on their own")
         let transfer = app.descendants(matching: .any)["transfer bash"]
         XCTAssert(transfer.waitForExistence(timeout: 10))
