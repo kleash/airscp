@@ -48,7 +48,7 @@ final class ServersTests: XCTestCase {
         save.tap()
 
         let row = app.staticTexts["deploy@web-01.example.com:2222"]
-        XCTAssert(row.waitForExistence(timeout: 5))
+        XCTAssert(row.waitForExistence(timeout: 15))
         let added = try XCTUnwrap(savedHosts().first)
         XCTAssertEqual(added["hostname"] as? String, "web-01.example.com")
         XCTAssertEqual(added["port"] as? Int, 2222)

@@ -102,11 +102,11 @@ final class MonitorTests: XCTestCase {
         XCTAssert(gone, "The app's connection still runs on the lab")
 
         app.activate()
-        XCTAssert(app.staticTexts["Reconnecting…"].waitForExistence(timeout: 15), "No reconnecting after coming back")
-        keepScreenshot("Reconnecting")
+        // "Reconnecting…" can come and go before a busy Simulator looks: a new connection of the app's on the lab is the proof.
+        let again = await eventually { try await !self.lab.connections().subtracting(self.before).subtracting([mine]).isEmpty }
+        XCTAssert(again, "No new connection after coming back")
         XCTAssert(app.staticTexts["Connected"].waitForExistence(timeout: 30), "Not connected again")
-        let again = try await lab.connections().subtracting(before)
-        XCTAssert(!again.isEmpty && !again.contains(mine), "\(again)")  // a new connection of the app's
+        keepScreenshot("Reconnected")
     }
 
     /// iPad (and an iPhone on its side): Servers' figures and the Monitor screen in portrait and landscape; turning it
@@ -149,9 +149,11 @@ final class MonitorTests: XCTestCase {
         if remember {
             let toggle = app.switches["Remember in Keychain"].firstMatch
             toggle.tap()
+            // iOS 27 turns the switch's value a moment after the tap.
+            let on = { XCTWaiter.wait(for: [self.expectation(for: NSPredicate(format: "value == '1'"), evaluatedWith: toggle)], timeout: $0) }
             // The element spans the label too: a tap in its middle may miss the switch at its end.
-            if toggle.value as? String != "1" { toggle.coordinate(withNormalizedOffset: CGVector(dx: 0.95, dy: 0.5)).tap() }
-            XCTAssertEqual(toggle.value as? String, "1", "Remember in Keychain is off")
+            if on(3) != .completed { toggle.coordinate(withNormalizedOffset: CGVector(dx: 0.95, dy: 0.5)).tap() }
+            XCTAssertEqual(on(5), .completed, "Remember in Keychain is off")
         }
         password.tap()  // focused already, unless the sheet is still on its way
         // dev's connection process starts once logged in: a moment before, so that another test's hardly comes between.

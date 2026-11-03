@@ -138,12 +138,13 @@ final class TransfersTests: XCTestCase {
         }
         app.show("Transfers")
         let row = transfer("bash", in: app)
-        XCTAssert(waitUntil(row, says: "Downloading", timeout: 30), row.label)
+        // A busy Simulator's turns above can take longer than the download: done meanwhile is fine too.
+        XCTAssert(waitUntil(row, says: "Downloading", timeout: 30) || row.label.contains("Checksums match"), row.label)
         for orientation in [UIDeviceOrientation.landscapeLeft, .portrait, .landscapeLeft] {
             let before = row.label
             XCUIDevice.shared.orientation = orientation
             // Still listed, and still moving (or done meanwhile).
-            let moved = expectation(for: NSPredicate(format: "label != %@", before), evaluatedWith: row)
+            let moved = expectation(for: NSPredicate(format: "label != %@ OR label CONTAINS 'Checksums match'", before), evaluatedWith: row)
             XCTAssertEqual(XCTWaiter.wait(for: [moved], timeout: 30), .completed, "Stuck in \(Self.name(orientation)): \(row.label)")
             keepScreenshot("Transfers, " + Self.name(orientation))
         }

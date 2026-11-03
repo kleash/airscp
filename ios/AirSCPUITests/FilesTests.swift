@@ -47,7 +47,10 @@ final class FilesTests: XCTestCase {
         XCTAssertEqual(made, ["docs", "made", "notes.txt"])
 
         // Rename, from the row's swipe actions.
-        row("made", in: app).swipeLeft()
+        for _ in 0..<3 {  // swiped again when the actions didn't open (a swipe while the row is still coming in gets lost)
+            row("made", in: app).swipeLeft()
+            if app.buttons["Rename"].waitForExistence(timeout: 3) { break }
+        }
         app.buttons["Rename"].tap()
         XCTAssert(name.waitForExistence(timeout: 5))
         XCTAssert(app.alerts.buttons["Rename"].exists)

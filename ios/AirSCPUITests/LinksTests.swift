@@ -44,7 +44,7 @@ final class LinksTests: XCTestCase {
         XCTAssert(row.isSelected, "The file isn't selected")
         XCTAssert(row.isHittable, "The file isn't scrolled to")
         keepScreenshot("Shown in Files")
-        row.press(forDuration: 1)
+        row.staticTexts[name].press(forDuration: 1)  // as FilesTests do: a press in the middle of an iPad's wide row brought no menu on iOS 27
         XCTAssert(app.buttons["Edit"].waitForExistence(timeout: 5), "No Edit in the file's menu")
     }
 
