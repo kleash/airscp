@@ -16,6 +16,8 @@ nav_order: 18
 - **On iPad**: a sidebar with a workspace for each open server (its files, its terminal pulled up under them, and the
   transfers), several windows, drag and drop with other apps, keyboard shortcuts and the pointer. On an iPhone Duo,
   AirSCP follows the fold and keeps what you were doing. See [iPad and iPhone Duo](iphone-ipad/ipad.md).
+- **Fixed** on the Mac (macOS 27): an AI agent that chose from two pop-up menus at once, or while AirSCP was busy,
+  could leave a menu open.
 
 ## AirSCP 1.4.0
 
