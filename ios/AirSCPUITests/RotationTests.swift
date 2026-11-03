@@ -7,6 +7,8 @@ final class RotationTests: XCTestCase {
 
     override func setUpWithError() throws {
         continueAfterFailure = false
+        try XCTSkipIf(ProcessInfo.processInfo.environment["SIMULATOR_MODEL_IDENTIFIER"] == "iPhone19,4",  // the iPhone Duo
+                      "XCUIDevice doesn't turn an iPhone Duo: the Simulator's Device Hub turns it")
         try XCTSkipUnless(labIsReachable(), "The Docker lab's target doesn't answer on 127.0.0.1:42201 (testenv/up.sh starts it)")
         folder = try labFolder(snippets: #"{"id":"\#(UUID())","name":"Quarter","command":"echo snippet-$((5*5))","runInTerminal":false}"#)
         XCUIDevice.shared.orientation = .portrait
