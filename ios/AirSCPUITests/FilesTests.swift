@@ -156,11 +156,14 @@ final class FilesTests: XCTestCase {
         save.tap()
         XCTAssert(save.waitForNonExistence(timeout: 15))
 
-        // Deleted here, then imported back from the Files app (On My iPhone ▸ AirSCP, where it was saved).
+        // Deleted on the server, then imported back from the Files app (On My iPhone ▸ AirSCP, where it was saved). An
+        // iPad still shows this device's copy next to it.
+        if device.exists { app.segmentedControls.buttons["lab"].tap() }
         row(name, in: app).swipeLeft()
         app.buttons["Delete"].tap()
         app.alerts.buttons["Delete"].tap()
-        XCTAssert(app.staticTexts[name].waitForNonExistence(timeout: 10))
+        let left = expectation(for: NSPredicate(format: "count == %d", device.exists ? 0 : 1), evaluatedWith: app.staticTexts.matching(identifier: name))
+        XCTAssertEqual(XCTWaiter.wait(for: [left], timeout: 10), .completed, "Not deleted on the server")
         app.buttons["More"].firstMatch.tap()
         app.buttons["Import from Files"].tap()
         let file = app.cells.containing(NSPredicate(format: "label CONTAINS %@", String(name.dropLast(4)))).firstMatch
