@@ -52,7 +52,12 @@ struct HostEditor: View {
         NavigationStack {
             Form {
                 if isNew { kind }
-                if let s3 = Binding($host.s3) { storage(s3) } else { server }
+                // Not `Binding($host.s3)`: its fields still read it as Kind went back to Server, and it stopped the app.
+                if host.s3 != nil {
+                    storage(Binding(get: { host.s3 ?? S3Settings() }, set: { host.s3 = $0 }))
+                } else {
+                    server
+                }
                 if !isNew { remove }
             }
             .navigationTitle(host.s3 == nil ? (isNew ? "New Server" : "Edit Server") : (isNew ? "New S3 Storage" : "Edit S3 Storage"))

@@ -36,6 +36,11 @@ final class StorageTests: XCTestCase {
         app.buttons["Add Server"].firstMatch.tap()
         app.segmentedControls.buttons["S3 storage"].tap()
         XCTAssert(app.navigationBars["New S3 Storage"].waitForExistence(timeout: 5))
+        // Back to a server and to S3 again: going back once stopped the app.
+        app.segmentedControls.buttons["Server"].tap()
+        XCTAssert(app.navigationBars["New Server"].waitForExistence(timeout: 5))
+        app.segmentedControls.buttons["S3 storage"].tap()
+        XCTAssert(app.navigationBars["New S3 Storage"].waitForExistence(timeout: 5))
         type("lab storage", into: app.textFields["Name"])
         type("http://127.0.0.1:\(LabStorage.port)", into: app.textFields["Endpoint"])
         type("us-east-1", into: app.textFields["Region"])
