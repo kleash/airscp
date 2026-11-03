@@ -220,7 +220,9 @@ final class FilesTests: XCTestCase {
         text.typeWithFocus("# edited\n")
         keepScreenshot("Editor")
         app.buttons["Save"].tap()
-        XCTAssert(app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH 'Saved at'")).firstMatch.waitForExistence(timeout: 15))
+        let savedAt = app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH 'Saved at'")).firstMatch
+        for _ in 0..<2 where !savedAt.waitForExistence(timeout: 10) { app.buttons["Save"].tap() }  // a lost tap, as below
+        XCTAssert(savedAt.waitForExistence(timeout: 15))
         var saved = try await lab.read("app.conf")
         XCTAssert(saved.contains("# edited"), saved)
 
@@ -238,6 +240,8 @@ final class FilesTests: XCTestCase {
         text.typeWithFocus("# mine\n")
         app.buttons["Save"].tap()
         let question = app.alerts["“app.conf” was changed on the server after you opened it"]
+        // Seen on iPadOS 27 in portrait: a tap right after typing got lost (still "Saved at" the first save's time).
+        for _ in 0..<2 where !question.waitForExistence(timeout: 10) { app.buttons["Save"].tap() }
         XCTAssert(question.waitForExistence(timeout: 15))
         keepScreenshot("Changed on the server")
         XCTAssert(question.buttons["Show Server Version"].exists)
