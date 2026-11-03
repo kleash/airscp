@@ -186,8 +186,8 @@ final class FilesTests: XCTestCase {
             }
         }
         // Earlier runs' files are there too, in name order: scrolled to when a name of this run's sorts further down.
-        for _ in 0..<10 { if await shown(5) { break }; app.swipeUp() }
-        let found = await shown(1)
+        var found = await shown(5)
+        for _ in 0..<10 where !found { app.swipeUp(); found = await shown(5) }
         XCTAssert(found, "The saved file isn't in the document picker")
         keepScreenshot("Import from Files")
         file.tap()  // several can be picked: it's selected, and Open takes the selection
