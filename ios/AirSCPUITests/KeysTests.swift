@@ -34,8 +34,8 @@ final class KeysTests: XCTestCase {
         app.buttons["Make a New Key"].tap()
         let field = app.alerts.textFields.firstMatch
         XCTAssert(field.waitForExistence(timeout: 5))
-        field.typeText(name)
-        app.alerts.buttons["Make"].tap()
+        XCTAssert(app.alerts.buttons["Make"].exists)
+        field.typeText(name + "\n")  // Return: Make (see clearAndType)
     }
 
     func testAKeyIsMadeAndListedWithItsFingerprint() {

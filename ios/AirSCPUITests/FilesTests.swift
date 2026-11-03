@@ -40,8 +40,8 @@ final class FilesTests: XCTestCase {
         let name = app.alerts.textFields.firstMatch
         XCTAssert(name.waitForExistence(timeout: 5))
         XCTAssertEqual(name.value as? String, "untitled folder")
-        name.clearAndType("made")
-        app.alerts.buttons["Create"].tap()
+        XCTAssert(app.alerts.buttons["Create"].exists)
+        name.clearAndType("made\n")  // Return: Create
         XCTAssert(app.staticTexts["made"].waitForExistence(timeout: 10))
         let made = try await lab.names()
         XCTAssertEqual(made, ["docs", "made", "notes.txt"])
@@ -50,8 +50,8 @@ final class FilesTests: XCTestCase {
         row("made", in: app).swipeLeft()
         app.buttons["Rename"].tap()
         XCTAssert(name.waitForExistence(timeout: 5))
-        name.clearAndType("renamed")
-        app.alerts.buttons["Rename"].tap()
+        XCTAssert(app.alerts.buttons["Rename"].exists)
+        name.clearAndType("renamed\n")  // Return: Rename
         XCTAssert(app.staticTexts["renamed"].waitForExistence(timeout: 10))
         XCTAssertFalse(app.staticTexts["made"].exists)
         let renamed = try await lab.names()
@@ -368,8 +368,7 @@ final class FilesTests: XCTestCase {
             // The Simulator lets the first ⌘ or Control key after a launch through as the plain key (Settings does it too).
             if !name.waitForExistence(timeout: 5) { app.typeKey("n", modifierFlags: .command) }
             XCTAssert(name.waitForExistence(timeout: 5), "⌘N doesn't ask for the new folder's name")
-            name.clearAndType(made)
-            app.alerts.buttons["Create"].tap()
+            name.clearAndType(made + "\n")  // Return: Create
             XCTAssert(app.staticTexts[made].waitForExistence(timeout: 10))
 
             // ⌘↓ opens the selected folder.
@@ -477,7 +476,8 @@ extension XCUIElement {
         typeText(text)
     }
 
-    /// Replaces a text field's text.
+    /// Replaces a text field's text. An alert's ends with Return, which presses its button: on an iPad, XCUITest's typing
+    /// can hide the keyboard, and a tap that brings it back moves the alert away from under itself.
     func clearAndType(_ text: String) {
         tap()
         if let value = value as? String, !value.isEmpty {

@@ -191,8 +191,8 @@ final class LinksTests: XCTestCase {
         app.buttons["Go to Line"].tap()
         let field = app.alerts.textFields.firstMatch
         XCTAssert(field.waitForExistence(timeout: 5))
-        field.typeText(number)
-        app.alerts.buttons["Go"].tap()
+        XCTAssert(app.alerts.buttons["Go"].exists)
+        field.typeText(number + "\n")  // Return: Go (see clearAndType)
     }
 
     @MainActor private func keepScreenshot(_ name: String) {
