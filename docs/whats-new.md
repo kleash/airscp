@@ -5,6 +5,18 @@ nav_order: 18
 
 # What's new
 
+## AirSCP 2.0.0
+
+- **AirSCP for iPhone and iPad** (iOS 26 or later): save your servers and S3 storage, or find them on your network with
+  **Nearby**. Copy files between a server and your device, or between two servers: a file you copy is checked against
+  the original. Share files, save them in the Files app, or carry them from place to place in the tray. Edit text files,
+  type in a terminal with the keys a phone keyboard lacks, run a command on several servers at once, and watch a Linux
+  server's CPU, memory and processes. Keys stay in the Keychain on your device, and Face ID unlocks them. See
+  [iPhone and iPad](iphone-ipad/index.md).
+- **On iPad**: a sidebar with a workspace for each open server (its files, its terminal pulled up under them, and the
+  transfers), several windows, drag and drop with other apps, keyboard shortcuts and the pointer. On an iPhone Duo,
+  AirSCP follows the fold and keeps what you were doing. See [iPad and iPhone Duo](iphone-ipad/ipad.md).
+
 ## AirSCP 1.4.0
 
 - **Disk Usage**: **File ▸ Disk Usage…** shows what takes the room below a folder, on a server or on this Mac. While

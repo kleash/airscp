@@ -13,6 +13,16 @@
 - [Copy your first files](https://kleash.github.io/airscp/getting-started/copy-your-first-files.html): Copy files between your Mac and a server by dragging them, like in Finder.
 - [Find your way around the window](https://kleash.github.io/airscp/getting-started/the-window.html): AirSCP has one main window. Here is what each part does.
 
+## iPhone and iPad
+- [iPhone and iPad](https://kleash.github.io/airscp/iphone-ipad/): AirSCP is on iPhone and iPad too. Save your servers, copy files between a server and your device, type commands in a terminal and see how a Linux server is doing, wherever you are. It needs iOS 26 or iPadOS 26, or later. Get it from the App Store.
+- [Get started on iPhone and iPad](https://kleash.github.io/airscp/iphone-ipad/get-started.html): Save a server once, then tap it to connect. You need the server's address and your user name on it. Your server admin or hosting company gives you these.
+- [Files on iPhone and iPad](https://kleash.github.io/airscp/iphone-ipad/files.html): The **Files** tab has two sides: an open server, and **On iPhone** (on an iPad, **On iPad**), which is AirSCP's own folder on your device. You copy between them. An iPhone shows one side at a time; an iPad shows both, next to each other.
+- [Terminal on iPhone and iPad](https://kleash.github.io/airscp/iphone-ipad/terminal.html): The **Terminal** tab is a shell on an open server. It uses the server's connection, so there is no second login. Each open server has one.
+- [Transfers on iPhone and iPad](https://kleash.github.io/airscp/iphone-ipad/transfers.html): Every copy goes to the **Transfers** tab. There you see how far each one is, pause it, or try it again. On an iPhone, the copy that runs also shows just above the tabs: tap it to open **Transfers**.
+- [Search and run on several servers](https://kleash.github.io/airscp/iphone-ipad/search.html): **Search** (the magnifying glass next to the tabs) finds your servers, the commands you ran before, and files on an open server. From there you run a command again: on one server, or on several at once.
+- [Monitor on iPhone and iPad](https://kleash.github.io/airscp/iphone-ipad/monitor.html): See what a Linux server is doing: its CPU, memory, disks and busiest processes. You can also stop a process.
+- [iPad and iPhone Duo](https://kleash.github.io/airscp/iphone-ipad/ipad.html): On an iPad, AirSCP uses the room it has: a sidebar with your open servers, a workspace for each, several windows, the keyboard and the pointer. AirSCP follows the width of its window, not the device. A narrow window (next to another app, or an iPhone Duo folded) looks as on an iPhone.
+
 ## Connecting
 - [Connecting](https://kleash.github.io/airscp/connecting/): How to save your servers and log in to them: with a key, a password, through a jump host or a proxy.
 - [Add a server](https://kleash.github.io/airscp/connecting/add-a-host.html): A host is a server you log in to over SSH. Save it once, and AirSCP connects with one click. Only the address is required: the rest has sensible defaults.
@@ -88,7 +98,7 @@
 - [Use your PuTTY (.ppk) keys](https://kleash.github.io/airscp/keys/putty-keys.html): Coming from Windows or PuTTY? Your keys are `.ppk` files. AirSCP turns them into keys that ssh on the Mac can use, and back. Nothing else needs to be installed.
 
 ## More topics
-- [Home](https://kleash.github.io/airscp/): AirSCP is a Mac app for your servers. You save your servers once. Then you click to connect, and you drag files between your Mac and the server. AirSCP also opens Windows desktops (Remote Desktop), shows what a Linux server is doing, and opens tunnels. You don't need to type commands.
+- [Home](https://kleash.github.io/airscp/): AirSCP is a Mac app for your servers. You save your servers once. Then you click to connect, and you drag files between your Mac and the server. AirSCP also opens Windows desktops (Remote Desktop), shows what a Linux server is doing, and opens tunnels. You don't need to type commands. AirSCP is on iPhone and iPad too: see [iPhone and iPad](https://kleash.github.io/airscp/iphone-ipad/).
 - [Synchronize](https://kleash.github.io/airscp/synchronize.html): Make a folder on your Mac and a folder on a server the same. AirSCP compares them, with everything inside, and shows what it would copy. Nothing is copied until you click **Synchronize**.
 - [Disk Usage](https://kleash.github.io/airscp/disk-usage.html): Find the big folders and files below a folder, on a server or on this Mac, and delete what you don't need.
 - [Find](https://kleash.github.io/airscp/find.html): Search for files by name in a server folder and in every folder below it.
