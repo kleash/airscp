@@ -2,7 +2,7 @@
 # the Just the Docs theme as a remote theme: no Gemfile and no workflow to keep up, and it gives the side navigation and
 # the search box. Preview and checks: scripts/docs-site.sh. Pictures: scripts/docs-screenshots.sh.
 title: AirSCP Help
-description: How to use AirSCP, the Mac app for SSH servers, file transfers and Windows desktops.
+description: How to use AirSCP, the Mac, iPhone and iPad app for SSH servers, file transfers and Windows desktops.
 url: https://kleash.github.io
 baseurl: /airscp
 lang: en

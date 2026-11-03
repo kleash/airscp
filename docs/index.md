@@ -1,7 +1,7 @@
 ---
 title: Home
 nav_order: 1
-description: Step-by-step help for AirSCP, the Mac app for SSH servers, file transfers and Windows desktops.
+description: Step-by-step help for AirSCP, the Mac, iPhone and iPad app for SSH servers, file transfers and Windows desktops.
 ---
 
 # AirSCP Help

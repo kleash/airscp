@@ -40,7 +40,8 @@ Not automatically. Use **File ▸ Export Hosts…** and **Import Hosts…**. See
 No. [Synchronize](synchronize.md) runs when you ask it to.
 
 **Is there a built-in terminal?**
-Not yet. **Open Terminal** opens Terminal or iTerm on the host, without logging in again.
+Yes. Each host has a [Terminal tab](commands/terminal-tab.md) in AirSCP, which uses the connection that is open already.
+On iPhone and iPad, it's the [Terminal](iphone-ipad/terminal.md) tab.
 
 **My server is behind another server. Can AirSCP reach it?**
 Yes, through one jump host. See [Connect through a jump host](connecting/jump-hosts.md).

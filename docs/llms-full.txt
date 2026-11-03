@@ -1,6 +1,6 @@
 # AirSCP Help (all pages)
 
-> AirSCP is a free, open-source Mac app (macOS 13.1 or later) for SSH servers and Windows desktops: saved hosts, a two-pane SCP/SFTP file browser with a background transfer queue, Synchronize, Find Files, remote file operations, a Linux monitor, tunnels, jump hosts and HTTP proxies, and a built-in Remote Desktop client with clipboard and file transfer. AI agents drive it over MCP once the user allows it.
+> AirSCP is a free, open-source Mac app (macOS 13.1 or later) for SSH servers and Windows desktops: saved hosts, a two-pane SCP/SFTP file browser with a background transfer queue, Synchronize, Find Files, remote file operations, a Linux monitor, tunnels, jump hosts and HTTP proxies, and a built-in Remote Desktop client with clipboard and file transfer. AI agents drive it over MCP once the user allows it. An iPhone and iPad app (iOS 26 or later) has the servers, files, transfers, a terminal, search and the monitor.
 
 - Install: `brew install --cask kleash/tap/airscp` (or the zip from https://github.com/kleash/airscp/releases).
 - Agent control: the user turns on AirSCP ▸ Settings ▸ Allow AI agents to control AirSCP (MCP); then `claude mcp add airscp -- /Applications/AirSCP.app/Contents/MacOS/AirSCP --mcp` (any MCP client: that program with `--mcp`, over stdio). Or the Claude Code plugin: `/plugin marketplace add kleash/airscp`, then `/plugin install airscp@airscp`. An MCP client loads a new server at its next start; until then the same tools run from a shell: `/Applications/AirSCP.app/Contents/MacOS/AirSCP --agent snapshot` (`--agent guide` works before AirSCP is open).
@@ -3795,7 +3795,8 @@ Not automatically. Use **File ▸ Export Hosts…** and **Import Hosts…**. See
 No. [Synchronize](https://kleash.github.io/airscp/synchronize.html) runs when you ask it to.
 
 **Is there a built-in terminal?**
-Not yet. **Open Terminal** opens Terminal or iTerm on the host, without logging in again.
+Yes. Each host has a [Terminal tab](https://kleash.github.io/airscp/commands/terminal-tab.html) in AirSCP, which uses the connection that is open already.
+On iPhone and iPad, it's the [Terminal](https://kleash.github.io/airscp/iphone-ipad/terminal.html) tab.
 
 **My server is behind another server. Can AirSCP reach it?**
 Yes, through one jump host. See [Connect through a jump host](https://kleash.github.io/airscp/connecting/jump-hosts.html).
