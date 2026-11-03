@@ -1,16 +1,16 @@
 #!/bin/bash
 # Makes AirSCP's iPhone and iPad upload: ios/AirSCP.xcodeproj archived for the App Store (Release, any iOS device) with
-# the version from VERSION, signed automatically (Xcode makes or fetches the Apple Distribution certificate and the
-# App Store profile), exported as build/ios/AirSCP.ipa, checked by Apple (altool --validate-app) and uploaded to App
-# Store Connect for TestFlight (altool --upload-package).
+# the version from VERSION, signed automatically (the Apple Distribution certificate, and the App Store profile, which
+# Xcode makes when there is none), exported as build/ios/AirSCP.ipa, checked by Apple (altool --validate-app) and
+# uploaded to App Store Connect for TestFlight (altool --upload-package).
 #   scripts/release-ios.sh              all of it
 #   scripts/release-ios.sh --no-upload  all but the upload
 # Needs (docs/dev/release.md, "iPhone and iPad (App Store)"):
-#   Xcode with the iOS SDK, and vendor/ssh2 (scripts/build-libssh2.sh)
+#   Xcode with the iOS SDK, signed in to the team (Settings ▸ Accounts): Xcode signs with that account (an App
+#                             Manager API key may make no distribution profile); vendor/ssh2 (scripts/build-libssh2.sh)
 #   DEVELOPMENT_TEAM          the id of the team that signs it
-#   APPSTORE_KEY_ID, APPSTORE_ISSUER   an App Store Connect API key; its AuthKey_<id>.p8 in
-#                             ~/.appstoreconnect/private_keys, or APPSTORE_KEY_PATH. Xcode signs with it, altool
-#                             validates and uploads with it.
+#   APPSTORE_KEY_ID, APPSTORE_ISSUER   an App Store Connect API key, for the validation and the upload; its
+#                             AuthKey_<id>.p8 in ~/.appstoreconnect/private_keys, or APPSTORE_KEY_PATH
 #   AIRSCP_BUILD_NUMBER       CFBundleVersion when the same version goes up again (App Store Connect takes each once)
 set -euo pipefail
 cd "$(dirname "$0")/.."
@@ -43,11 +43,9 @@ icon=ios/AirSCP/Assets.xcassets/AppIcon.appiconset/AppIcon.png
     || fail "$icon must be 1024 × 1024 pixels without alpha: swift scripts/make-icon.swift $icon"
 
 # The archive, signed for development; the export signs it for the App Store.
-xcode_auth=(-allowProvisioningUpdates -authenticationKeyPath "$key" -authenticationKeyID "$APPSTORE_KEY_ID"
-            -authenticationKeyIssuerID "$APPSTORE_ISSUER")
 rm -rf "$out"
-xcodebuild archive -quiet -project ios/AirSCP.xcodeproj -scheme AirSCP -configuration Release \
-    -destination generic/platform=iOS -derivedDataPath .build/ios-release -archivePath "$archive" "${xcode_auth[@]}" \
+xcodebuild archive -quiet -project ios/AirSCP.xcodeproj -scheme AirSCP -configuration Release -allowProvisioningUpdates \
+    -destination generic/platform=iOS -derivedDataPath .build/ios-release -archivePath "$archive" \
     DEVELOPMENT_TEAM="$DEVELOPMENT_TEAM" MARKETING_VERSION="$version" CURRENT_PROJECT_VERSION="$build"
 
 # What App Store Connect and App Review look at.
@@ -83,7 +81,7 @@ cat > "$work/ExportOptions.plist" <<EOF
 </plist>
 EOF
 xcodebuild -exportArchive -archivePath "$archive" -exportPath "$out" -exportOptionsPlist "$work/ExportOptions.plist" \
-    "${xcode_auth[@]}"
+    -allowProvisioningUpdates
 [ -f "$ipa" ] || fail "The export made no $ipa."
 unzip -q "$ipa" -d "$work/ipa"
 codesign --verify --deep --strict "$work/ipa/Payload/AirSCP.app"

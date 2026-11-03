@@ -126,7 +126,7 @@ App Privacy ("Data Not Collected") and Pricing and Availability (France left out
 | What | How |
 |---|---|
 | iOS platform | App Store Connect ▸ Apps ▸ AirSCP ▸ **Add Platform** (next to the macOS version in the sidebar) ▸ iOS. Until then, iOS uploads have no app to go to. |
-| Signing | Nothing more: the Mac App Store's Apple Distribution certificate signs iOS too, and the script lets Xcode make the iOS App Store profile with the API key above (`-allowProvisioningUpdates`). |
+| Signing | Xcode ▸ Settings ▸ Accounts signed in to the team. The Mac App Store's Apple Distribution certificate signs iOS too, and with that account the script lets Xcode make the iOS App Store profile ("iOS Team Store Provisioning Profile: com.kleash.airscp", `-allowProvisioningUpdates`). The App Manager API key can't: it has no access to cloud-managed certificates and makes no profile, so the script uses it only for the validation and the upload. |
 | libssh2 | `scripts/build-libssh2.sh` (vendor/ssh2; needs Xcode with the iOS SDK). |
 | TestFlight testers | App Store Connect ▸ AirSCP ▸ TestFlight ▸ Internal Testing ▸ + : a group of the team's members (Users and Access), with automatic distribution on. Internal testers need no review; an external group's first build goes through Beta App Review. |
 
