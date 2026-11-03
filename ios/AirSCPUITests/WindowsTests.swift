@@ -31,7 +31,6 @@ final class WindowsTests: XCTestCase {
         app.launchEnvironment["AIRSCP_TEST_SPEED_LIMIT"] = "100000"  // 1.4 MB: about 14 s (XCUITest waits while it moves)
         app.launch()
         XCTAssert(app.staticTexts["lab"].waitForExistence(timeout: 10))
-        let oneWindow = app.windows.count
         newWindow(app)
 
         // The second window logs in, and types in the lab's shell.
@@ -59,7 +58,7 @@ final class WindowsTests: XCTestCase {
         keepScreenshot("Second window")
 
         // Closed: the first window has it all.
-        close(app, to: oneWindow)
+        close(app)
         XCTAssert(app.staticTexts["Connected"].waitForExistence(timeout: 10), "The connection is gone")
         XCTAssertFalse(app.secureTextFields["answer"].exists, "The password was asked again")
         keepScreenshot("First window")
@@ -113,7 +112,7 @@ final class WindowsTests: XCTestCase {
         keepScreenshot("New window, turned")
         XCUIDevice.shared.orientation = start
 
-        close(app, to: oneWindow)
+        close(app)
         app.show("Servers")
         XCTAssert(app.staticTexts["Connected"].waitForExistence(timeout: 10), "The connection is gone")
     }
@@ -136,13 +135,15 @@ final class WindowsTests: XCTestCase {
     }
 
     /// Closes the window in front with ⌘W (again when the Simulator drops the ⌘), and brings the one left to the front.
-    @MainActor private func close(_ app: XCUIApplication, to windows: Int) {
+    @MainActor private func close(_ app: XCUIApplication) {
         let before = app.windows.count
-        for _ in 0..<3 where app.windows.count >= before {
+        var closed = false
+        for _ in 0..<3 where !closed {
             app.typeKey("w", modifierFlags: .command)
-            _ = wait(10) { app.windows.count < before }
+            closed = wait(10) { app.windows.count < before }
         }
-        XCTAssertEqual(app.windows.count, windows, "The window didn't close")
+        // Seen as it closes: iPadOS 26.5 lists the closed window again for a while once the other is in front.
+        XCTAssert(closed, "The window didn't close")
         app.activate()  // the Simulator shows the Home Screen once the window in front closes
     }
 

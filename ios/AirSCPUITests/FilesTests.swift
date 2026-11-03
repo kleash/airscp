@@ -166,11 +166,17 @@ final class FilesTests: XCTestCase {
         XCTAssertEqual(XCTWaiter.wait(for: [left], timeout: 10), .completed, "Not deleted on the server")
         app.buttons["More"].firstMatch.tap()
         app.buttons["Import from Files"].tap()
-        let file = app.cells.containing(NSPredicate(format: "label CONTAINS %@", String(name.dropLast(4)))).firstMatch
+        // An iPad still lists this device's copy behind the picker: the picker's cell is the one on screen.
+        let files = app.cells.containing(NSPredicate(format: "label CONTAINS %@", String(name.dropLast(4))))
+        var file: XCUIElement { files.allElementsBoundByIndex.first { $0.isHittable } ?? files.firstMatch }
+        func shown(_ seconds: TimeInterval) async -> Bool {
+            let onScreen = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in file.exists && file.isHittable }, object: nil)
+            return await XCTWaiter().fulfillment(of: [onScreen], timeout: seconds) == .completed
+        }
         let browse = app.buttons["Browse"], open = app.navigationBars.buttons["Open"]
         XCTAssert(browse.waitForExistence(timeout: 15) || open.exists, "No document picker")
         if browse.exists { browse.tap() }  // the iPhone's picker has tabs (it opens where it was last); the iPad's a sidebar
-        if !file.waitForExistence(timeout: 10) {
+        if await !shown(10) {
             for place in ["On My \(UIDevice.current.model)", "AirSCP"] {
                 let cell = app.cells.containing(.staticText, identifier: place).firstMatch
                 XCTAssert(cell.waitForExistence(timeout: 10), "No \(place) in the document picker")
@@ -180,8 +186,9 @@ final class FilesTests: XCTestCase {
             }
         }
         // Earlier runs' files are there too, in name order: scrolled to when a name of this run's sorts further down.
-        for _ in 0..<10 where !file.waitForExistence(timeout: 5) { app.swipeUp() }
-        XCTAssert(file.exists, "The saved file isn't in the document picker")
+        for _ in 0..<10 { if await shown(5) { break }; app.swipeUp() }
+        let found = await shown(1)
+        XCTAssert(found, "The saved file isn't in the document picker")
         keepScreenshot("Import from Files")
         file.tap()  // several can be picked: it's selected, and Open takes the selection
         let enabled = XCTNSPredicateExpectation(predicate: NSPredicate(format: "exists == true AND isEnabled == true"), object: open)
