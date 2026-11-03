@@ -114,6 +114,45 @@ Opening it with a folder (`/tmp/t` above) lets the sandbox into that folder the 
 instance can keep its settings there. Its data otherwise lives in `~/Library/Containers/<bundle id>`, which Terminal can
 read only after macOS asks you, and its agent socket is in that container's `tmp` (a short path).
 
+## iPhone and iPad (App Store)
+
+The iPhone and iPad app (`ios/`, built with Xcode) is the same App Store Connect app as the Mac App Store version:
+bundle id `com.kleash.airscp`, one purchase for both (universal purchase). Its version and build number come from
+`VERSION` at the archive (the project has none of its own). Its texts, screenshots and review are the iOS version's own;
+App Privacy ("Data Not Collected") and Pricing and Availability (France left out) are the app's, shared with the Mac.
+
+### One-time setup
+
+| What | How |
+|---|---|
+| iOS platform | App Store Connect ▸ Apps ▸ AirSCP ▸ **Add Platform** (next to the macOS version in the sidebar) ▸ iOS. Until then, iOS uploads have no app to go to. |
+| Signing | Nothing more: the Mac App Store's Apple Distribution certificate signs iOS too, and the script lets Xcode make the iOS App Store profile with the API key above (`-allowProvisioningUpdates`). |
+| libssh2 | `scripts/build-libssh2.sh` (vendor/ssh2; needs Xcode with the iOS SDK). |
+| TestFlight testers | App Store Connect ▸ AirSCP ▸ TestFlight ▸ Internal Testing ▸ + : a group of the team's members (Users and Access), with automatic distribution on. Internal testers need no review; an external group's first build goes through Beta App Review. |
+
+### Upload
+
+```sh
+DEVELOPMENT_TEAM=… APPSTORE_KEY_ID=… APPSTORE_ISSUER=… scripts/release-ios.sh --no-upload   # up to the validation
+DEVELOPMENT_TEAM=… APPSTORE_KEY_ID=… APPSTORE_ISSUER=… scripts/release-ios.sh               # and the upload
+```
+
+The script first checks what needs nothing from Apple: the key file, that vendor/ssh2 is from the current
+`build-libssh2.sh`, `ios/Info.plist`, the privacy manifest and the icon (1024 × 1024, no alpha; drawn by
+`swift scripts/make-icon.swift ios/AirSCP/Assets.xcassets/AppIcon.appiconset/AppIcon.png`). It then archives (Release,
+any iOS device), checks the archived app (bundle id, version, no `ITSAppUsesNonExemptEncryption`, the icon, the usage
+texts, the privacy manifest, arm64, the private API scan), exports `build/ios/AirSCP.ipa` for App Store Connect, checks
+its signature, and runs `xcrun altool --validate-app` and `--upload-package`. Build numbers work as for the Mac
+(`AIRSCP_BUILD_NUMBER` for a second upload of a version). The build shows in TestFlight once Apple has processed it.
+
+**Export compliance**: the iOS app's SSH is libssh2 over OpenSSL, standard encryption in addition to iOS's, and its
+Info.plist leaves `ITSAppUsesNonExemptEncryption` out too. TestFlight shows "Missing Compliance" on each new build until
+the question is answered as for the Mac: "Standard encryption algorithms instead of, or in addition to, the encryption
+within Apple's operating system", not available in France.
+
+**Screenshots** for the iOS version: the 6.9" iPhone (1320 × 2868 pixels, as from an iPhone 17 Pro Max) and the 13"
+iPad (2064 × 2752, an iPad Pro 13-inch); App Store Connect scales them for the smaller devices. TestFlight needs none.
+
 ## After: check it from the outside
 
 ```sh
