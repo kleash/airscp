@@ -4,9 +4,9 @@
   "SPDXID": "SPDXRef-DOCUMENT",
   "name": "AirSCP 2.0.0",
   "documentNamespace": "https://github.com/kleash/airscp/releases/download/v2.0.0/sbom.spdx.json",
-  "comment": "The third-party code built into AirSCP: FreeRDP and OpenSSL, pinned and checksummed in scripts/build-freerdp.sh and linked statically. AirSCP has no package-manager dependencies. At run time it also uses the OpenSSH that is part of macOS (/usr/bin/ssh, scp, sftp), which Apple updates with macOS; it isn't shipped with AirSCP. Written by scripts/sbom.sh.",
+  "comment": "The third-party code built into AirSCP: in the Mac app FreeRDP and OpenSSL, pinned and checksummed in scripts/build-freerdp.sh; in the iPhone and iPad app libssh2 and the same OpenSSL, pinned in scripts/build-libssh2.sh; all linked statically. AirSCP has no package-manager dependencies. At run time the Mac app also uses the OpenSSH that is part of macOS (/usr/bin/ssh, scp, sftp), which Apple updates with macOS; it isn't shipped with AirSCP. Written by scripts/sbom.sh.",
   "creationInfo": {
-    "created": "2026-11-03T01:31:43Z",
+    "created": "2026-11-03T01:31:44Z",
     "creators": ["Tool: scripts/sbom.sh"]
   },
   "packages": [
@@ -38,7 +38,7 @@
       "licenseConcluded": "Apache-2.0",
       "licenseDeclared": "Apache-2.0",
       "copyrightText": "Copyright the FreeRDP contributors",
-      "comment": "The client library only, with one line changed at build time (utils_set_umask leaves the process umask as it is); see scripts/build-freerdp.sh.",
+      "comment": "The Mac app only: the client library, with one line changed at build time (utils_set_umask leaves the process umask as it is); see scripts/build-freerdp.sh.",
       "primaryPackagePurpose": "LIBRARY",
       "externalRefs": [
         {"referenceCategory": "PACKAGE-MANAGER", "referenceType": "purl", "referenceLocator": "pkg:git/github.com/freerdp/freerdp@3.32.2"},
@@ -62,11 +62,31 @@
         {"referenceCategory": "PACKAGE-MANAGER", "referenceType": "purl", "referenceLocator": "pkg:git/github.com/openssl/openssl@openssl-3.5.9"},
         {"referenceCategory": "SECURITY", "referenceType": "cpe23Type", "referenceLocator": "cpe:2.3:a:openssl:openssl:3.5.9:*:*:*:*:*:*:*"}
       ]
+    },
+    {
+      "SPDXID": "SPDXRef-libssh2",
+      "name": "libssh2",
+      "versionInfo": "1.11.1",
+      "supplier": "Organization: libssh2",
+      "downloadLocation": "https://github.com/libssh2/libssh2/releases/download/libssh2-1.11.1/libssh2-1.11.1.tar.gz",
+      "homepage": "https://libssh2.org",
+      "filesAnalyzed": false,
+      "checksums": [{"algorithm": "SHA256", "checksumValue": "d9ec76cbe34db98eec3539fe2c899d26b0c837cb3eb466a56b0f109cabf658f7"}],
+      "licenseConcluded": "BSD-3-Clause",
+      "licenseDeclared": "BSD-3-Clause",
+      "copyrightText": "Copyright the libssh2 contributors",
+      "comment": "The iPhone and iPad app only (its SSH, SCP and SFTP), over OpenSSL; see scripts/build-libssh2.sh. The Mac app uses macOS's OpenSSH.",
+      "primaryPackagePurpose": "LIBRARY",
+      "externalRefs": [
+        {"referenceCategory": "PACKAGE-MANAGER", "referenceType": "purl", "referenceLocator": "pkg:git/github.com/libssh2/libssh2@libssh2-1.11.1"},
+        {"referenceCategory": "SECURITY", "referenceType": "cpe23Type", "referenceLocator": "cpe:2.3:a:libssh2:libssh2:1.11.1:*:*:*:*:*:*:*"}
+      ]
     }
   ],
   "relationships": [
     {"spdxElementId": "SPDXRef-DOCUMENT", "relationshipType": "DESCRIBES", "relatedSpdxElement": "SPDXRef-AirSCP"},
     {"spdxElementId": "SPDXRef-AirSCP", "relationshipType": "STATIC_LINK", "relatedSpdxElement": "SPDXRef-FreeRDP"},
-    {"spdxElementId": "SPDXRef-AirSCP", "relationshipType": "STATIC_LINK", "relatedSpdxElement": "SPDXRef-OpenSSL"}
+    {"spdxElementId": "SPDXRef-AirSCP", "relationshipType": "STATIC_LINK", "relatedSpdxElement": "SPDXRef-OpenSSL"},
+    {"spdxElementId": "SPDXRef-AirSCP", "relationshipType": "STATIC_LINK", "relatedSpdxElement": "SPDXRef-libssh2"}
   ]
 }
