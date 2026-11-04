@@ -5,6 +5,12 @@ nav_order: 18
 
 # What's new
 
+## AirSCP 2.0.2
+
+- **Fixed: Windows SSH servers** (Windows' own OpenSSH). A folder showed empty, because AirSCP didn't read how newer
+  versions list permissions. Now folders list, and the top of the path (the server's name) shows the drives (C:, D:…)
+  to go to. The Terminal tab opens the server's own shell (cmd.exe or PowerShell) instead of ending at once.
+
 ## AirSCP 2.0.1
 
 - **Copy Path from the path bar**: right-click the path above a Files pane's list ▸ **Copy Path** copies the full path

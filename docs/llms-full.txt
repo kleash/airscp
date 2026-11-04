@@ -3784,7 +3784,9 @@ Yes: **View ▸ Show Command Log**. Every line can be copied and run in Terminal
 
 **Does it work with Windows servers?**
 Yes, in two ways. The built-in [Remote Desktop](https://kleash.github.io/airscp/remote-desktop/) opens Windows desktops. And Windows' own
-OpenSSH server works for browsing and transfers. Commands, compress and the monitor need a Linux or Mac server.
+OpenSSH server works for browsing and transfers: the top of the path (the server's name) lists its drives, and the
+Terminal tab opens its own shell (cmd.exe or PowerShell). Run commands, compress and the monitor need a Linux or Mac
+server.
 
 **Does it support FTP or telnet?**
 No. AirSCP is for SSH (scp and sftp) and Remote Desktop. It can connect through HTTP and SOCKS5 proxies: see
@@ -3868,6 +3870,12 @@ Please don't open a public issue: follow the security policy (`SECURITY.md`) in
 Source: https://kleash.github.io/airscp/whats-new.html
 
 # What's new
+
+## AirSCP 2.0.2
+
+- **Fixed: Windows SSH servers** (Windows' own OpenSSH). A folder showed empty, because AirSCP didn't read how newer
+  versions list permissions. Now folders list, and the top of the path (the server's name) shows the drives (C:, D:…)
+  to go to. The Terminal tab opens the server's own shell (cmd.exe or PowerShell) instead of ending at once.
 
 ## AirSCP 2.0.1
 
