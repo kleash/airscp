@@ -160,7 +160,8 @@ public enum Listing {
         case UInt8(ascii: "c"), UInt8(ascii: "b"), UInt8(ascii: "p"), UInt8(ascii: "s"): kind = .other
         default: return nil
         }
-        for index in 1...9 where !"-rwxsStT".utf8.contains(line[index]) { return nil }
+        // "*": Windows' OpenSSH (9.5) for the group's and others' permissions, which it doesn't map ("drwx******").
+        for index in 1...9 where !"-rwxsStT*".utf8.contains(line[index]) { return nil }
         func isSpace(_ byte: UInt8) -> Bool { byte == 0x20 || (byte >= 0x09 && byte <= 0x0D) }
         func text(_ range: Range<Int>) -> String { String(decoding: UnsafeBufferPointer(rebasing: line[range]), as: UTF8.self) }
         func digits(_ range: Range<Int>) -> Bool { !range.isEmpty && range.allSatisfy { line[$0] >= 0x30 && line[$0] <= 0x39 } }

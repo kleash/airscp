@@ -222,8 +222,11 @@ final class TerminalController: NSViewController, NSMenuDelegate, NSSearchFieldD
         screen.markToken = token
         screen.onCommand = { [weak self] in self?.history.add($0) }
         let host = workspace.session.host
+        // Without a POSIX shell (Windows: cmd.exe or PowerShell) the sh lines can't run: an empty command, for which ssh
+        // starts the server's own login shell (with a terminal, as -t asks).
+        let shell = workspace.session.capabilities.shell ? OpenSSH.terminalShell(in: directory, token: token) : ""
         let argv = OpenSSH.terminal(host, jump: workspace.model.jump(for: host), socket: workspace.session.socketPath,
-                                    command: command ?? OpenSSH.terminalShell(in: directory, token: token))
+                                    command: command ?? shell)
         do {
             let session = try TerminalSession(argv, environment: workspace.connection.askpass.terminalEnvironment, screen: screen)
             session.onChange = { [weak self, weak session] in session.map { self?.changed($0) } }
