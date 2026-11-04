@@ -148,11 +148,10 @@ final class MonitorTests: XCTestCase {
         XCTAssert(password.waitForExistence(timeout: 30), "No password question")
         if remember {
             let toggle = app.switches["Remember in Keychain"].firstMatch
-            toggle.tap()
-            // iOS 27 turns the switch's value a moment after the tap.
+            // iOS 27 turns the switch's value a moment after the tap, and drops a tap while the sheet still comes in: tapped
+            // (at its end: the element spans the label too) while it stays off.
             let on = { XCTWaiter.wait(for: [self.expectation(for: NSPredicate(format: "value == '1'"), evaluatedWith: toggle)], timeout: $0) }
-            // The element spans the label too: a tap in its middle may miss the switch at its end.
-            if on(3) != .completed { toggle.coordinate(withNormalizedOffset: CGVector(dx: 0.95, dy: 0.5)).tap() }
+            for _ in 0..<3 where on(3) != .completed { toggle.coordinate(withNormalizedOffset: CGVector(dx: 0.95, dy: 0.5)).tap() }
             XCTAssertEqual(on(5), .completed, "Remember in Keychain is off")
         }
         password.tap()  // focused already, unless the sheet is still on its way

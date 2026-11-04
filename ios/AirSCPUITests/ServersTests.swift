@@ -48,6 +48,8 @@ final class ServersTests: XCTestCase {
         save.tap()
 
         let row = app.staticTexts["deploy@web-01.example.com:2222"]
+        // On iPadOS 27 a tap on the bar right after typing can get lost: the sheet is still there, so Save again.
+        for _ in 0..<2 where !row.waitForExistence(timeout: 10) && save.exists { save.tap() }
         XCTAssert(row.waitForExistence(timeout: 15))
         let added = try XCTUnwrap(savedHosts().first)
         XCTAssertEqual(added["hostname"] as? String, "web-01.example.com")
@@ -61,6 +63,9 @@ final class ServersTests: XCTestCase {
         XCTAssertEqual(app.textFields["Address"].value as? String, "web-01.example.com")
         type("web-01", into: app.textFields["Name"])
         app.sheetButton("Save").tap()
+        for _ in 0..<2 where !app.staticTexts["web-01"].waitForExistence(timeout: 10) && app.sheetButton("Save").exists {
+            app.sheetButton("Save").tap()  // lost, as above
+        }
         XCTAssert(app.staticTexts["web-01"].waitForExistence(timeout: 5))
         XCTAssertFalse(row.exists)
         XCTAssertEqual(try savedHosts().map { $0["label"] as? String }, ["web-01"])
