@@ -47,11 +47,7 @@ final class FilesTests: XCTestCase {
         XCTAssertEqual(made, ["docs", "made", "notes.txt"])
 
         // Rename, from the row's swipe actions.
-        for _ in 0..<3 {  // swiped again when the actions didn't open (a swipe while the row is still coming in gets lost)
-            row("made", in: app).swipeLeft()
-            if app.buttons["Rename"].waitForExistence(timeout: 3) { break }
-        }
-        app.buttons["Rename"].tap()
+        swipe("made", in: app, to: "Rename")
         XCTAssert(name.waitForExistence(timeout: 5))
         XCTAssert(app.alerts.buttons["Rename"].exists)
         name.clearAndType("renamed\n")  // Return: Rename
@@ -61,8 +57,7 @@ final class FilesTests: XCTestCase {
         XCTAssertEqual(renamed, ["docs", "notes.txt", "renamed"])
 
         // Delete asks first.
-        row("renamed", in: app).swipeLeft()
-        app.buttons["Delete"].tap()
+        swipe("renamed", in: app, to: "Delete")
         let ask = app.alerts.firstMatch
         XCTAssert(ask.waitForExistence(timeout: 5))
         XCTAssert(ask.label.hasPrefix("Delete “renamed” on"), ask.label)
@@ -469,6 +464,15 @@ final class FilesTests: XCTestCase {
     /// A row of the list, by its name: swiped as a whole (a swipe as short as a short name is a tap).
     @MainActor private func row(_ name: String, in app: XCUIApplication) -> XCUIElement {
         app.cells.containing(.staticText, identifier: name).firstMatch
+    }
+
+    /// Taps a row's swipe action: swiped again when the actions didn't open (iPadOS 27 sometimes takes a swipe as a tap).
+    @MainActor private func swipe(_ name: String, in app: XCUIApplication, to button: String) {
+        for _ in 0..<3 {
+            row(name, in: app).swipeLeft()
+            if app.buttons[button].waitForExistence(timeout: 3) { break }
+        }
+        app.buttons[button].tap()
     }
 
     /// Keeps a screenshot in the test's results, to look at the screens in light and dark.
