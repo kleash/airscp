@@ -1,6 +1,6 @@
 import Foundation
 
-/// A Linux server at one moment, for the Monitor tab.
+/// A Linux or macOS server at one moment, for the Monitor tab.
 public struct MonitorSnapshot: Equatable {
     /// CPU busy %, over the time since the previous refresh (/proc/stat); nil on the first one.
     public var cpu: Double?
@@ -100,7 +100,7 @@ public struct MonitorProcess: Equatable, Identifiable {
     public var command: String
 }
 
-/// A host's system monitor: Linux only, over the host's connection. One per Monitor tab; it
+/// A host's system monitor: Linux and macOS, over the host's connection. One per Monitor tab; it
 /// keeps the previous CPU sample and which ps the server has (GNU, else BusyBox), decided on the first refresh.
 public final class Monitor {
     public let session: Session
@@ -109,7 +109,7 @@ public final class Monitor {
     /// The previous refresh's CPU times: the CPU % is the busy share of the time between two refreshes.
     private var previousCPU: CPUTimes?
     private(set) var ps = PSKind.unknown
-    /// Set once the server turned out not to be Linux; later refreshes throw it without asking the server again.
+    /// Set once the server turned out to be neither Linux nor macOS; later refreshes throw it without asking again.
     private var unsupported: AirSCPError?
 
     public init(session: Session) {
@@ -119,9 +119,9 @@ public final class Monitor {
     /// A snapshot from one sentinel-wrapped shell command: /proc/stat, meminfo, loadavg and uptime, /etc/os-release
     /// (else uname), `df -kP` and ps (GNU `ps -eo pid,ppid,user,pcpu,pmem,rss,etime,stat,comm,args`, else BusyBox
     /// `ps -o pid,ppid,user,rss,etime,stat,comm,args`). `processes` false leaves ps out (the workspace header's pulse
-    /// strip). `ports` adds what the server listens on (`portsScript`), and the connections to `connectionsOf`.
-    /// Throws `.sftpOnly` without a shell, and an error saying so on a server that isn't Linux. Cancelling the calling
-    /// task stops the command (`.cancelled`).
+    /// strip). `ports` adds what the server listens on (`portsScript`), and the connections to `connectionsOf`. On macOS
+    /// the sources are `darwinScript`'s. Throws `.sftpOnly` without a shell, and an error saying so on a server that is
+    /// neither. Cancelling the calling task stops the command (`.cancelled`).
     public func refresh(processes: Bool = true, ports: Bool = false, connectionsOf port: MonitorPort? = nil)
         async throws -> MonitorSnapshot {
         let (ps, unsupported) = lock.locked { (self.ps, self.unsupported) }
@@ -139,11 +139,11 @@ public final class Monitor {
     }
 
     /// Takes in a refresh's output: the CPU % against the previous refresh, and (when it listed `processes`) which ps
-    /// to run from now on. A server that isn't Linux throws, now and on every later refresh.
+    /// to run from now on. A server that is neither Linux nor macOS throws, now and on every later refresh.
     func record(_ reading: Reading, processes: Bool = true) throws -> MonitorSnapshot {
         try lock.locked {
-            guard reading.linux else {
-                let error = AirSCPError(.other, "The system monitor works only on Linux servers"
+            guard reading.linux || reading.darwin else {
+                let error = AirSCPError(.other, "The system monitor works only on Linux and macOS servers"
                     + (reading.uname.isEmpty ? "." : " (this one runs \(reading.uname)).") + " The Files and Tunnels tabs work as usual.")
                 unsupported = error
                 throw error
@@ -207,6 +207,8 @@ public final class Monitor {
         /// `uname -sr`, e.g. "Linux 6.12.48-1-amd64".
         var uname = ""
         var linux = false
+        /// macOS ("Darwin 25.1.0").
+        var darwin = false
         /// Everything but the CPU %, which needs the previous refresh.
         var snapshot = MonitorSnapshot()
         var cpu: CPUTimes?
@@ -235,7 +237,21 @@ public final class Monitor {
         return "LC_ALL=C; export LC_ALL; s=$(uname -sr); echo \"$s\"; case $s in Linux*) echo @@sh; echo $$; "
             + "echo @@stat; head -n 1 /proc/stat; echo @@loadavg; cat /proc/loadavg; echo @@uptime; cat /proc/uptime; "
             + "echo @@meminfo; cat /proc/meminfo; echo @@os; cat /etc/os-release; " + list
-            + (ports ? portsScript(connectionsOf: port) : "") + "echo @@df; df -kP;; esac 2>/dev/null; true"
+            + (ports ? portsScript(connectionsOf: port) : "") + "echo @@df; df -kP;; "
+            + darwinScript(ps != .none, ports: ports) + " esac 2>/dev/null; true"
+    }
+
+    /// `script`'s macOS case, which has no /proc: iostat's CPU over one second (its second line; the first is since boot)
+    /// and load averages, the seconds since kern.boottime, hw.memsize, vm_stat's pages and vm.swapusage, sw_vers, BSD ps
+    /// (ucomm: the name, unshortened by a path) and df. No port tables ("none"), as on a Linux without /proc/net.
+    static func darwinScript(_ processes: Bool, ports: Bool) -> String {
+        "Darwin*) echo @@sh; echo $$; echo @@iostat; iostat -n 0 -c 2 -w 1 | tail -n 1; echo @@uptime; "
+            + "sysctl -n kern.boottime | awk -v n=$(date +%s) '{gsub(\",\", \"\"); print n - $4}'; echo @@memsize; "
+            + "sysctl -n hw.memsize; echo @@vmstat; vm_stat; echo @@swap; sysctl -n vm.swapusage; echo @@os; "
+            + "sw_vers -productName; sw_vers -productVersion; "
+            + (processes ? "echo @@ps; LC_ALL=C.UTF-8 ps -ww -Ao pid,ppid,user,pcpu,pmem,rss,etime,stat,"
+                + "ucomm=COMMAND,args=COMMAND 2>&1; " : "")
+            + (ports ? "echo @@ports; echo none; " : "") + "echo @@df; df -kP;;"
     }
 
     /// The most connections to one port that are read (a busy server has tens of thousands).
@@ -270,7 +286,8 @@ public final class Monitor {
     }
 
     private static let sections: Set<String> = ["sh", "stat", "loadavg", "uptime", "meminfo", "os", "ps", "uid", "ports",
-                                                "owners", "users", "connections", "df"]
+                                                "owners", "users", "connections", "df", "iostat", "memsize", "vmstat",
+                                                "swap"]
 
     static func parse(_ output: String) -> Reading {
         // Bytes, not Characters: ps's columns are byte positions, and it is the bulk of the output.
@@ -307,17 +324,51 @@ public final class Monitor {
         var reading = Reading()
         reading.uname = text("uname").first { !$0.isEmpty } ?? ""
         reading.linux = reading.uname.hasPrefix("Linux")
-        guard reading.linux else { return reading }
+        reading.darwin = reading.uname.hasPrefix("Darwin")
+        guard reading.linux || reading.darwin else { return reading }
 
+        var snapshot = MonitorSnapshot()
+        snapshot.uptime = text("uptime").first.flatMap { words($0).first }.flatMap(number) ?? 0
+        if reading.darwin {
+            darwin(text, into: &snapshot)
+        } else {
+            linux(text, into: &reading, &snapshot)
+        }
+        // A device or share mounted at several places (bind mounts) once; never one called tmpfs, overlay or none: distinct
+        // file systems share such names, and empty ones of one size have the same figures too.
+        var disks = text("df").compactMap(disk)
+        if reading.darwin {
+            // APFS: / is the sealed system and the files are on the Data volume (macOS 10.15 on); the rest of
+            // /System/Volumes, and the simulators' and cryptexes' volumes, are the system's own.
+            let data = disks.contains { $0.mountPoint == "/System/Volumes/Data" }
+            disks.removeAll { $0.mountPoint != (data ? "/System/Volumes/Data" : "/")
+                && !($0.mountPoint.hasPrefix("/Volumes/") && $0.mountPoint != "/Volumes/Recovery") }
+        }
+        for disk in disks where !(disk.filesystem.contains("/") && snapshot.disks.contains(where: {
+            ($0.filesystem, $0.size, $0.used, $0.available) == (disk.filesystem, disk.size, disk.used, disk.available)
+        })) {
+            snapshot.disks.append(disk)
+        }
+        if let ps = section("ps") {
+            (snapshot.processes, reading.ps, snapshot.processNote)
+                = processes(bytes, ps, memoryTotal: snapshot.memoryTotal, probe: text("sh").first.flatMap { Int($0) })
+        } else {
+            (reading.ps, snapshot.processNote) = (.none, noPS)
+        }
+        if section("ports") != nil { snapshot.ports = ports(text, processes: snapshot.processes) }
+        reading.snapshot = snapshot
+        return reading
+    }
+
+    /// /proc's CPU times, load, memory and swap, and /etc/os-release's name.
+    private static func linux(_ text: (String) -> [String], into reading: inout Reading, _ snapshot: inout MonitorSnapshot) {
         let cpu = text("stat").first.map(words) ?? []
         if cpu.first == "cpu" {
             // user nice system idle iowait irq softirq steal (guest and guest_nice are already in user and nice)
             let ticks = cpu.dropFirst().prefix(8).map { UInt64($0) ?? 0 }
             reading.cpu = CPUTimes(total: ticks.reduce(0, &+), idle: ticks.dropFirst(3).prefix(2).reduce(0, &+))
         }
-        var snapshot = MonitorSnapshot()
         snapshot.load = text("loadavg").first.map { words($0).prefix(3).compactMap(number) } ?? []
-        snapshot.uptime = text("uptime").first.flatMap { words($0).first }.flatMap(number) ?? 0
 
         var memory: [String: Int64] = [:]
         for line in text("meminfo") {
@@ -335,22 +386,42 @@ public final class Monitor {
         snapshot.swapUsed = max(0, snapshot.swapTotal - (memory["SwapFree"] ?? 0))
 
         snapshot.system = text("os").lazy.compactMap(prettyName).first ?? reading.uname
-        // A device or share mounted at several places (bind mounts) once; never one called tmpfs, overlay or none: distinct
-        // file systems share such names, and empty ones of one size have the same figures too.
-        for disk in text("df").compactMap(disk) where !(disk.filesystem.contains("/") && snapshot.disks.contains(where: {
-            ($0.filesystem, $0.size, $0.used, $0.available) == (disk.filesystem, disk.size, disk.used, disk.available)
-        })) {
-            snapshot.disks.append(disk)
+    }
+
+    /// `darwinScript`'s CPU (iostat's "us sy id 1m 5m 15m": busy is 100 − idle), load, memory as Activity Monitor counts
+    /// it (app memory, wired and compressed: vm_stat's anonymous pages less the purgeable ones, wired down and occupied
+    /// by the compressor), swap and "macOS 26.1".
+    private static func darwin(_ text: (String) -> [String], into snapshot: inout MonitorSnapshot) {
+        let cpu = text("iostat").first.map(words) ?? []
+        if cpu.count >= 6, let idle = number(cpu[2]) { snapshot.cpu = max(0, 100 - min(idle, 100)) }
+        snapshot.load = cpu.dropFirst(3).prefix(3).compactMap(number)
+
+        snapshot.memoryTotal = text("memsize").first.flatMap { Int64($0) } ?? 0
+        var pageSize: Int64 = 4096, pages: [String: Int64] = [:]
+        for line in text("vmstat") {
+            // "Mach Virtual Memory Statistics: (page size of 16384 bytes)", then "Pages wired down:  188049."
+            if let range = line.range(of: "page size of ") {
+                pageSize = Int64(line[range.upperBound...].prefix { $0.isNumber }) ?? pageSize
+            } else if let colon = line.firstIndex(of: ":"),
+                      let count = Int64(line[line.index(after: colon)...].trimmingCharacters(in: .whitespaces).dropLast()) {
+                pages[String(line[..<colon])] = count
+            }
         }
-        if let ps = section("ps") {
-            (snapshot.processes, reading.ps, snapshot.processNote)
-                = processes(bytes, ps, memoryTotal: snapshot.memoryTotal, probe: text("sh").first.flatMap { Int($0) })
-        } else {
-            (reading.ps, snapshot.processNote) = (.none, noPS)
+        let app = pages["Anonymous pages"].map { $0 - (pages["Pages purgeable"] ?? 0) } ?? pages["Pages active"] ?? 0
+        let used = (max(0, app) + (pages["Pages wired down"] ?? 0) + (pages["Pages occupied by compressor"] ?? 0))
+        snapshot.memoryUsed = min(snapshot.memoryTotal, used.multipliedReportingOverflow(by: pageSize).partialValue)
+
+        // "total = 6144.00M  used = 5301.38M  free = 842.62M  (encrypted)"
+        let swap = text("swap").first.map(words) ?? []
+        func swapSize(_ name: Substring) -> Int64 {
+            guard let index = swap.firstIndex(of: name), index + 2 < swap.count, let unit = swap[index + 2].last,
+                  let power = ["K", "M", "G", "T"].firstIndex(of: unit),
+                  let value = number(swap[index + 2].dropLast()), value < 0x1p50 else { return 0 }
+            return Int64(value * pow(1024, Double(power + 1)))
         }
-        if section("ports") != nil { snapshot.ports = ports(text, processes: snapshot.processes) }
-        reading.snapshot = snapshot
-        return reading
+        (snapshot.swapTotal, snapshot.swapUsed) = (swapSize("total"), swapSize("used"))
+        let system = text("os").filter { !$0.isEmpty }.joined(separator: " ")
+        snapshot.system = system.isEmpty ? "macOS" : system
     }
 
     static let noPortTables = "This server has no /proc/net tables, so AirSCP can't list what it listens on."

@@ -22,10 +22,15 @@ public enum TransferText {
         }
     }
 
-    /// Under the name: the file being copied in a folder and how many are done, or the archive's name.
+    /// Under the name: the file being copied in a folder and how many are done (and to go, once counted), or the
+    /// archive's name.
     public static func detail(_ job: TransferJob) -> String? {
-        if job.status == .running, job.isFolder, job.names.isEmpty, !job.progress.file.isEmpty {
-            return job.progress.file + (job.progress.filesDone > 0 ? " · \(job.progress.filesDone) done" : "")
+        let progress = job.progress
+        if job.status == .running, job.isFolder, job.names.isEmpty, !progress.file.isEmpty {
+            if let total = progress.filesTotal {
+                return progress.file + " · \(progress.filesDone) of \(total) files done, \(max(0, total - progress.filesDone)) to go"
+            }
+            return progress.file + (progress.filesDone > 0 ? " · \(progress.filesDone) done" : "")
         }
         if !job.names.isEmpty && job.direction == .download { return "as " + job.name }
         return nil

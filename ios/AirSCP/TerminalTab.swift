@@ -2,7 +2,7 @@ import AirSCPCore
 import SwiftUI
 
 /// The Terminal tab: the shown terminal (`TerminalPane`), a switcher when there are several, New Terminal, and Close
-/// Terminal for a server's second one.
+/// Terminal for a server's second one, Disconnect for its last.
 struct TerminalTab: View {
     @Environment(AppState.self) private var app
     @Environment(Terminals.self) private var terminals
@@ -27,8 +27,6 @@ struct TerminalTab: View {
                 }
             }
         }
-        .onAppear { terminals.sync(with: app) }
-        .onChange(of: app.states) { terminals.sync(with: app) }
         .fullWindow($fullWindow, escapeLeaves: false) {
             if let terminal = terminals.shown(shownID) { TerminalPane(terminal: terminal).navigationTitle(terminals.name(of: terminal)) }
         }
@@ -43,6 +41,9 @@ struct TerminalTab: View {
                     terminals.close(terminal)
                 }
                 .help("Close this terminal and end its shell")
+            } else {
+                Button("Disconnect", systemImage: "xmark.circle") { app.disconnect(terminal.session) }
+                    .help("Close the connection to this server, and its terminal")
             }
             if terminals.list.count > 1 {
                 Picker("Terminal", selection: Binding(get: { terminal.id }, set: { shownID = $0 })) {

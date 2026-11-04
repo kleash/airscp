@@ -49,11 +49,12 @@ import SwiftUI
     /// One history per server, shared by its terminals (each would otherwise write over the others' file).
     @ObservationIgnored private var histories: [UUID: CommandHistory] = [:]
 
-    /// One terminal for each connected server that runs commands; those of servers no longer open go.
+    /// One terminal for each connected server that runs commands; those of servers no longer open go (RootView, as the
+    /// servers' states change). `list` is set only when that changes it: each set redraws every window.
     func sync(with app: AppState) {
         let gone = list.filter { terminal in !app.open.contains { $0 === terminal.session } }
         for terminal in gone { terminal.shell?.close() }
-        list.removeAll { terminal in gone.contains { $0 === terminal } }
+        if !gone.isEmpty { list.removeAll { terminal in gone.contains { $0 === terminal } } }
         for session in app.open where session.state == .connected && session.capabilities.shell
             && !list.contains(where: { $0.session === session }) {
             add(on: session)

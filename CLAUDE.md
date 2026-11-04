@@ -61,7 +61,7 @@ release, self-hosted runner) and `CONTRIBUTING.md`. User docs: `docs/` (publishe
 | `…/Askpass.swift`, `ProxyConnect.swift` | The app binary as `SSH_ASKPASS` and as `ProxyCommand` (private socket + token) |
 | `…/Certificates.swift` (+ `CRDP/airscp_pki.c`) | The Certificate Manager's model: PEM/DER/PKCS#7/PKCS#12/JKS reading, details, exports (OpenSSL in process) |
 | `…/Keychain.swift`, `Keys.swift`, `PuTTYKey.swift`, `WinSCP.swift` | Saved passwords (one Keychain item), key pairs, PuTTY .ppk, Import from WinSCP (WinSCP.ini) |
-| `…/Monitor.swift`, `RDP.swift`, `Models.swift`, `ErrorMapping.swift` | Linux monitor parser, the RDP session, `airscp.json` models (append-only fields), plain-language errors |
+| `…/Monitor.swift`, `RDP.swift`, `Models.swift`, `ErrorMapping.swift` | Linux and macOS monitor parser, the RDP session, `airscp.json` models (append-only fields), plain-language errors |
 | `…/AgentBridge.swift` | `AirSCP --mcp` (MCP over stdio) and `--agent` (one tool from a shell); the tool list and the guide |
 | `Sources/AirSCP/main.swift` | Helper modes first (`--proxy-connect`, `--mcp`, `--agent`, askpass when `AIRSCP_ASKPASS_SOCK` is set), then the app |
 | `…/AppDelegate.swift`, `MainWindow.swift`, `HostsSidebar.swift`, `HostWorkspace.swift` | Menu bar, the one main window, sidebar, per-host workspace |

@@ -53,6 +53,7 @@ When a command prints a file's name with a line number (an error from a compiler
 - Tap **+** (New Terminal) and choose an open server: another shell there.
 - With more than one terminal, the menu at the top left shows another one. **Close Terminal** (**×**) ends the shell
   you see; a server's last terminal stays.
+- To end the last one, tap **Disconnect** (**ⓧ**) at the top left: it closes the connection to the server too.
 - When the shell ends, for example after `exit`, tap **Return** for a new one.
 
 ## Tips

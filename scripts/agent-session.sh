@@ -212,6 +212,12 @@ snapshot 10-disconnected include='["panes"]'
 shot 10-disconnected
 a press id=right.reconnect
 a wait until=listed pane=right path="$T/server/home/site" text=site.css timeout=30
+# The Monitor on this Mac's sshd: macOS's figures, and its processes (sshd among them).
+a press title=Monitor
+a wait until=monitor text=sshd timeout=30
+snapshot 11-monitor include='["monitor"]'
+shot 11-monitor
+a press title=Files
 a menu path='Host > Disconnect'
 a wait until=disconnected host=test-server timeout=30
 a menu path='AirSCP > Quit AirSCP'

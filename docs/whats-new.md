@@ -5,6 +5,14 @@ nav_order: 18
 
 # What's new
 
+## AirSCP 2.0.3
+
+- **The monitor works on Mac servers**: CPU, memory, swap, load, disks and processes, with Kill, in the Monitor tab
+  and on iPhone and iPad (ports stay Linux only).
+- **iPhone and iPad**: the Terminal tab has **Disconnect** for a server's last terminal. A folder you copy shows how
+  many files are done and how many are to go, and how far the whole folder is.
+- **Fixed** on iPhone and iPad: tapping the Terminal tab sent the tab bar back to the tab before for a moment.
+
 ## AirSCP 2.0.2
 
 - **Fixed: Windows SSH servers** (Windows' own OpenSSH). A folder showed empty, because AirSCP didn't read how newer
