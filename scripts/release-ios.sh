@@ -91,7 +91,8 @@ entitlement() { /usr/libexec/PlistBuddy -c "Print :$1" "$work/signed.plist" 2>/d
     || fail "The export is signed for $(entitlement application-identifier), not $DEVELOPMENT_TEAM.com.kleash.airscp."
 [ "$(entitlement get-task-allow)" != true ] || fail "The export is signed for development (get-task-allow)."
 
-auth=(--apiKey "$APPSTORE_KEY_ID" --apiIssuer "$APPSTORE_ISSUER")
+# The app's Apple ID (App Store Connect ▸ App Information): altool doesn't find the Mac app's record from an iOS bundle.
+auth=(--apiKey "$APPSTORE_KEY_ID" --apiIssuer "$APPSTORE_ISSUER" --apple-id 6828032872)
 if [ -n "${APPSTORE_KEY_PATH:-}" ]; then auth+=(--p8-file-path "$APPSTORE_KEY_PATH"); fi
 xcrun altool --validate-app "$ipa" -t ios "${auth[@]}"
 if $upload; then
