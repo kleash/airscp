@@ -100,6 +100,9 @@ struct TransferRow: View {
                 .accessibilityHidden(true)
             VStack(alignment: .leading, spacing: 3) {
                 Text(TransferText.name(job)).lineLimit(1).truncationMode(.middle)
+                if let detail = TransferText.detail(job) {
+                    Text(detail).font(.caption).foregroundStyle(.secondary).lineLimit(1).truncationMode(.middle)
+                }
                 Text(route).font(.caption).foregroundStyle(.secondary).lineLimit(1).truncationMode(.middle)
                 if let fraction = TransferText.fraction(job), !job.status.isFinished {
                     ProgressView(value: fraction).tint(job.status == .paused ? .gray : .teal)

@@ -66,6 +66,8 @@ public struct TransferProgress: Equatable {
     public var eta = ""
     /// Files finished (in a folder transfer).
     public var filesDone = 0
+    /// The files in a folder transfer, counted before it starts (iPhone and iPad's copies), else nil.
+    public var filesTotal: Int?
     /// The whole job's size in bytes when known (an estimate for streamed jobs), else nil.
     public var total: Int64?
     /// No percentage (a streamed .tar.gz download): show `bytes`, `speed` and the time since `TransferJob.started`.
@@ -847,8 +849,9 @@ public final class TransferQueue {
                     guard let index = self._jobs.firstIndex(where: { $0.id == job.id }) else { return }
                     self._jobs[index].progress.file = progress.file
                     self._jobs[index].progress.filesDone = progress.filesDone
-                    // A single file's size, known once the server said it (a download's).
-                    if job.isSingleFile, let total = progress.total, self._jobs[index].progress.indeterminate {
+                    self._jobs[index].progress.filesTotal = progress.filesTotal
+                    // A single file's size, known once the server said it (a download's), or a folder's, once counted.
+                    if job.isSingleFile || job.isFolder, let total = progress.total, self._jobs[index].progress.indeterminate {
                         self._jobs[index].progress.total = total
                         self._jobs[index].progress.indeterminate = false
                     }

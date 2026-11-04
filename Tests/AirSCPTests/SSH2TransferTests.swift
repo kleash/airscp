@@ -75,11 +75,14 @@ private func same(_ a: String, _ b: String) -> Bool {
             let upFolder = queue.upload(sample, to: server.path("copy"), isFolder: true)
             await queue.waitUntilIdle()
             #expect(job(upFolder, in: session)?.status == .done, "\(String(describing: job(upFolder, in: session)))")
+            // Counted first: "3 of 4 files done, 1 to go" while it ran, and a percentage (the link isn't a file).
+            #expect(job(upFolder, in: session)?.progress.filesTotal == 4 && job(upFolder, in: session)?.progress.percent == 100)
             #expect(tree(server.path("copy")) == tree(sample) && tree(sample)["link"] == "link a file.txt", "\(tree(server.path("copy")))")
             let downFolder = queue.download(server.path("copy"), to: local + "/copy", isFolder: true)
             await queue.waitUntilIdle()
             let folder = try #require(job(downFolder, in: session))
-            #expect(folder.status == .done && folder.progress.filesDone == 4, "\(folder)")
+            #expect(folder.status == .done && folder.progress.filesDone == 4 && folder.progress.filesTotal == 4, "\(folder)")
+            #expect(folder.progress.total == folder.progress.bytes && folder.progress.percent == 100, "\(folder.progress)")
             #expect(tree(local + "/copy") == tree(sample))
             #expect(!names(in: local).contains { $0.hasPrefix(".airscp-") } && !names(in: server.home).contains { $0.hasPrefix(".airscp-") })
         }

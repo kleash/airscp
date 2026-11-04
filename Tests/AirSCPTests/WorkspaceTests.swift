@@ -274,6 +274,9 @@ private func filesTab(_ session: Session) -> BrowserContentController {
     files.file = "index.html"
     files.filesDone = 3
     #expect(TransferText.detail(job(folder: true, progress: files)) == "index.html · 3 done")
+    // Counted first (iPhone and iPad's copies): how many are to go too.
+    files.filesTotal = 10
+    #expect(TransferText.detail(job(folder: true, progress: files)) == "index.html · 3 of 10 files done, 7 to go")
     // scp -r's meter starts again for each file: such a folder has no size of the whole (it showed the last file's).
     var perFile = TransferProgress()
     perFile.bytes = 9
@@ -633,9 +636,9 @@ private func filesTab(_ session: Session) -> BrowserContentController {
         try await Task.sleep(nanoseconds: 500_000_000)
         // A refresh would have left a snapshot or a reason: there was none.
         #expect(!monitor.isVisible && !monitor.model.refreshing && monitor.model.snapshot == nil && monitor.model.failure == nil)
-        // Asked directly, a server that isn't Linux (this Mac's sshd) says why there is nothing to show.
+        // Asked directly, it reads the server (this Mac's sshd).
         monitor.model.refresh()
-        #expect(await eventually { !monitor.model.refreshing && monitor.model.failure != nil && monitor.model.snapshot == nil })
+        #expect(await eventually { !monitor.model.refreshing && monitor.model.failure == nil && monitor.model.snapshot != nil })
     }
 }
 

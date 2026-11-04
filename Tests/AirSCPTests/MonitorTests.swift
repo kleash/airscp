@@ -403,7 +403,7 @@ private func idleMonitor() throws -> (Monitor, AskpassServer) {
         _ = try monitor.record(Monitor.parse(""))
         Issue.record("a server without uname was taken for Linux")
     } catch let error as AirSCPError {
-        #expect(error.message == "The system monitor works only on Linux servers. The Files and Tunnels tabs work as usual.")
+        #expect(error.message == "The system monitor works only on Linux and macOS servers. The Files and Tunnels tabs work as usual.")
     }
     #expect(Monitor.prettyName("PRETTY_NAME='Ubuntu 24.04.3 LTS'") == "Ubuntu 24.04.3 LTS")
     #expect(Monitor.prettyName("PRETTY_NAME=Gentoo") == "Gentoo")
@@ -504,22 +504,28 @@ private func idleMonitor() throws -> (Monitor, AskpassServer) {
     #expect(elapsed < .milliseconds(2000), "parsing 5000 processes took \(elapsed)")
 }
 
-/// The throwaway sshd runs on this Mac: not Linux.
-@Test func monitorOnAServerThatIsNotLinux() async throws {
+/// The throwaway sshd runs on this Mac: macOS's sources (`darwinScript`), with the figures Activity Monitor shows.
+@Test func monitorOnThisMac() async throws {
     try await withServer { server in
         let session = try await server.connectedSession()
         let monitor = Monitor(session: session)
-        do {
-            _ = try await monitor.refresh()
-            Issue.record("this Mac was monitored as a Linux server")
-        } catch let error as AirSCPError {
-            #expect(error.message.hasPrefix("The system monitor works only on Linux servers (this one runs Darwin "))
-        }
-        #expect((await server.logEntries()).contains { $0.command.contains("@@stat") && $0.status == 0 })
-        // Known from now on: no more commands.
-        let count = await server.logEntries().count
-        await #expect(throws: AirSCPError.self) { try await monitor.refresh() }
-        #expect(await server.logEntries().count == count)
+        let snapshot = try await monitor.refresh(ports: true)
+        let version = ProcessInfo.processInfo.operatingSystemVersion
+        #expect(snapshot.system == "macOS \(version.majorVersion).\(version.minorVersion)"
+                + (version.patchVersion > 0 ? ".\(version.patchVersion)" : ""))
+        #expect(snapshot.cpu.map { (0...100).contains($0) } == true, "\(String(describing: snapshot.cpu))")  // at once
+        #expect(snapshot.load.count == 3)
+        var boot = timeval(), size = MemoryLayout<timeval>.size
+        sysctlbyname("kern.boottime", &boot, &size, nil, 0)
+        #expect(abs(snapshot.uptime - (Date().timeIntervalSince1970 - Double(boot.tv_sec))) < 60, "\(snapshot.uptime)")  // sleep too
+        #expect(snapshot.memoryTotal == Int64(ProcessInfo.processInfo.physicalMemory))
+        #expect(snapshot.memoryUsed > 0 && snapshot.memoryUsed <= snapshot.memoryTotal)
+        #expect(snapshot.disks.first?.mountPoint == "/System/Volumes/Data", "\(snapshot.disks)")
+        #expect(!snapshot.disks.contains { $0.mountPoint == "/" || $0.mountPoint.hasPrefix("/Library/") })
+        #expect(snapshot.processNote == nil)
+        let me = try #require(snapshot.processes.first { $0.pid == getpid() }, "this test isn't listed")
+        #expect(me.user == NSUserName() && me.rss > 0 && me.elapsed != nil && !me.name.contains("/"))
+        #expect(snapshot.ports?.note == Monitor.noPortTables && snapshot.ports?.listening == [])
 
         // Kill and Force Kill are plain POSIX kill, so they work here too.
         for (force, signal) in [(false, SIGTERM), (true, SIGKILL)] {

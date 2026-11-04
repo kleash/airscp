@@ -43,7 +43,7 @@ opens tunnels. You don't need to type commands. AirSCP is on iPhone and iPad too
 | Free up disk space | [See what takes the room on a disk](https://kleash.github.io/airscp/disk-usage.html) |
 | Work on a Windows computer | [Remote Desktop (Windows)](https://kleash.github.io/airscp/remote-desktop/) |
 | Open Amazon S3 or similar storage | [S3 storage](https://kleash.github.io/airscp/s3/) |
-| See CPU, memory and processes | [Watch a Linux server](https://kleash.github.io/airscp/monitor.html) |
+| See CPU, memory and processes | [Watch a Linux or Mac server](https://kleash.github.io/airscp/monitor.html) |
 | Reach a database behind a server | [Open a tunnel](https://kleash.github.io/airscp/tunnels.html) |
 | Log in without a password | [Make a new key pair](https://kleash.github.io/airscp/keys/new-key-pair.html) |
 | Let an AI agent use AirSCP | [AI agents (MCP)](https://kleash.github.io/airscp/ai-agents.html) |
@@ -263,7 +263,7 @@ hosts and proxies, and its keep-alive. For a connected Linux server, three small
 ## The tabs
 
 - **Files**: two panes. The left pane is this Mac (or another server), the right pane is the selected server.
-- **Monitor**: CPU, memory, disks, processes and ports of a Linux server. See [Monitor](https://kleash.github.io/airscp/monitor.html).
+- **Monitor**: CPU, memory, disks, processes and ports of a Linux or Mac server. See [Monitor](https://kleash.github.io/airscp/monitor.html).
 - **Tunnels**: port forwards through the connection. See [Tunnels](https://kleash.github.io/airscp/tunnels.html).
 
 ## The Transfers list (bottom)
@@ -611,6 +611,7 @@ When a command prints a file's name with a line number (an error from a compiler
 - Tap **+** (New Terminal) and choose an open server: another shell there.
 - With more than one terminal, the menu at the top left shows another one. **Close Terminal** (**×**) ends the shell
   you see; a server's last terminal stays.
+- To end the last one, tap **Disconnect** (**ⓧ**) at the top left: it closes the connection to the server too.
 - When the shell ends, for example after `exit`, tap **Return** for a new one.
 
 ## Tips
@@ -641,6 +642,7 @@ the copy that runs also shows just above the tabs: tap it to open **Transfers**.
 - **Done**: the copies that finished.
 
 Each row shows the name, the way it goes (for example **web-01 → iPhone**), how far it is, the speed and the time left.
+A folder also shows the file being copied, and how many files are done and how many are to go.
 **Checksums match** means AirSCP compared the copied file with the original (SHA-256): they are the same.
 
 ## Steps
@@ -723,7 +725,7 @@ Source: https://kleash.github.io/airscp/iphone-ipad/monitor.html
 
 # Monitor on iPhone and iPad
 
-See what a Linux server is doing: its CPU, memory, disks and busiest processes. You can also stop a process.
+See what a Linux or Mac server is doing: its CPU, memory, disks and busiest processes. You can also stop a process.
 
 ## Steps
 
@@ -753,7 +755,7 @@ See what a Linux server is doing: its CPU, memory, disks and busiest processes. 
   read servers in the background.
 - Your account may stop only its own processes. For another user's, AirSCP gives you the `sudo kill` command to type in
   the [terminal](https://kleash.github.io/airscp/iphone-ipad/terminal.html).
-- The monitor works on Linux servers. Other servers, accounts that allow file transfers (sftp) only, and S3 storage have
+- The monitor works on Linux and Mac servers. Other servers, accounts that allow file transfers (sftp) only, and S3 storage have
   none.
 
 
@@ -2611,9 +2613,9 @@ downloads, zips or unpacks, and uploads.
 
 Source: https://kleash.github.io/airscp/monitor.html
 
-# Watch a Linux server
+# Watch a Linux or Mac server
 
-The **Monitor** tab shows what a Linux server is doing: CPU, memory, disks, processes and the ports it listens on. You can
+The **Monitor** tab shows what a Linux or Mac server is doing: CPU, memory, disks, processes and the ports it listens on. You can
 also stop a process.
 
 ## Steps
@@ -2623,7 +2625,7 @@ also stop a process.
 3. Read the figures. They refresh every 3 seconds while the tab is on screen.
 
 The top of the window shows the server's CPU, memory and main disk on every tab, refreshed every 10 seconds. It isn't
-there for servers that aren't Linux.
+there for other servers (Windows, BSD).
 
 (Picture: The Monitor tab: CPU, memory, swap, load, uptime, disks and the list of processes)
 
@@ -2646,6 +2648,8 @@ there for servers that aren't Linux.
 (Picture: The question: Kill python3? The process is asked to quit)
 
 ## See which ports a server listens on
+
+Ports are listed on Linux servers only.
 
 1. In the **Monitor** tab, click **Ports** above the list of processes.
 2. Read the list: each port the server listens on, with the program that listens and how many connections it has.
@@ -2678,8 +2682,9 @@ program in the list of processes.
 
 ## If something goes wrong
 
-- **“The system monitor works only on Linux servers”**: macOS and BSD servers aren't supported. The Files and Tunnels
-  tabs work as usual.
+- **“The system monitor works only on Linux and macOS servers”**: Windows and BSD servers aren't supported. The Files
+  and Tunnels tabs work as usual.
+- On a Mac, the disks are the Data volume (where your files are) and the disks under /Volumes.
 - **“This account allows file transfers (sftp) only”**: AirSCP can't read the system there. The Files tab works.
 - On BusyBox systems (Alpine), processes show no CPU figure.
 
@@ -3871,6 +3876,14 @@ Source: https://kleash.github.io/airscp/whats-new.html
 
 # What's new
 
+## AirSCP 2.0.3
+
+- **The monitor works on Mac servers**: CPU, memory, swap, load, disks and processes, with Kill, in the Monitor tab
+  and on iPhone and iPad (ports stay Linux only).
+- **iPhone and iPad**: the Terminal tab has **Disconnect** for a server's last terminal. A folder you copy shows how
+  many files are done and how many are to go, and how far the whole folder is.
+- **Fixed** on iPhone and iPad: tapping the Terminal tab sent the tab bar back to the tab before for a moment.
+
 ## AirSCP 2.0.2
 
 - **Fixed: Windows SSH servers** (Windows' own OpenSSH). A folder showed empty, because AirSCP didn't read how newer
@@ -4090,7 +4103,7 @@ Source: https://github.com/kleash/airscp/blob/main/Resources/AgentGuide.md
 # AirSCP agent guide
 
 AirSCP is a Mac app for SSH servers (saved hosts, a two-pane file browser with Find Files and Synchronize, transfers,
-remote file operations, a Linux monitor, tunnels, HTTP proxies and jump hosts), S3 storage and Windows desktops (a
+remote file operations, a Linux and macOS monitor, tunnels, HTTP proxies and jump hosts), S3 storage and Windows desktops (a
 built-in Remote Desktop client). These tools drive the running AirSCP the way its user does. `guide topic=<name>` gives
 the details: tools, hosts, proxies, transfers, files, monitor, tunnels, keys, settings, rdp, troubleshooting.
 
@@ -4504,7 +4517,7 @@ AirSCP was installed with `./install.sh`).
 - `press title=Monitor` (the host's tab) → `wait until=monitor` (or `wait until=monitor text=<a process name>`) →
   `snapshot include=["monitor"]`: connected, cpu, load, memory, swap, uptime, system, disks, and the processes as the
   table lists them (pid, user, cpu, memory as % of RAM, name, command, state; its search, sort and selection);
-  `failure` says why there are no figures (an sftp-only account, a server that isn't Linux), `processNote` why there
+  `failure` says why there are no figures (an sftp-only account, a server that is neither Linux nor macOS), `processNote` why there
   are no processes (no ps). It refreshes every 3 s while it is shown, also behind other windows while you are at work;
   disconnected, it shows nothing.
 - Sort: `sort pane=processes column=pid` (user, cpu, mem: % of RAM, memory: RSS, time, state, command;

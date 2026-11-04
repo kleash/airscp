@@ -57,10 +57,6 @@ struct WorkspaceView: View {
         .fullWindow($fullWindow, escapeLeaves: false) {
             if let terminal { TerminalPane(terminal: terminal).navigationTitle(terminals.name(of: terminal)) }
         }
-        // A turn later: a terminal made as the workspace first showed left an iPhone Duo's rail without the Files side's
-        // New Folder and More (iOS 27).
-        .onAppear { DispatchQueue.main.async { terminals.sync(with: app) } }
-        .onChange(of: app.states) { terminals.sync(with: app) }
         // New Terminal (⌘T) on this server: in the drawer.
         .onChange(of: shownID) { if terminals.shown(shownID)?.session === session { drawerOpen = true } }
         .onReceive(TransferCenter.shared.$jobs.map { $0.contains(where: \.status.isActive) }.removeDuplicates()) { active in

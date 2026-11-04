@@ -3,9 +3,9 @@ title: Monitor
 nav_order: 9
 ---
 
-# Watch a Linux server
+# Watch a Linux or Mac server
 
-The **Monitor** tab shows what a Linux server is doing: CPU, memory, disks, processes and the ports it listens on. You can
+The **Monitor** tab shows what a Linux or Mac server is doing: CPU, memory, disks, processes and the ports it listens on. You can
 also stop a process.
 
 ## Steps
@@ -15,7 +15,7 @@ also stop a process.
 3. Read the figures. They refresh every 3 seconds while the tab is on screen.
 
 The top of the window shows the server's CPU, memory and main disk on every tab, refreshed every 10 seconds. It isn't
-there for servers that aren't Linux.
+there for other servers (Windows, BSD).
 
 {% include shot.html name="monitor" alt="The Monitor tab: CPU, memory, swap, load, uptime, disks and the list of processes" %}
 
@@ -38,6 +38,8 @@ there for servers that aren't Linux.
 {% include shot.html name="monitor-kill" alt="The question: Kill python3? The process is asked to quit" %}
 
 ## See which ports a server listens on
+
+Ports are listed on Linux servers only.
 
 1. In the **Monitor** tab, click **Ports** above the list of processes.
 2. Read the list: each port the server listens on, with the program that listens and how many connections it has.
@@ -70,7 +72,8 @@ program in the list of processes.
 
 ## If something goes wrong
 
-- **“The system monitor works only on Linux servers”**: macOS and BSD servers aren't supported. The Files and Tunnels
-  tabs work as usual.
+- **“The system monitor works only on Linux and macOS servers”**: Windows and BSD servers aren't supported. The Files
+  and Tunnels tabs work as usual.
+- On a Mac, the disks are the Data volume (where your files are) and the disks under /Volumes.
 - **“This account allows file transfers (sftp) only”**: AirSCP can't read the system there. The Files tab works.
 - On BusyBox systems (Alpine), processes show no CPU figure.

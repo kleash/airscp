@@ -98,6 +98,9 @@ final class TerminalTests: XCTestCase {
         XCUIDevice.shared.orientation = .portrait
         close.tap()
         XCTAssert(close.waitForNonExistence(timeout: 10), "The last terminal can be closed")
+        // The last one has Disconnect in its place, which closes the connection too.
+        app.buttons["Disconnect"].tap()
+        XCTAssert(app.staticTexts["No terminal open"].waitForExistence(timeout: 10), "Disconnect left the terminal")
     }
 
     /// An iPad's pointer: scrolling (a trackpad's, a mouse's) goes back through the scrollback, so output that comes

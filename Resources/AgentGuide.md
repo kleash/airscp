@@ -1,7 +1,7 @@
 # AirSCP agent guide
 
 AirSCP is a Mac app for SSH servers (saved hosts, a two-pane file browser with Find Files and Synchronize, transfers,
-remote file operations, a Linux monitor, tunnels, HTTP proxies and jump hosts), S3 storage and Windows desktops (a
+remote file operations, a Linux and macOS monitor, tunnels, HTTP proxies and jump hosts), S3 storage and Windows desktops (a
 built-in Remote Desktop client). These tools drive the running AirSCP the way its user does. `guide topic=<name>` gives
 the details: tools, hosts, proxies, transfers, files, monitor, tunnels, keys, settings, rdp, troubleshooting.
 
@@ -415,7 +415,7 @@ AirSCP was installed with `./install.sh`).
 - `press title=Monitor` (the host's tab) → `wait until=monitor` (or `wait until=monitor text=<a process name>`) →
   `snapshot include=["monitor"]`: connected, cpu, load, memory, swap, uptime, system, disks, and the processes as the
   table lists them (pid, user, cpu, memory as % of RAM, name, command, state; its search, sort and selection);
-  `failure` says why there are no figures (an sftp-only account, a server that isn't Linux), `processNote` why there
+  `failure` says why there are no figures (an sftp-only account, a server that is neither Linux nor macOS), `processNote` why there
   are no processes (no ps). It refreshes every 3 s while it is shown, also behind other windows while you are at work;
   disconnected, it shows nothing.
 - Sort: `sort pane=processes column=pid` (user, cpu, mem: % of RAM, memory: RSS, time, state, command;
