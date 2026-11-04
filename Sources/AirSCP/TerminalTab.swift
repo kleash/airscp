@@ -1190,13 +1190,8 @@ final class TerminalView: NSView, NSMenuItemValidation, NSMenuDelegate, NSDraggi
             }
             return
         }
-        if event.clickCount == 2, let screen = session?.screen, at.line < screen.allLines.count {
-            // A word.
-            let cells = screen.allLines[at.line].cells
-            var start = at.column, end = at.column
-            while start > 0, cells[start - 1].character != " " { start -= 1 }
-            while end < cells.count - 1, cells[end + 1].character != " " { end += 1 }
-            selection = ((at.line, start), (at.line, end))
+        if event.clickCount == 2, let word = session?.screen.wordColumns(line: at.line, column: at.column) {
+            selection = ((at.line, word.lowerBound), (at.line, word.upperBound))
         } else if event.clickCount == 3, let screen = session?.screen {
             selection = ((at.line, 0), (at.line, screen.columns - 1))
         } else {

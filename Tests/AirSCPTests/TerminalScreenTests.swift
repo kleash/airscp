@@ -293,6 +293,22 @@ private func marked(_ text: String, columns: Int = 30, rows: Int = 8) -> Termina
     #expect(s.blocks.map(\.text) == ["ls", "for i in 1 2; do\necho $i; done"], "\(s.blocks.map(\.text))")
 }
 
+/// A double-click selects the word under it (a PID in ps's columns), or the spaces there: never the word next to them.
+@Test func aDoubleClickSelectsTheWordOrTheSpacesUnderIt() {
+    let screen = TerminalScreen(columns: 40, rows: 4)
+    screen.feed("root           1       0  0 /sbin/init\r\n")
+    let line = "root           1       0  0 /sbin/init"
+    func selected(at column: Int) -> String? {
+        screen.wordColumns(line: 0, column: column).map { range in
+            String(line.dropFirst(range.lowerBound).prefix(range.count))
+        }
+    }
+    let pid = line.firstIndex(of: "1")!.utf16Offset(in: line)
+    #expect(selected(at: pid) == "1" && selected(at: 0) == "root" && selected(at: 30) == "/sbin/init")
+    #expect(selected(at: pid - 1) == String(repeating: " ", count: pid - 4))
+    #expect(screen.wordColumns(line: 3, column: 0) == 0...39 && screen.wordColumns(line: 9, column: 0) == nil)
+}
+
 @Test func terminalMarksFollowTheirLines() {
     // A prompt drawn again on its line (after a resize) takes the place of the first.
     let s = marked(prompt + "\r" + prompt + "pwd\r\n" + mark("C") + "/home\r\n" + ended(0) + prompt, columns: 30, rows: 3)
