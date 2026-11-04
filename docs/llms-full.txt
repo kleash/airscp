@@ -1,6 +1,6 @@
 # AirSCP Help (all pages)
 
-> AirSCP is a free, open-source Mac app (macOS 13.1 or later) for SSH servers and Windows desktops: saved hosts, a two-pane SCP/SFTP file browser with a background transfer queue, Synchronize, Find Files, remote file operations, a Linux monitor, tunnels, jump hosts and HTTP proxies, and a built-in Remote Desktop client with clipboard and file transfer. AI agents drive it over MCP once the user allows it.
+> AirSCP is a free, open-source Mac app (macOS 13.1 or later) for SSH servers and Windows desktops: saved hosts, a two-pane SCP/SFTP file browser with a background transfer queue, Synchronize, Find Files, remote file operations, a Linux monitor, tunnels, jump hosts and HTTP proxies, and a built-in Remote Desktop client with clipboard and file transfer. AI agents drive it over MCP once the user allows it. An iPhone and iPad app (iOS 26 or later) has the servers, files, transfers, a terminal, search and the monitor.
 
 - Install: `brew install --cask kleash/tap/airscp` (or the zip from https://github.com/kleash/airscp/releases).
 - Agent control: the user turns on AirSCP ▸ Settings ▸ Allow AI agents to control AirSCP (MCP); then `claude mcp add airscp -- /Applications/AirSCP.app/Contents/MacOS/AirSCP --mcp` (any MCP client: that program with `--mcp`, over stdio). Or the Claude Code plugin: `/plugin marketplace add kleash/airscp`, then `/plugin install airscp@airscp`. An MCP client loads a new server at its next start; until then the same tools run from a shell: `/Applications/AirSCP.app/Contents/MacOS/AirSCP --agent snapshot` (`--agent guide` works before AirSCP is open).
@@ -17,7 +17,8 @@ Source: https://kleash.github.io/airscp/
 
 AirSCP is a Mac app for your servers. You save your servers once. Then you click to connect, and you drag files between
 your Mac and the server. AirSCP also opens Windows desktops (Remote Desktop), shows what a Linux server is doing, and
-opens tunnels. You don't need to type commands.
+opens tunnels. You don't need to type commands. AirSCP is on iPhone and iPad too: see
+[iPhone and iPad](https://kleash.github.io/airscp/iphone-ipad/).
 
 (Picture: The AirSCP window: saved servers on the left, files on this Mac and on a server side by side, and transfers at the bottom)
 
@@ -276,6 +277,573 @@ Every upload and download of every server. See [Transfers and the queue](https:/
 - **View ▸ Hide Sidebar** (<kbd>⌃⌘S</kbd>) gives the files more room.
 - Closing the window keeps your connections. Click AirSCP in the Dock, or press <kbd>⌘0</kbd>, to bring it back.
 - The Dock icon shows how many transfers are waiting or running.
+
+
+---
+
+Source: https://kleash.github.io/airscp/iphone-ipad/
+
+# iPhone and iPad
+
+AirSCP is on iPhone and iPad too. Save your servers, copy files between a server and your device, type commands in a
+terminal and see how a Linux server is doing, wherever you are. It needs iOS 26 or iPadOS 26, or later. Get it from the
+App Store.
+
+<!-- picture: iphone-servers; iPhone, portrait; The Servers tab: two open servers with their CPU, memory and disk, and three saved servers below -->
+
+## The tabs
+
+| Tab | What it is for |
+|---|---|
+| **Servers** | Add your servers and S3 storage, and connect. Open servers show their CPU, memory and disk. |
+| **Files** | Two sides: a server, and **On iPhone** (on an iPad, **On iPad**), AirSCP's own folder on your device. Copy between them. |
+| **Terminal** | Type commands on an open server. |
+| **Transfers** | The files being copied, and those copied. |
+| **Search** (the magnifying glass) | Find a server, a command you ran before, or a file. Run a command on several servers. |
+
+On an iPad, the tabs can be a sidebar, and each open server gets a workspace of its own. See
+[iPad and iPhone Duo](https://kleash.github.io/airscp/iphone-ipad/ipad.html).
+
+## Pages
+
+- [Get started on iPhone and iPad](https://kleash.github.io/airscp/iphone-ipad/get-started.html): add a server, trust it, log in with a password or a key.
+- [Files on iPhone and iPad](https://kleash.github.io/airscp/iphone-ipad/files.html): copy, share, save, import, edit, and the tray.
+- [Terminal on iPhone and iPad](https://kleash.github.io/airscp/iphone-ipad/terminal.html)
+- [Transfers on iPhone and iPad](https://kleash.github.io/airscp/iphone-ipad/transfers.html): and what happens when you leave AirSCP.
+- [Search and run on several servers](https://kleash.github.io/airscp/iphone-ipad/search.html)
+- [Monitor on iPhone and iPad](https://kleash.github.io/airscp/iphone-ipad/monitor.html)
+- [iPad and iPhone Duo](https://kleash.github.io/airscp/iphone-ipad/ipad.html): sidebar, workspaces, windows, keyboard and pointer.
+
+## How it differs from the Mac
+
+- iPhone and iPad have no `~/.ssh` folder. So AirSCP reads no ssh config and uses no ssh agent. Your keys are in the
+  Keychain on the device, and the servers you trust are in AirSCP's own list.
+- The hosts you saved on your Mac don't come over. Add your servers on the iPhone or iPad too.
+- When you copy a file, AirSCP checks the copy against the original (SHA-256). There is nothing to turn on.
+- **On iPhone** takes the place of the Mac's **This Mac**.
+
+## Not on iPhone and iPad yet
+
+These are in AirSCP for Mac only:
+
+- Remote Desktop (Windows), tunnels, Synchronize, Disk Usage and the Certificate Manager.
+- AI agents (MCP), Shortcuts, Siri and Apple Intelligence.
+- Importing hosts (from `~/.ssh/config`, WinSCP or a Mac's **Export Hosts…**) and S3 profiles (`~/.aws`).
+- Proxies, browsing as root (sudo), and other ssh options.
+- Some commands of the Mac's Files tab: Get Info, permissions, favourites, Compare Folders, extracting archives and
+  downloading as one archive.
+- Snippets and the Command Log.
+- Security keys (FIDO), OpenSSH certificates, and PuTTY keys of version 3 with a passphrase.
+
+
+---
+
+Source: https://kleash.github.io/airscp/iphone-ipad/get-started.html
+
+# Get started on iPhone and iPad
+
+Save a server once, then tap it to connect. You need the server's address and your user name on it. Your server admin
+or hosting company gives you these.
+
+## Add a server
+
+1. In **Servers**, tap **+** (Add Server).
+2. Type the server's **Address**, for example `web-01.example.com` or `192.168.1.20`.
+3. Type your **User** name on the server. AirSCP needs it: an iPhone has no user name of its own to try.
+4. Leave **Port** empty for 22, the usual port. **Name** is optional: the list shows it instead of the address.
+5. Under **Log in with**, choose **Password** or **Key**.
+   - **Password**: type it to keep it in the Keychain. Or leave it empty: AirSCP then asks when it connects.
+   - **Key**: choose one of your keys. No keys yet? See [Log in with a key](#log-in-with-a-key).
+6. Behind a bastion? Choose it under **Jump host**: AirSCP connects through that server first. Save the bastion as a
+   server before.
+7. Tap **Save** (the check mark). The server shows under **Saved**.
+8. Tap the server to connect. It moves to **Open**, and shows **Connected** with a green dot once it is ready.
+
+<!-- picture: iphone-server-editor; iPhone, portrait; New Server: a name, an address, a user, Log in with Key and a key chosen -->
+
+## Trust a server the first time
+
+The first time you connect to a server, AirSCP shows its key's fingerprint and asks **Trust this server?**
+
+1. At the top you see the way to the server, for example **iPhone → bastion → db-01**. The one with the key icon is the
+   server that asks.
+2. Compare the fingerprint with the one your server admin gave you. The coloured squares are the same fingerprint as a
+   picture: another key looks different. **Copy to Compare** copies the text.
+3. Tap **Trust** if it matches. AirSCP remembers the key and warns you if it ever changes. **Cancel** doesn't connect.
+
+<!-- picture: iphone-trust; iPhone, portrait; Trust this server?: iPhone → db-01, the fingerprint as coloured squares and as text, Copy to Compare, and Trust -->
+
+If the key of a server you trust changes, AirSCP doesn't connect. Someone may be listening in, or the server was
+installed again. Only if you know why it changed: tap **Settings** (the gear) in **Servers**, swipe left on the server
+under **Trusted servers**, tap **Delete**, and connect again.
+
+## Log in with a password
+
+When the server asks for a password, AirSCP asks you. Type it and tap **Connect**. Turn on **Remember in Keychain** (for
+saved servers) if you don't want to type it again.
+
+A server that also asks for a code (two-factor) asks for it the same way: type it and tap **Continue**.
+
+## Log in with a key
+
+A key lets you log in without a password. Keys stay on your iPhone or iPad, in the Keychain. When AirSCP logs in with
+one, Face ID (or Touch ID, or your passcode) unlocks it.
+
+1. In **Servers**, tap **Settings** (the gear).
+2. Under **Keys**, tap **Make a New Key**, type a name (or keep the one AirSCP suggests) and tap **Make**. AirSCP makes
+   an Ed25519 key, the kind most servers take.
+
+   Have a key already? Tap **Import from Files** and choose the private key file: OpenSSH, PEM or PuTTY (`.ppk`). Choose
+   the key itself, not its `.pub` file.
+3. Tap **…** next to the key, then **Copy Public Key**. Or tap **Share Public Key** to send it, for example to your
+   server admin.
+4. Put the public key on the server, as a line of `~/.ssh/authorized_keys`. Can you log in with a password? Then
+   AirSCP's [terminal](https://kleash.github.io/airscp/iphone-ipad/terminal.html) can do it: type `echo '`, paste the key, type `' >> ~/.ssh/authorized_keys` and
+   run it.
+5. In **Servers**, swipe left on the server (disconnect it first if it is open), tap **Edit**, choose **Key** under
+   **Log in with**, choose your key and tap **Save**.
+
+<!-- picture: iphone-settings; iPhone, portrait; Settings: two keys with their type and fingerprint, Make a New Key, Import from Files, and the trusted servers -->
+
+- A key with a passphrase: AirSCP asks for it when it logs in. A PuTTY key's passphrase is asked when you import it.
+- Keys don't go to another iPhone or iPad, not even with a backup. Keep a copy of the keys you import.
+- If you turn off the device's passcode, iOS deletes the keys.
+
+## Add S3 storage
+
+1. In **Servers**, tap **+**, then choose **S3 storage** at the top.
+2. Leave **Endpoint** empty for Amazon S3. For other storage, type the address your provider gives, for example
+   `https://<account>.r2.cloudflarestorage.com`.
+3. **Region** is optional for Amazon S3. Other storage names its own (Cloudflare R2: `auto`).
+4. **Bucket** is optional. Type it when your key may not list the buckets.
+5. Type the **Access key ID** and the **Secret key**. The secret goes to the Keychain.
+6. Tap **Save**. Then tap the storage under **Saved** to open it. Its buckets show in **Files**, with orange folders.
+
+S3 storage keeps files only: it has no terminal and no monitor, and **Zip** doesn't work there.
+
+## Connect without saving
+
+Type `user@host` (or `user@host:port`) in the field at the top of **Servers** and tap **Go**. AirSCP connects without
+saving the server. To keep it, swipe left on it under **Open** and tap **Save**.
+
+## Find servers on your network
+
+1. In **Servers**, tap **Nearby** (the radio waves).
+2. Macs with Remote Login and many NAS boxes show under **On this network**. Tap one: a new server opens with its address
+   filled in. Type your user name and tap **Save**.
+3. Not there? Tap **Scan This Network**. AirSCP tries each address of your Wi-Fi or wired network (254 at most) and
+   lists those that answer on port 22 (SSH). Tap one to add it.
+
+The first time, iOS asks whether AirSCP may find devices on your local network. Tap **Allow**.
+
+<!-- picture: iphone-nearby; iPhone, portrait; Nearby Servers: two servers on this network, and a finished scan with the addresses that answered -->
+
+## Change, disconnect or delete a server
+
+- Swipe left on a saved server, or touch and hold it: **Edit** or **Delete**. **Delete** forgets the server and its
+  saved password at once.
+- Swipe left on an open server: **Disconnect**. To change an open server, disconnect it first.
+- A server's state shows under its name: **Connecting…**, **Connected** (green), **Reconnecting…** (orange) or
+  **Disconnected** (red, with the reason). Tap a disconnected server to connect again.
+- When you come back to AirSCP, it checks each open connection. A lost one connects again by itself, or says why it
+  can't.
+
+## If something goes wrong
+
+- **“Can't connect”**: the message says why. Check the address, the port and the user name.
+- **A server on your network doesn't answer**: in iOS's Settings app, turn on **Privacy & Security ▸ Local Network ▸
+  AirSCP**.
+- **Nearby finds nothing**: many servers don't announce themselves. Tap **Scan This Network**, or add the server by its
+  address.
+
+
+---
+
+Source: https://kleash.github.io/airscp/iphone-ipad/files.html
+
+# Files on iPhone and iPad
+
+The **Files** tab has two sides: an open server, and **On iPhone** (on an iPad, **On iPad**), which is AirSCP's own
+folder on your device. You copy between them. An iPhone shows one side at a time; an iPad shows both, next to each
+other.
+
+<!-- picture: iphone-files; iPhone, portrait; Files: the switcher web-01 / On iPhone at the top, the path / › var › www, and the server's folders and files -->
+
+## Move around
+
+1. Open a server in **Servers**, then tap **Files**.
+2. On an iPhone, tap the side you want to see at the top: the server's name or **On iPhone**.
+3. Tap a folder to open it. Tap a folder in the path above the list to go back up to it.
+
+- Pull the list down to read the folder again.
+- **More** (…) ▸ **Show Hidden Files** shows the names that start with a dot.
+- More than one server open? Tap the server's name left of the path, and choose another one.
+- **More ▸ Show** chooses what this side shows: an open server, or **On iPhone**. Show a second server there to copy
+  between two servers.
+
+## Copy files
+
+1. Swipe left on a file or folder.
+2. Tap **Download** (from the server to your device), **Upload** (from your device to the server) or **Send** (from one
+   server to another). It goes into the folder that the other side shows.
+
+To copy several items: tap **More ▸ Select**, tap the items, then tap **Download**, **Upload** or **Send** in the bar at
+the bottom. **Done** stops selecting. On an iPad, you can also drag items to the other side, or onto a folder there.
+
+<!-- picture: iphone-files-select; iPhone, portrait; Select: three files selected, and the bar with Download, Add to Tray, Share, Zip and Delete -->
+
+- When an item with the same name is there already, AirSCP asks once for all of them: **Replace**, **Keep Both** (the
+  new ones get a number), **Skip** or **Cancel**. Between two servers, there is no **Keep Both**.
+- The copy goes to [Transfers](https://kleash.github.io/airscp/iphone-ipad/transfers.html). A copied file shows **Checksums match** when it is the same as the
+  original.
+- Between two servers, the files go through your iPhone or iPad.
+
+## Open and edit a file
+
+- Tap a text file on a server to edit it (up to 4 MB). **Edit** shows the text in colours, **Changes** the lines you
+  changed, **Info** the file's details. Tap **Save** to write it back.
+- If someone changed the file on the server after you opened it, AirSCP asks before it saves: **Overwrite**, **Show
+  Server Version** (copy what you need, then save again) or **Cancel**.
+- **Go to Line** (at the top) goes to a line by its number. **Close** asks first if you didn't save.
+- Tap a file **On iPhone** to see it.
+- To open a server's picture, PDF or other file in another app: touch and hold it, tap **Share**, and choose the app.
+
+<!-- picture: iphone-editor; iPhone, portrait; The editor: a shell script in colours, with Edit, Changes and Info at the top and Saved at 10:42 at the bottom -->
+
+## Share, save and import
+
+- **Share**: touch and hold a server's file, then tap **Share**. AirSCP downloads it first, then you choose: Mail,
+  Messages, AirDrop, **Save to Files** and more.
+- **Save to Files**: touch and hold an item **On iPhone**, then tap **Save to Files**. A copy goes where you choose in
+  the Files app.
+- **Import from Files**: tap **More ▸ Import from Files** and choose files. On a server, they are uploaded into the
+  folder shown. **On iPhone**, they are copied there.
+- The Files app shows **On iPhone** too: **On My iPhone ▸ AirSCP**. Files you put there show in AirSCP.
+- On an iPad, drag files from another app onto a side to upload them. Drag a server's file to another app: AirSCP
+  downloads it first.
+
+## Carry files with the tray
+
+The tray collects files from several folders and servers, then takes them all to one place: a server's folder, the
+Files app or another app.
+
+1. Tap **More ▸ Select**, tap the items, then tap **Add to Tray**. Do it again in other folders, or on other servers.
+2. Tap the tray at the top of **Files** or **Transfers**. A number shows how many items it holds.
+3. Choose where they go:
+   - **Send**, then a server: everything goes into the folder that server shows in **Files** (else its home folder).
+   - **Save**: into the Files app.
+   - **Share**: to another app.
+
+Sent items leave the tray. Swipe left on an item to **Remove** it; **Empty** takes them all out.
+
+<!-- picture: iphone-tray; iPhone, portrait; The tray: files from two servers and from the iPhone, with Send, Save and Share at the bottom -->
+
+## New folder, rename, delete, zip
+
+- **New Folder** (the folder with a plus, at the top): type a name and tap **Create**.
+- Swipe left on an item: **Rename** or **Delete**. AirSCP asks before it deletes. This can't be undone.
+- **Zip**: select items, then tap **Zip**. The server packs them into a `.zip` in the same folder. It works on a
+  server's files, not on S3 storage or **On iPhone**.
+
+## Find a file
+
+Tap **Search**, type part of the name, then tap **Find “…” in** and the server. Tap a result to show it here, selected
+in its folder. See [Search and run on several servers](https://kleash.github.io/airscp/iphone-ipad/search.html).
+
+## Tips
+
+- **More ▸ Monitor** shows the server's CPU, memory, disks and processes. See
+  [Monitor on iPhone and iPad](https://kleash.github.io/airscp/iphone-ipad/monitor.html).
+- On an iPad with a keyboard, <kbd>⌘C</kbd> and <kbd>⌘V</kbd> copy items between the sides, and more shortcuts work.
+  See [Keyboard shortcuts](https://kleash.github.io/airscp/iphone-ipad/ipad.html#keyboard-shortcuts).
+
+
+---
+
+Source: https://kleash.github.io/airscp/iphone-ipad/terminal.html
+
+# Terminal on iPhone and iPad
+
+The **Terminal** tab is a shell on an open server. It uses the server's connection, so there is no second login. Each
+open server has one.
+
+## Steps
+
+1. Open the server in **Servers**.
+2. Tap **Terminal**.
+3. Type a command in the **Command** field at the bottom, then tap the return arrow next to it. While you type, the
+   commands you ran on that server before show above the field: tap one to fill it in.
+
+To type in the shell itself, for example in `vim`, `top` or `less`, tap the terminal. The keyboard comes up.
+
+<!-- picture: iphone-terminal; iPhone, portrait; The terminal with the keyboard up: the output of ls, and the key bar with esc, ctrl, tab, the arrows and | ~ / - -->
+
+## The keys a phone keyboard lacks
+
+While the terminal has the keyboard, a bar above it has **esc**, **ctrl**, **tab**, the four arrows, `|`, `~`, `/` and
+`-`, and a button that hides the keyboard. For Control-C, tap **ctrl**, then **c**.
+
+## With the keyboard down
+
+Big buttons at the bottom:
+
+- **Stop**: stops the command that runs (Control-C).
+- **Return**: presses Return in the shell.
+- **Type**: brings the keyboard up.
+
+<!-- picture: iphone-terminal-deck; iPhone, portrait; The terminal with the keyboard down: the output of grep -n, a notes.txt:3 button above the command line, and Stop, Return and Type -->
+
+## Scroll, select and copy
+
+- Drag up or down to go back through what the shell printed. While you look back, a button says how many new lines
+  came: tap it to see the newest. In full-screen programs such as `less` and `vim`, a drag moves with the arrow keys.
+- Touch and hold a word to select it, and drag to select more. Then tap **Copy**. **Paste** types the copied text at
+  the prompt. **Select All** selects everything.
+- Pinch to make the text bigger or smaller.
+
+## Open the file a command names
+
+When a command prints a file's name with a line number (an error from a compiler, `grep -n`), a button such as
+**main.c:12** shows above the command line. Tap it to open the file in the editor at that line.
+
+## More shells
+
+- Tap **+** (New Terminal) and choose an open server: another shell there.
+- With more than one terminal, the menu at the top left shows another one. **Close Terminal** (**×**) ends the shell
+  you see; a server's last terminal stays.
+- When the shell ends, for example after `exit`, tap **Return** for a new one.
+
+## Tips
+
+- AirSCP keeps the commands you run on each server. [Search](https://kleash.github.io/airscp/iphone-ipad/search.html) finds them and runs them again, on one server
+  or on several.
+- On an iPad, a keyboard works as on a computer: arrows, Esc, Tab, Control keys and function keys go to the shell, and
+  <kbd>⌘C</kbd> and <kbd>⌘V</kbd> copy and paste. **Full Window** gives the terminal the whole screen. See
+  [iPad and iPhone Duo](https://kleash.github.io/airscp/iphone-ipad/ipad.html).
+- There is no terminal for S3 storage, nor for an account that allows file transfers (sftp) only.
+
+
+---
+
+Source: https://kleash.github.io/airscp/iphone-ipad/transfers.html
+
+# Transfers on iPhone and iPad
+
+Every copy goes to the **Transfers** tab. There you see how far each one is, pause it, or try it again. On an iPhone,
+the copy that runs also shows just above the tabs: tap it to open **Transfers**.
+
+<!-- picture: iphone-transfers; iPhone, portrait; Transfers: the speed chart and an upload at 42 % under Now, and two downloads under Done with Checksums match -->
+
+## What the list shows
+
+- **Now**: the copies that run, wait or are paused, with a chart of the speed.
+- **Needs you**: the copies that failed, left some items out, or don't match the original.
+- **Done**: the copies that finished.
+
+Each row shows the name, the way it goes (for example **web-01 → iPhone**), how far it is, the speed and the time left.
+**Checksums match** means AirSCP compared the copied file with the original (SHA-256): they are the same.
+
+## Steps
+
+Swipe left on a transfer, or touch and hold it:
+
+- **Pause**, later **Resume**: a file goes on where it stopped; a folder starts again.
+- **Cancel**: stops it and removes what was partly copied.
+- **Retry**: runs it again. A file that was cut off goes on where it stopped.
+- **Remove**: takes it off the list. **Clear Done** takes off every finished one.
+- **Show Details**: says what went wrong, in the tools' own words.
+
+## When you leave AirSCP
+
+iOS stops apps that aren't on screen. So when a copy starts, AirSCP asks iOS to keep the copies going after you leave
+it, and iOS shows their progress.
+
+iOS can still stop them: when you stop them in its progress, or when it needs to. Then they pause, and keep what they
+have copied. Back in AirSCP, **Transfers** says that iOS paused them. Tap **Resume All**: files go on where they
+stopped.
+
+For big copies, keep AirSCP open.
+
+## Tips
+
+- Each server copies one transfer at a time; different servers copy at the same time.
+- When you come back to AirSCP, it checks each connection and connects again by itself if it was lost.
+- The tray is at the top of **Transfers** too. See [Carry files with the tray](https://kleash.github.io/airscp/iphone-ipad/files.html#carry-files-with-the-tray).
+
+
+---
+
+Source: https://kleash.github.io/airscp/iphone-ipad/search.html
+
+# Search and run on several servers
+
+**Search** (the magnifying glass next to the tabs) finds your servers, the commands you ran before, and files on an
+open server. From there you run a command again: on one server, or on several at once.
+
+## Find
+
+Tap **Search** and type part of a name or a command.
+
+- **Servers**: tap one to connect to it.
+- **History**: the commands you ran in AirSCP's terminal, each with its server.
+- **Files**: tap **Find “…” in** and an open server. AirSCP lists the files and folders below your home folder there
+  whose names have the text. Tap one to show it in **Files**. Touch and hold one, then tap **Copy Path** to copy
+  where it is.
+
+<!-- picture: iphone-search; iPhone, portrait; Search for “log”: a server, two commands from the history with their Run on buttons, and Find “log” in web-01 -->
+
+## Run a command again
+
+Tap the play button (**Run on**) next to a command, and choose an open server. AirSCP types the command in that
+server's terminal and runs it. When the shell there is busy, AirSCP opens a new terminal for it.
+
+## Run on several servers
+
+1. Open the servers in **Servers**.
+2. In **Search**, find the command. A new command? Run it once in a terminal first: then it is in the history.
+3. Tap the play button next to it, then **Several Servers…**.
+4. Tap the servers to run it on. A check mark shows the ones you picked.
+5. Tap **Run** (the play button at the top). Each server's output shows under it, errors in red, with its **Exit
+   status**: 0 means it worked.
+6. **Stop** stops it on every server. Leaving the screen stops it too.
+
+<!-- picture: iphone-run-several; iPhone, portrait; Run on Several Servers: uptime on three servers, each with its output and Exit status 0 -->
+
+## Tips
+
+- **Several Servers…** shows when more than one server is open.
+- On several servers, the command runs in each account's login shell, without a terminal. For `sudo`, `top` or an
+  editor, run it on one server: it runs in that server's terminal.
+- On an iPad with a keyboard, <kbd>⌘K</kbd> opens **Search**.
+
+
+---
+
+Source: https://kleash.github.io/airscp/iphone-ipad/monitor.html
+
+# Monitor on iPhone and iPad
+
+See what a Linux server is doing: its CPU, memory, disks and busiest processes. You can also stop a process.
+
+## Steps
+
+1. Open the server in **Servers**. Under **Open**, its row shows its **CPU**, **Memory** and **Disk**.
+2. Tap the row. Or, in **Files**, tap **More ▸ Monitor**.
+3. Read the figures.
+
+<!-- picture: iphone-monitor; iPhone, portrait; Monitor: the CPU, Memory and Disk rings, the CPU chart, and the busiest processes -->
+
+| Part | What it shows |
+|---|---|
+| **CPU**, **Memory**, **Disk** | How much is in use, as rings. Orange from 80 %, red from 90 %. |
+| Under the rings | The server's system, how long it has run, and its load. |
+| **CPU** | A chart of the CPU while you look at this screen, up to 15 minutes. |
+| **Busiest processes** | The 10 busiest processes, with their CPU and memory. |
+| **Disks** | The free space on each disk, when the server has more than one. |
+
+## Stop a process
+
+1. Type its name, user, command or PID in the search field to find it.
+2. Swipe left on it and tap **Kill** (asks it to quit). Or touch and hold it and tap **Force Kill** (stops it at once).
+3. AirSCP asks first. Tap **Kill** (or **Force Kill**) again.
+
+## Tips
+
+- AirSCP reads the server every 3 seconds, but only while this screen shows and AirSCP is on screen: iOS doesn't let it
+  read servers in the background.
+- Your account may stop only its own processes. For another user's, AirSCP gives you the `sudo kill` command to type in
+  the [terminal](https://kleash.github.io/airscp/iphone-ipad/terminal.html).
+- The monitor works on Linux servers. Other servers, accounts that allow file transfers (sftp) only, and S3 storage have
+  none.
+
+
+---
+
+Source: https://kleash.github.io/airscp/iphone-ipad/ipad.html
+
+# iPad and iPhone Duo
+
+On an iPad, AirSCP uses the room it has: a sidebar with your open servers, a workspace for each, several windows, the
+keyboard and the pointer. AirSCP follows the width of its window, not the device. A narrow window (next to another app,
+or an iPhone Duo folded) looks as on an iPhone.
+
+## The sidebar and a server's workspace
+
+1. Tap the sidebar button next to the tabs at the top. The sidebar lists **Servers**, **Files**, **Terminal**,
+   **Transfers** and **Search**, and under **Open**, each open server.
+2. Tap an open server. Its workspace shows:
+   - the server's files and **On iPad** next to each other: drag between them to copy;
+   - the server's terminal under the files: tap the bar with its name, or drag the bar up. Drag the bar to change the
+     terminal's height;
+   - in that bar, **+** (New Terminal), **Full Window**, and **Transfers**, which shows the transfers on the right.
+3. Touch and hold an open server in the sidebar for **Open in New Window** or **Disconnect**.
+
+<!-- picture: ipad-workspace; iPad, landscape; A server's workspace: the sidebar with the open server, its files and On iPad next to each other, the terminal pulled up under them, and Transfers on the right -->
+
+In a wide window, such as an iPad on its side:
+
+- **Transfers** show on the right by themselves when a copy starts.
+- A file you edit opens next to the files, not over them.
+
+## Full Window
+
+**Full Window** (<kbd>⇧⌘F</kbd>) gives the terminal, or the editor next to the files, the whole window: for work with a
+keyboard. Where there is room, the editor then shows the lines you changed next to the text. **Exit Full Window** gives
+the window back. For the editor, <kbd>Esc</kbd> does too. In the terminal, <kbd>Esc</kbd> goes to the shell (for
+`vim`): press <kbd>⇧⌘F</kbd> again.
+
+## Several windows
+
+Touch and hold AirSCP's icon in the Dock or on the Home Screen, then tap **New Window**. Or touch and hold an open
+server in the sidebar and tap **Open in New Window**.
+
+All windows share the servers, connections, transfers, tray and terminals: a new window doesn't log in again. Each
+window shows what you choose there: its own tab, folders and terminal. When you close a window, the others keep
+everything it opened.
+
+## Keyboard shortcuts
+
+With a keyboard, hold <kbd>⌘</kbd> to see them.
+
+| Keys | What they do |
+|---|---|
+| <kbd>⌘1</kbd>, <kbd>⌘2</kbd>, <kbd>⌘3</kbd>, <kbd>⌘4</kbd> | Show **Servers**, **Files**, **Terminal**, **Transfers** |
+| <kbd>⌘K</kbd> | **Search** |
+| <kbd>⌘T</kbd> | **New Terminal** on the server in front |
+| <kbd>⇧⌘F</kbd> | **Full Window** for the terminal or the editor |
+
+In **Files**, on the side you used last:
+
+| Keys | What they do |
+|---|---|
+| <kbd>⌘R</kbd> | Read the folder again |
+| <kbd>⌘N</kbd> | **New Folder** |
+| <kbd>Return</kbd> or <kbd>⌘↓</kbd> | Open the selected folder or file |
+| <kbd>⌘↑</kbd> | Go up one folder |
+| <kbd>⌘A</kbd> | Select everything in the folder (while you select) |
+| <kbd>⌘C</kbd>, then <kbd>⌘V</kbd> | Copy the selected items into the folder shown, on either side |
+| <kbd>⌘⌫</kbd> | Delete the selected items (AirSCP asks first) |
+
+In the terminal, the keys go to the shell: arrows, <kbd>Esc</kbd>, <kbd>Tab</kbd>, Control keys, function keys, Home,
+End, Page Up and Page Down. <kbd>⌘C</kbd>, <kbd>⌘V</kbd> and <kbd>⌘A</kbd> copy, paste and select all.
+
+## Pointer
+
+With a trackpad or a mouse:
+
+- Over the terminal, the pointer is a text cursor. Scroll to go back through the output. Right-click for **Copy**,
+  **Paste** and **Select All**.
+- Right-click a file, a server or a transfer for the menu that touch and hold shows.
+- Drag files between the two sides, and to and from other apps.
+
+## iPhone Duo
+
+Folded, an iPhone Duo shows AirSCP as an iPhone does: one side of **Files** at a time. Open, it shows AirSCP as an iPad
+does: both sides next to each other, the sidebar and the workspaces.
+
+Folding, opening or turning it keeps what you were doing: the folder, the selection, the scroll position, the terminal
+and the copies that run. A server's workspace goes on in **Files** while the iPhone is folded, and comes back when you
+open it.
 
 
 ---
@@ -3227,7 +3795,8 @@ Not automatically. Use **File ▸ Export Hosts…** and **Import Hosts…**. See
 No. [Synchronize](https://kleash.github.io/airscp/synchronize.html) runs when you ask it to.
 
 **Is there a built-in terminal?**
-Not yet. **Open Terminal** opens Terminal or iTerm on the host, without logging in again.
+Yes. Each host has a [Terminal tab](https://kleash.github.io/airscp/commands/terminal-tab.html) in AirSCP, which uses the connection that is open already.
+On iPhone and iPad, it's the [Terminal](https://kleash.github.io/airscp/iphone-ipad/terminal.html) tab.
 
 **My server is behind another server. Can AirSCP reach it?**
 Yes, through one jump host. See [Connect through a jump host](https://kleash.github.io/airscp/connecting/jump-hosts.html).
@@ -3296,6 +3865,20 @@ Please don't open a public issue: follow the security policy (`SECURITY.md`) in
 Source: https://kleash.github.io/airscp/whats-new.html
 
 # What's new
+
+## AirSCP 2.0.0
+
+- **AirSCP for iPhone and iPad** (iOS 26 or later): save your servers and S3 storage, or find them on your network with
+  **Nearby**. Copy files between a server and your device, or between two servers: a file you copy is checked against
+  the original. Share files, save them in the Files app, or carry them from place to place in the tray. Edit text files,
+  type in a terminal with the keys a phone keyboard lacks, run a command on several servers at once, and watch a Linux
+  server's CPU, memory and processes. Keys stay in the Keychain on your device, and Face ID unlocks them. See
+  [iPhone and iPad](https://kleash.github.io/airscp/iphone-ipad/).
+- **On iPad**: a sidebar with a workspace for each open server (its files, its terminal pulled up under them, and the
+  transfers), several windows, drag and drop with other apps, keyboard shortcuts and the pointer. On an iPhone Duo,
+  AirSCP follows the fold and keeps what you were doing. See [iPad and iPhone Duo](https://kleash.github.io/airscp/iphone-ipad/ipad.html).
+- **Fixed** on the Mac (macOS 27): an AI agent that chose from two pop-up menus at once, or while AirSCP was busy,
+  could leave a menu open.
 
 ## AirSCP 1.4.0
 

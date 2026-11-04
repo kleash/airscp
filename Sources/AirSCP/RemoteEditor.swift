@@ -120,15 +120,12 @@ final class RemoteEditor: NSWindowController, NSWindowDelegate, NSTextViewDelega
         let written = crlf ? text.replacingOccurrences(of: "\r\n", with: "\n").replacingOccurrences(of: "\n", with: "\r\n") : text
         Task {
             do {
-                if !overwriting {
-                    let server = try await serverVersion()
-                    if server.changed {
-                        status.stringValue = "Not saved: changed on the server"
-                        saving = false
-                        return askAboutChange(theirs: server.text)
-                    }
+                if case .changed(let theirs) = try await session.saveText(written, to: path, isLink: isLink,
+                                                                          ifUnchangedFrom: overwriting ? nil : serverText) {
+                    status.stringValue = "Not saved: changed on the server"
+                    saving = false
+                    return askAboutChange(theirs: theirs)
                 }
-                try await session.writeText(written, to: path, isLink: isLink)
                 savedText = text
                 serverText = written
                 window?.isDocumentEdited = textView.string != text
@@ -141,23 +138,6 @@ final class RemoteEditor: NSWindowController, NSWindowDelegate, NSTextViewDelega
             }
             saving = false
             closeAfterSaving = false
-        }
-    }
-
-    /// Whether the server's file differs from what this editor last read or wrote, and its text when the editor can
-    /// show it. The whole file is compared, byte for byte: its size and a time to the minute (all sftp tells) would
-    /// miss a quick change of a few characters. A file that is gone hasn't changed: saving makes it again.
-    private func serverVersion() async throws -> (changed: Bool, text: String?) {
-        // The editor's limits for opening a file, widened to what its own text needs: what fails them isn't that text.
-        let mine = serverText.utf8
-        let longest = mine.split(separator: 0x0A, omittingEmptySubsequences: false).lazy.map(\.count).max() ?? 0
-        do {
-            let text = try await session.readText(path, limit: max(Self.limit, mine.count), lineLimit: max(256 << 10, longest))
-            return (!text.utf8.elementsEqual(mine), text)
-        } catch let error as AirSCPError where error.kind == .noSuchFile {
-            return (false, nil)
-        } catch let error as AirSCPError where error.kind == .notText {
-            return (true, nil)  // not UTF-8 text now, or too large to show
         }
     }
 

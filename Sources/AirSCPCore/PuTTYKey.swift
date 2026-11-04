@@ -1,5 +1,7 @@
 import CommonCrypto
+#if canImport(CRDP)
 import CRDP
+#endif
 import CryptoKit
 import Foundation
 
@@ -157,6 +159,17 @@ public enum PuTTYKey {
 
     // MARK: OpenSSH's private key format (unencrypted)
 
+    /// A new Ed25519 key (the iOS app makes keys itself: it has no ssh-keygen).
+    public static func newEd25519(comment: String) -> Key {
+        let key = Curve25519.Signing.PrivateKey()
+        var publicBlob = Wire.Writer(), privateBlob = Wire.Writer()
+        publicBlob.string(Data("ssh-ed25519".utf8))
+        publicBlob.string(key.publicKey.rawRepresentation)
+        privateBlob.string(key.rawRepresentation)  // the seed
+        return Key(algorithm: "ssh-ed25519", publicBlob: publicBlob.data, privateBlob: privateBlob.data, comment: comment)
+    }
+
+
     /// The key as an unencrypted OpenSSH private key file ("-----BEGIN OPENSSH PRIVATE KEY-----").
     public static func openSSH(_ key: Key) throws -> String {
         var fields = Wire.Reader(key.privateBlob)
@@ -302,6 +315,11 @@ public enum PuTTYKey {
         let password = Data(passphrase.utf8)
         if version == 3 {
             guard encrypted, let argon2 else { return (Data(), Data(), Data()) }
+            #if !canImport(CRDP)
+            // shortcut: Argon2 is OpenSSL's, in CRDP, which iOS doesn't link yet; give iOS OpenSSL's Argon2 when its app
+            // imports keys (2.0, step 2b).
+            throw AirSCPError(.other, "AirSCP on iPhone and iPad can't read a PuTTY key with a passphrase yet.")
+            #else
             var out = [UInt8](repeating: 0, count: 80)
             let ok = password.withUnsafeBytes { pass in
                 argon2.salt.withUnsafeBytes { salt in
@@ -313,6 +331,7 @@ public enum PuTTYKey {
             guard ok else { throw AirSCPError(.other, "AirSCP couldn't derive the key file's encryption key (Argon2).") }
             defer { out.withUnsafeMutableBytes { _ = memset_s($0.baseAddress, $0.count, 0, $0.count) } }
             return (Data(out[0..<32]), Data(out[32..<48]), Data(out[48..<80]))
+            #endif
         }
         var cipher = Data()
         for counter in [UInt32(0), 1] {

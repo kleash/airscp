@@ -103,7 +103,7 @@ private func cutOff(_ session: Session, _ start: () -> UUID, partial: (UUID) -> 
         host.autoReconnect = true
         host.proxyID = saved.id
         let session = try server.session(host)
-        answer(saved, on: session.askpass)
+        answer(saved, on: session.askpass!)
         try await session.connect()
         let queue = session.transfers
         let local = try server.scratch()

@@ -154,7 +154,7 @@ extension TransferQueue {
             if cancellation.isCancelled { throw AirSCPError.cancelled }
             let url = URL(fileURLWithPath: local + "/" + file.relative), target = key + "/" + file.relative
             guard FileManager.default.isReadableFile(atPath: url.path) else {
-                errors.append("\(file.relative): AirSCP may not read it on this Mac")
+                errors.append("\(file.relative): AirSCP may not read it on \(Device.this)")
                 continue
             }
             try await s3.upload(url, size: file.size, to: bucket, target, progress: progress, limit: streamLimit,
@@ -211,14 +211,14 @@ extension TransferQueue {
             let names = relative.hasSuffix("/") ? parts.dropLast() : parts[...]
             if names.contains(where: { TransferQueue.leftOut($0, by: job?.excluding ?? []) }) { continue }
             guard !names.isEmpty, names.allSatisfy(Session.usable) else {
-                if !relative.isEmpty { errors.append("\(relative): a name this Mac can't hold") }
+                if !relative.isEmpty { errors.append("\(relative): a name \(Device.this) can't hold") }
                 continue
             }
             let target = local + "/" + names.joined(separator: "/")
             let folder = relative.hasSuffix("/") ? target : RemotePath.parent(target)
             guard (try? FileManager.default.createDirectory(atPath: folder, withIntermediateDirectories: true)) != nil,
                   relative.hasSuffix("/") || FileManager.default.createFile(atPath: target, contents: nil) else {
-                errors.append("\(relative): AirSCP can't write it on this Mac")
+                errors.append("\(relative): AirSCP can't write it on \(Device.this)")
                 continue
             }
             if !relative.hasSuffix("/") {
@@ -242,10 +242,10 @@ extension TransferQueue {
         if offset > size { offset = 0 }
         if offset > 0, let job { setResumed(job.id, true) }
         if offset == 0 && !FileManager.default.createFile(atPath: local, contents: nil) {
-            throw AirSCPError(.permissionDenied, "AirSCP may not write \(RemotePath.name(local)) on this Mac.")
+            throw AirSCPError(.permissionDenied, "AirSCP may not write \(RemotePath.name(local)) on \(Device.this).")
         }
         guard let file = FileHandle(forWritingAtPath: local) else {
-            throw AirSCPError(.permissionDenied, "AirSCP may not write \(RemotePath.name(local)) on this Mac.")
+            throw AirSCPError(.permissionDenied, "AirSCP may not write \(RemotePath.name(local)) on \(Device.this).")
         }
         defer { try? file.close() }
         if offset < size {
@@ -275,6 +275,14 @@ extension TransferQueue {
                 errors += try await fetchS3(RemotePath.join(job.source, name), into: temp + "/" + name, session: source, job: nil,
                                             meter: meter, progress: { [weak self] in self?.streamed(job.id, meter.done + $0) },
                                             cancellation: cancellation)
+                continue
+            }
+            if source.transport != nil {
+                if let leftOut = try await copyOverTransport(job, upload: false, local: temp + "/" + name,
+                                                             remote: RemotePath.join(job.source, name), session: source, meter: meter,
+                                                             cancellation: cancellation) {
+                    errors.append(leftOut)
+                }
                 continue
             }
             let (argv, input) = try copy(upload: false, temp + "/" + name, RemotePath.join(job.source, name), folder: true,

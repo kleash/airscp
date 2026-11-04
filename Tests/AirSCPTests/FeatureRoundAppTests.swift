@@ -97,7 +97,7 @@ import Testing
     /// After a disconnect the Monitor shows no figures as if they were current (with Kill on).
     @MainActor @Test func theMonitorForgetsItsFiguresWhenDisconnected() throws {
         let session = Session(host: SSHHost(hostname: "nowhere"), jump: nil, askpass: try AskpassServer(helperPath: TestEnvironment.airscpBinary))
-        defer { session.askpass.close() }
+        defer { session.askpass!.close() }
         let monitor = MonitorController(workspace: nil, session: session)
         monitor.model.snapshot = MonitorSnapshot(cpu: 2, processes: [MonitorProcess(pid: 1, ppid: 0, user: "root", cpu: 0, memory: 0, rss: 0,
                                                                                      elapsed: 1, state: "S", name: "init", command: "init")])

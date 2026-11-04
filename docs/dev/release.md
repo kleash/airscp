@@ -114,6 +114,45 @@ Opening it with a folder (`/tmp/t` above) lets the sandbox into that folder the 
 instance can keep its settings there. Its data otherwise lives in `~/Library/Containers/<bundle id>`, which Terminal can
 read only after macOS asks you, and its agent socket is in that container's `tmp` (a short path).
 
+## iPhone and iPad (App Store)
+
+The iPhone and iPad app (`ios/`, built with Xcode) is the same App Store Connect app as the Mac App Store version:
+bundle id `com.kleash.airscp`, one purchase for both (universal purchase). Its version and build number come from
+`VERSION` at the archive (the project has none of its own). Its texts, screenshots and review are the iOS version's own;
+App Privacy ("Data Not Collected") and Pricing and Availability (France left out) are the app's, shared with the Mac.
+
+### One-time setup
+
+| What | How |
+|---|---|
+| iOS platform | App Store Connect ▸ Apps ▸ AirSCP ▸ **Add Platform** (next to the macOS version in the sidebar) ▸ iOS. Until then, iOS uploads have no app to go to. |
+| Signing | Xcode ▸ Settings ▸ Accounts signed in to the team. The Mac App Store's Apple Distribution certificate signs iOS too, and with that account the script lets Xcode make the iOS App Store profile ("iOS Team Store Provisioning Profile: com.kleash.airscp", `-allowProvisioningUpdates`). The App Manager API key can't: it has no access to cloud-managed certificates and makes no profile, so the script uses it only for the validation and the upload. |
+| libssh2 | `scripts/build-libssh2.sh` (vendor/ssh2; needs Xcode with the iOS SDK). |
+| TestFlight testers | App Store Connect ▸ AirSCP ▸ TestFlight ▸ Internal Testing ▸ + : a group of the team's members (Users and Access), with automatic distribution on. Internal testers need no review; an external group's first build goes through Beta App Review. |
+
+### Upload
+
+```sh
+DEVELOPMENT_TEAM=… APPSTORE_KEY_ID=… APPSTORE_ISSUER=… scripts/release-ios.sh --no-upload   # up to the validation
+DEVELOPMENT_TEAM=… APPSTORE_KEY_ID=… APPSTORE_ISSUER=… scripts/release-ios.sh               # and the upload
+```
+
+The script first checks what needs nothing from Apple: the key file, that vendor/ssh2 is from the current
+`build-libssh2.sh`, `ios/Info.plist`, the privacy manifest and the icon (1024 × 1024, no alpha; drawn by
+`swift scripts/make-icon.swift ios/AirSCP/Assets.xcassets/AppIcon.appiconset/AppIcon.png`). It then archives (Release,
+any iOS device), checks the archived app (bundle id, version, no `ITSAppUsesNonExemptEncryption`, the icon, the usage
+texts, the privacy manifest, arm64, the private API scan), exports `build/ios/AirSCP.ipa` for App Store Connect, checks
+its signature, and runs `xcrun altool --validate-app` and `--upload-package`. Build numbers work as for the Mac
+(`AIRSCP_BUILD_NUMBER` for a second upload of a version). The build shows in TestFlight once Apple has processed it.
+
+**Export compliance**: the iOS app's SSH is libssh2 over OpenSSL, standard encryption in addition to iOS's, and its
+Info.plist leaves `ITSAppUsesNonExemptEncryption` out too. TestFlight shows "Missing Compliance" on each new build until
+the question is answered as for the Mac: "Standard encryption algorithms instead of, or in addition to, the encryption
+within Apple's operating system", not available in France.
+
+**Screenshots** for the iOS version: the 6.9" iPhone (1320 × 2868 pixels, as from an iPhone 17 Pro Max) and the 13"
+iPad (2064 × 2752, an iPad Pro 13-inch); App Store Connect scales them for the smaller devices. TestFlight needs none.
+
 ## After: check it from the outside
 
 ```sh
@@ -162,15 +201,19 @@ Three workflows put live results behind the README's badges (each badge is the l
 | Workflow (badge) | What it checks | When |
 |---|---|---|
 | `codeql.yml` (CodeQL) | AirSCP's Swift and C with the `security-extended` queries. FreeRDP and OpenSSL are built before CodeQL starts watching, so only `swift build` is analysed. | Pushes to `main`, pull requests, by hand |
-| `security.yml` (Vulnerability scan) | OSV-Scanner on `sbom.spdx.json` against osv.dev, after showing it flags FreeRDP 3.5.0 and OpenSSL 3.5.0; FreeRDP's own GitHub security advisories against the pinned release (OSV's FreeRDP records list no release after 3.5.1); gitleaks over every commit | Pushes to `main`, pull requests, by hand, and before every release (release.yml calls it) |
+| `security.yml` (Vulnerability scan) | OSV-Scanner on `sbom.spdx.json` against osv.dev, after showing it flags FreeRDP 3.5.0 and OpenSSL 3.5.0; libssh2's pinned commit in OSV's API, after showing it flags 1.11.1's commit; FreeRDP's own GitHub security advisories against the pinned release (OSV's FreeRDP records list no release after 3.5.1); gitleaks over every commit | Pushes to `main`, pull requests, by hand, and before every release (release.yml calls it) |
 | `scorecard.yml` (OpenSSF Scorecard) | Supply-chain practices; publishes the score behind the badge | Pushes to `main`, by hand |
 
 - `sbom.spdx.json` (SPDX 2.3) is written by `scripts/sbom.sh`: FreeRDP and OpenSSL as `scripts/build-freerdp.sh` pins
-  them (version, download, SHA-256), with purls (`pkg:git/…@<tag>`, what OSV looks up) and CPEs. Run it after changing
-  a pin or `VERSION`; `SBOMTests` fails until you do. release.yml attaches a fresh one to every release.
-- A finding fails the run. For a CVE in FreeRDP or OpenSSL: the pin in `scripts/build-freerdp.sh` to the fixed release,
-  `scripts/sbom.sh`, the gates, then a release. Only a verified false positive may be allowed, with the reason next to
-  it: `.gitleaks.toml`, or `REVIEWED` in security.yml for a FreeRDP advisory that names no fixed release.
+  them (version, download, SHA-256), and the iPhone and iPad app's libssh2 as `scripts/build-libssh2.sh` does, with
+  purls (`pkg:git/…@<tag>`, what OSV looks up) and CPEs. libssh2 is a commit on its master for now (1.11.1's CVEs are
+  fixed in no release yet): its purl names the commit, which OSV-Scanner can't look up, so security.yml asks OSV's API
+  about it, and it has no CPE. Run it after changing a pin or `VERSION`; `SBOMTests` fails until you do. release.yml
+  attaches a fresh one to every release.
+- A finding fails the run. For a CVE in FreeRDP or OpenSSL: the pin in `scripts/build-freerdp.sh` to the fixed release
+  (libssh2: `scripts/build-libssh2.sh`), `scripts/sbom.sh`, the gates, then a release. Only a verified false positive
+  may be allowed, with the reason next to it: `.gitleaks.toml`, or `REVIEWED` in security.yml for a FreeRDP advisory
+  that names no fixed release.
 - Every run keeps its results as an artifact (`codeql-sarif`, `scorecard-sarif`); on the public repository CodeQL
   also uploads them to the Security tab and Scorecard publishes its score. Scorecard's own findings stay out of the
   Security tab: its score and every check are public at scorecard.dev.

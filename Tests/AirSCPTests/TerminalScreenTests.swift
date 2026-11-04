@@ -138,6 +138,19 @@ private func shown(_ screen: TerminalScreen) -> [String] { screen.lines.map(\.te
     #expect(w.path(atLine: 1, column: 2) == "/home/dev/projects/x")
 }
 
+@Test func terminalFindsTheFilesAndLinesAnOutputNames() {
+    let output = """
+        src/main.c:12:5: error: expected ';' (see "include/a.h:3")
+        ./notes.txt:3:hello at 12:30 from 10.0.0.1:22
+        Makefile:7: *** missing separator.  Stop.
+        nginx: [emerg] unknown directive "x" in /etc/nginx/nginx.conf:41
+        src/main.c:12:9: note: the same place again; src/main.c:14 is another
+        """
+    #expect(TerminalScreen.fileLines(in: output).map { "\($0.path) \($0.line)" }
+            == ["src/main.c 12", "include/a.h 3", "./notes.txt 3", "Makefile 7", "/etc/nginx/nginx.conf 41", "src/main.c 14"])
+    #expect(TerminalScreen.fileLines(in: "Sat Oct 31 12:30:45 UTC 2026, up 3 days, 4:05, port 22").isEmpty)
+}
+
 @Test func terminalReadsTheFolderAsTheShellSaysIt() {
     let s = screen()
     // As the shell AirSCP starts says it: only "%" encoded, spaces and other letters as they are (UTF-8).
@@ -456,7 +469,7 @@ private func marked(_ text: String, columns: Int = 30, rows: Int = 8) -> Termina
             screen.markToken = "feed1234"
             let argv = OpenSSH.terminal(session.host, jump: nil, socket: session.socketPath,
                                         command: OpenSSH.terminalShell(in: server.home, token: "feed1234"))
-            let terminal = try TerminalSession(argv, environment: session.askpass.terminalEnvironment, screen: screen)
+            let terminal = try TerminalSession(argv, environment: session.askpass!.terminalEnvironment, screen: screen)
             defer { terminal.close() }
             /// Runs `command` and waits for `done`.
             func run(_ command: String, until done: @escaping () -> Bool) async -> Bool {
@@ -922,7 +935,7 @@ extension FeatureRoundAppTests {
                 screen.onCommand = { ran.append($0) }
                 let argv = OpenSSH.terminal(host, jump: nil, socket: session.socketPath,
                                             command: OpenSSH.terminalShell(in: nil, token: "1ab5"))
-                let terminal = try TerminalSession(argv, environment: session.askpass.terminalEnvironment, screen: screen)
+                let terminal = try TerminalSession(argv, environment: session.askpass!.terminalEnvironment, screen: screen)
                 defer { terminal.close() }
                 if marks { #expect(await eventually(timeout: 30) { screen.waitsAtPrompt }, "\(screen.text)") }
                 terminal.send("echo marker-$((6*7)) ${AIRSCP_RC-none}; false\r")

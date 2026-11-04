@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!-- Transfers that go on in the background: iOS 26's continued processing tasks (BackgroundTransfers.swift). -->
+	<key>BGTaskSchedulerPermittedIdentifiers</key>
+	<array>
+		<string>$(PRODUCT_BUNDLE_IDENTIFIER).transfers.*</string>
+	</array>
+	<!-- Nearby servers: the Bonjour services iOS lets the app browse (the rest of Info.plist is generated). -->
+	<key>NSBonjourServices</key>
+	<array>
+		<string>_ssh._tcp</string>
+		<string>_sftp-ssh._tcp</string>
+	</array>
+	<!-- The Files tab's "On iPhone" side (the app's Documents folder) shows in the Files app too: On My iPhone ▸ AirSCP. -->
+	<key>UIFileSharingEnabled</key>
+	<true/>
+	<key>LSSupportsOpeningDocumentsInPlace</key>
+	<true/>
+	<!-- Rows dragged between the Files tab's sides: only AirSCP sees this type (FilesView.swift); other apps get files. -->
+	<key>UTExportedTypeDeclarations</key>
+	<array>
+		<dict>
+			<key>UTTypeIdentifier</key>
+			<string>com.kleash.airscp.rows</string>
+			<key>UTTypeDescription</key>
+			<string>AirSCP files</string>
+			<key>UTTypeConformsTo</key>
+			<array>
+				<string>public.data</string>
+			</array>
+		</dict>
+	</array>
+</dict>
+</plist>

@@ -1,3 +1,4 @@
+#if canImport(CRDP)  // OpenSSL in process (CRDP): the Mac only (the iOS app's Certificate Manager comes after 2.0)
 import CRDP
 import CryptoKit
 import Foundation
@@ -687,3 +688,4 @@ enum JKS {
         }
     }
 }
+#endif
