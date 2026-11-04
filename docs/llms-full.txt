@@ -1831,7 +1831,8 @@ Commands for many files at once, and for arranging files on a server.
 - **Edit ▸ Deselect by Pattern…** (<kbd>⌘-</kbd>): takes the matching items out of the selection.
 - **Edit ▸ Select Same Kind**: selects every item with the selected item's extension (all `.jpg` files, say).
 - **Edit ▸ Invert Selection** (<kbd>⇧⌘I</kbd>): selects what wasn't selected.
-- **File ▸ Copy Names**: copies the names of the selection, one per line (**Copy Path** copies full paths).
+- **File ▸ Copy Names**: copies the names of the selection, one per line (**Copy Path**, <kbd>⌥⌘C</kbd>, copies full
+  paths). To copy the path of the folder shown, right-click the path above the list and choose **Copy Path**.
 
 ## Compare two folders
 
@@ -2951,9 +2952,11 @@ the one below. **Done** (or <kbd>Esc</kbd>) closes the find bar.
 ## Keep the Files tab in the same folder
 
 Tick **Follow in Files** at the top of the tab. Each time you `cd` to another folder, the Files tab's server pane goes
-there too. It goes only where the shell itself says it is: a folder that a program prints can't move it.
+there too. It goes only where the shell itself says it is: a folder that a program prints can't move it. And each time
+you open a folder in the server pane, AirSCP types `cd` with that folder at the shell's empty prompt, so the shell goes
+there too. While a command runs, AirSCP types nothing.
 
-To go the other way, turn on **Open Terminal Here and Run in Terminal in the Terminal tab** in **AirSCP ▸ Settings…**.
+Without Follow in Files, turn on **Open Terminal Here and Run in Terminal in the Terminal tab** in **AirSCP ▸ Settings…**.
 Then a server folder's **Open Terminal Here** (<kbd>⌥⌘T</kbd>) goes to this tab. If the shell is at an empty prompt,
 AirSCP types `cd` with the folder for you. If it is busy, or isn't bash or zsh (AirSCP can't tell when such a shell
 waits), AirSCP opens a new tab in that folder instead, and never types into the busy one.
@@ -4273,9 +4276,9 @@ AirSCP was installed with `./install.sh`).
   empty prompt, so a command typed now runs in it) and `commands`, the last 20: each one's `command` line, `status`
   (exit status), `seconds`, `output` (its last 50 lines) and `running`. Read a command's result there, not from
   `lines`: type it, then snapshot until its entry has a status. Other shells (BusyBox sh, fish) have neither. The tab's
-  bar: `set id=terminal.follow value=true` (Follow in Files: the server pane follows the shell's folder), `set
-  id=terminal.snippets value=<snippet name>` (typed at the prompt, not run; as any text for the terminal, it waits for
-  the person at the Mac), `press id=terminal.find` then `set id=terminal.findText value=<text>` (find;
+  bar: `set id=terminal.follow value=true` (Follow in Files: the server pane follows the shell's folder, and the shell
+  the pane's, `cd` typed at its empty prompt), `set id=terminal.snippets value=<snippet name>` (typed at the prompt,
+  not run; as any text for the terminal, it waits for the person at the Mac), `press id=terminal.find` then `set id=terminal.findText value=<text>` (find;
   `terminal.findCount` reads "2 of 5" in `snapshot include=["elements"]`), `press id=terminal.findDone`. Settings'
   `settings.openTerminalHereInTab` sends Open Terminal Here and Run in Terminal to this tab: the `cd` or the command typed
   at an empty prompt, else a new tab (nothing is typed into a busy shell).

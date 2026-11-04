@@ -159,8 +159,9 @@ final class FilePane: NSViewController, NSTableViewDataSource, NSTableViewDelega
         return items
     }
 
-    /// The rows an action is for: a context menu's rows, else the selection.
+    /// The rows an action is for: a context menu's rows (none for the path bar's: the folder shown), else the selection.
     func targets(_ sender: Any?) -> [FileItem] {
+        if let item = sender as? NSMenuItem, item.menu === pathControl.menu { return [] }
         if let item = sender as? NSMenuItem, item.menu === table.menu, let menuTargets { return menuTargets }
         return selectedItems
     }
@@ -323,6 +324,7 @@ final class FilePane: NSViewController, NSTableViewDataSource, NSTableViewDelega
             }
             if choosesSource { browser?.localFolderChanged(path) }
         case .remote(let session):
+            if self === browser?.right { browser?.workspace?.terminal?.filesOpened(path) }
             Task {
                 guard let free = try? await session.diskFree(path), dir == path else { return }
                 freeSpace = FileList.size(free.available) + " available"
@@ -761,7 +763,12 @@ final class FilePane: NSViewController, NSTableViewDataSource, NSTableViewDelega
         pathControl.action = #selector(pathClicked(_:))
         pathControl.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
         pathControl.setContentHuggingPriority(.init(1), for: .horizontal)
-        pathControl.toolTip = "Click a folder to go there; ⇧⌘G to type a path"
+        pathControl.toolTip = "Click a folder to go there; ⇧⌘G to type a path; right-click to copy it"
+        let copyPath = NSMenuItem(title: "Copy Path", action: #selector(copyPath(_:)), keyEquivalent: "")
+        copyPath.target = self
+        copyPath.toolTip = "Copy the full path of the folder shown"
+        pathControl.menu = NSMenu()
+        pathControl.menu?.addItem(copyPath)
         pathField.controlSize = .small
         pathField.font = .systemFont(ofSize: NSFont.smallSystemFontSize)
         pathField.delegate = self

@@ -661,6 +661,20 @@ extension FeatureRoundAppTests {
             #expect(await call(agent, "menu", ["path": "File > Open Terminal Here"]).error == nil)
             #expect(workspace.tabs.selectedTabViewItemIndex == 3)
             #expect(await eventually(timeout: 20) { screen.directory == server.path("other") }, "\(screen.directory ?? "nil")")
+
+            // Follow in Files the other way: the shell goes to a folder Files opens (cd typed at its empty prompt), and
+            // Files stays there, without going back to the shell's folder while the cd runs.
+            #expect(await call(agent, "set", ["id": "terminal.follow", "value": true]).error == nil)
+            let pane = workspace.browser.right!
+            #expect(await eventually(timeout: 20) { pane.dir == server.path("other") && screen.waitsAtPrompt })
+            let backs = pane.back.count
+            _ = await call(agent, "press", ["title": "Files"])
+            let went = await call(agent, "go", ["pane": "right", "path": server.path("site")])
+            #expect(went.error == nil, "\(went.error ?? "")")
+            #expect(await eventually(timeout: 20) { screen.directory == server.path("site") && screen.waitsAtPrompt },
+                    "\(screen.directory ?? "nil")")
+            #expect(pane.dir == server.path("site") && pane.back.count == backs + 1, "\(pane.dir ?? "nil") \(pane.back)")
+            _ = await call(agent, "set", ["id": "terminal.follow", "value": false])
             tab.session?.close()
             await workspace.connection.disconnect()
         }

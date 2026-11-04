@@ -15,7 +15,8 @@ Commands for many files at once, and for arranging files on a server.
 - **Edit ▸ Deselect by Pattern…** (<kbd>⌘-</kbd>): takes the matching items out of the selection.
 - **Edit ▸ Select Same Kind**: selects every item with the selected item's extension (all `.jpg` files, say).
 - **Edit ▸ Invert Selection** (<kbd>⇧⌘I</kbd>): selects what wasn't selected.
-- **File ▸ Copy Names**: copies the names of the selection, one per line (**Copy Path** copies full paths).
+- **File ▸ Copy Names**: copies the names of the selection, one per line (**Copy Path**, <kbd>⌥⌘C</kbd>, copies full
+  paths). To copy the path of the folder shown, right-click the path above the list and choose **Copy Path**.
 
 ## Compare two folders
 
