@@ -149,9 +149,10 @@ final class MonitorTests: XCTestCase {
         if remember {
             let toggle = app.switches["Remember in Keychain"].firstMatch
             // iOS 27 turns the switch's value a moment after the tap, and drops a tap while the sheet still comes in: tapped
-            // (at its end: the element spans the label too) while it stays off.
+            // while it stays off, on the switch itself (the element spans the label too; the switch is ~40 pt from its end).
             let on = { XCTWaiter.wait(for: [self.expectation(for: NSPredicate(format: "value == '1'"), evaluatedWith: toggle)], timeout: $0) }
-            for _ in 0..<3 where on(3) != .completed { toggle.coordinate(withNormalizedOffset: CGVector(dx: 0.95, dy: 0.5)).tap() }
+            let knob = toggle.coordinate(withNormalizedOffset: CGVector(dx: 1, dy: 0.5)).withOffset(CGVector(dx: -40, dy: 0))
+            for _ in 0..<3 where on(3) != .completed { knob.tap() }
             XCTAssertEqual(on(5), .completed, "Remember in Keychain is off")
         }
         password.tap()  // focused already, unless the sheet is still on its way

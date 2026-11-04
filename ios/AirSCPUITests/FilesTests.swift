@@ -176,6 +176,7 @@ final class FilesTests: XCTestCase {
         if browse.exists { browse.tap() }  // the iPhone's picker has tabs (it opens where it was last); the iPad's a sidebar
         if await !shown(10) {
             for place in ["On My \(UIDevice.current.model)", "AirSCP"] {
+                if await shown(5) { break }  // Save to Files may have put it in On My iPhone itself (where the picker last was)
                 let cell = app.cells.containing(.staticText, identifier: place).firstMatch
                 XCTAssert(cell.waitForExistence(timeout: 10), "No \(place) in the document picker")
                 let there = { app.navigationBars.staticTexts[place].waitForExistence(timeout: 10)
