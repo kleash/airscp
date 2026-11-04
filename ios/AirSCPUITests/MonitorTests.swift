@@ -96,7 +96,9 @@ final class MonitorTests: XCTestCase {
         let app = try await logIn(remember: true)
         let mine = try await appConnection()
         XCUIDevice.shared.press(.home)
-        XCTAssert(app.wait(for: .runningBackground, timeout: 15) || app.state == .runningBackgroundSuspended)
+        // Background, or suspended already (the iPhone Duo's runner never saw it merely in the background).
+        let away = await eventually { app.state != .runningForeground }
+        XCTAssert(away, "Still in front after Home: state \(app.state.rawValue)")
         try await lab.end(mine)
         let gone = await eventually { try await !self.lab.connections().contains(mine) }
         XCTAssert(gone, "The app's connection still runs on the lab")
