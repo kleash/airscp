@@ -178,9 +178,11 @@ final class FilesTests: XCTestCase {
             for place in ["On My \(UIDevice.current.model)", "AirSCP"] {
                 let cell = app.cells.containing(.staticText, identifier: place).firstMatch
                 XCTAssert(cell.waitForExistence(timeout: 10), "No \(place) in the document picker")
+                let there = { app.navigationBars.staticTexts[place].waitForExistence(timeout: 10)
+                              || app.navigationBars.buttons.containing(NSPredicate(format: "label BEGINSWITH %@", place)).firstMatch.exists }
                 cell.tap()
-                XCTAssert(app.navigationBars.staticTexts[place].waitForExistence(timeout: 10)
-                          || app.navigationBars.buttons.containing(NSPredicate(format: "label BEGINSWITH %@", place)).firstMatch.exists)
+                for _ in 0..<2 where !there() && cell.exists { cell.tap() }  // a tap while the picker still moves gets lost
+                XCTAssert(there(), "The document picker didn't open \(place)")
             }
         }
         // Earlier runs' files are there too, in name order: scrolled to when a name of this run's sorts further down.

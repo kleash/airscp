@@ -30,6 +30,9 @@ final class TerminalTests: XCTestCase {
         // The key bar's Ctrl, then C: the running command stops, and the next one runs.
         app.typeText("sleep 100\n")
         ctrl.tap()
+        // iOS 27 can drop a tap right after typing: again until Control is held.
+        let held = NSPredicate(format: "isSelected == true OR value == '1'")
+        for _ in 0..<2 where XCTWaiter.wait(for: [expectation(for: held, evaluatedWith: ctrl)], timeout: 3) != .completed { ctrl.tap() }
         app.typeText("c")
         app.typeText("echo after-$((1+1))\n")
         XCTAssert(terminal.shows("after-2"), terminal.text)
