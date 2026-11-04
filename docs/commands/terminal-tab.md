@@ -61,9 +61,11 @@ the one below. **Done** (or <kbd>Esc</kbd>) closes the find bar.
 ## Keep the Files tab in the same folder
 
 Tick **Follow in Files** at the top of the tab. Each time you `cd` to another folder, the Files tab's server pane goes
-there too. It goes only where the shell itself says it is: a folder that a program prints can't move it.
+there too. It goes only where the shell itself says it is: a folder that a program prints can't move it. And each time
+you open a folder in the server pane, AirSCP types `cd` with that folder at the shell's empty prompt, so the shell goes
+there too. While a command runs, AirSCP types nothing.
 
-To go the other way, turn on **Open Terminal Here and Run in Terminal in the Terminal tab** in **AirSCP ▸ Settings…**.
+Without Follow in Files, turn on **Open Terminal Here and Run in Terminal in the Terminal tab** in **AirSCP ▸ Settings…**.
 Then a server folder's **Open Terminal Here** (<kbd>⌥⌘T</kbd>) goes to this tab. If the shell is at an empty prompt,
 AirSCP types `cd` with the folder for you. If it is busy, or isn't bash or zsh (AirSCP can't tell when such a shell
 waits), AirSCP opens a new tab in that folder instead, and never types into the busy one.

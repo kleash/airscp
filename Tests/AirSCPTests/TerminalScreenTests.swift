@@ -293,6 +293,22 @@ private func marked(_ text: String, columns: Int = 30, rows: Int = 8) -> Termina
     #expect(s.blocks.map(\.text) == ["ls", "for i in 1 2; do\necho $i; done"], "\(s.blocks.map(\.text))")
 }
 
+/// A double-click selects the word under it (a PID in ps's columns), or the spaces there: never the word next to them.
+@Test func aDoubleClickSelectsTheWordOrTheSpacesUnderIt() {
+    let screen = TerminalScreen(columns: 40, rows: 4)
+    screen.feed("root           1       0  0 /sbin/init\r\n")
+    let line = "root           1       0  0 /sbin/init"
+    func selected(at column: Int) -> String? {
+        screen.wordColumns(line: 0, column: column).map { range in
+            String(line.dropFirst(range.lowerBound).prefix(range.count))
+        }
+    }
+    let pid = line.firstIndex(of: "1")!.utf16Offset(in: line)
+    #expect(selected(at: pid) == "1" && selected(at: 0) == "root" && selected(at: 30) == "/sbin/init")
+    #expect(selected(at: pid - 1) == String(repeating: " ", count: pid - 4))
+    #expect(screen.wordColumns(line: 3, column: 0) == 0...39 && screen.wordColumns(line: 9, column: 0) == nil)
+}
+
 @Test func terminalMarksFollowTheirLines() {
     // A prompt drawn again on its line (after a resize) takes the place of the first.
     let s = marked(prompt + "\r" + prompt + "pwd\r\n" + mark("C") + "/home\r\n" + ended(0) + prompt, columns: 30, rows: 3)
@@ -661,6 +677,20 @@ extension FeatureRoundAppTests {
             #expect(await call(agent, "menu", ["path": "File > Open Terminal Here"]).error == nil)
             #expect(workspace.tabs.selectedTabViewItemIndex == 3)
             #expect(await eventually(timeout: 20) { screen.directory == server.path("other") }, "\(screen.directory ?? "nil")")
+
+            // Follow in Files the other way: the shell goes to a folder Files opens (cd typed at its empty prompt), and
+            // Files stays there, without going back to the shell's folder while the cd runs.
+            #expect(await call(agent, "set", ["id": "terminal.follow", "value": true]).error == nil)
+            let pane = workspace.browser.right!
+            #expect(await eventually(timeout: 20) { pane.dir == server.path("other") && screen.waitsAtPrompt })
+            let backs = pane.back.count
+            _ = await call(agent, "press", ["title": "Files"])
+            let went = await call(agent, "go", ["pane": "right", "path": server.path("site")])
+            #expect(went.error == nil, "\(went.error ?? "")")
+            #expect(await eventually(timeout: 20) { screen.directory == server.path("site") && screen.waitsAtPrompt },
+                    "\(screen.directory ?? "nil")")
+            #expect(pane.dir == server.path("site") && pane.back.count == backs + 1, "\(pane.dir ?? "nil") \(pane.back)")
+            _ = await call(agent, "set", ["id": "terminal.follow", "value": false])
             tab.session?.close()
             await workspace.connection.disconnect()
         }

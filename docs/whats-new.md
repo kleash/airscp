@@ -5,6 +5,15 @@ nav_order: 18
 
 # What's new
 
+## AirSCP 2.0.1
+
+- **Copy Path from the path bar**: right-click the path above a Files pane's list ▸ **Copy Path** copies the full path
+  of the folder shown.
+- **Follow in Files goes both ways**: with it ticked in the Terminal tab, a folder you open in the server pane has `cd`
+  typed at the shell's empty prompt, so the shell goes there too. AirSCP never types into a running command.
+- **Fixed** in the Terminal tab: a double-click just before a word (on the space in front of a PID in `ps -ef`, say)
+  selected the space with the word.
+
 ## AirSCP 2.0.0
 
 - **AirSCP for iPhone and iPad** (iOS 26 or later): save your servers and S3 storage, or find them on your network with

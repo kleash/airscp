@@ -294,6 +294,7 @@ final class TerminalController: NSViewController, NSMenuDelegate, NSSearchFieldD
         current = index
         terminal.session = session
         followed = nil
+        leaving = nil
         updateStrip()
         screenChanged()
         if !findBar.isHidden { runFind(keep: false) }
@@ -402,7 +403,7 @@ final class TerminalController: NSViewController, NSMenuDelegate, NSSearchFieldD
         pathButton.toolTip = running ? "Type a file or folder name from the server at the prompt, picked from a list (⌥⇥)"
             : notRunning
         followBox.isEnabled = following
-        followBox.toolTip = following ? "Move the Files tab's server pane to the shell's folder each time the shell changes folder"
+        followBox.toolTip = following ? "Keep the Files tab's server pane and the shell in the same folder: each goes where the other goes"
             : "Works with bash and zsh, which say their folder at each prompt: this shell doesn't"
         previousButton.isEnabled = marks
         nextButton.isEnabled = marks
@@ -439,15 +440,29 @@ final class TerminalController: NSViewController, NSMenuDelegate, NSSearchFieldD
 
     @objc private func followChanged(_ sender: NSButton) {
         followed = nil
+        leaving = nil
         followShell()
         updateBar()
     }
 
+    /// With Follow in Files on, a folder the Files tab's server pane opened: `cd` there, typed only at the shell's empty
+    /// prompt (never into a command), unless the shell is there already.
+    func filesOpened(_ directory: String) {
+        guard followBox.state == .on, let screen = session?.screen, let shellDirectory = screen.directory,
+              directory != shellDirectory, typeAtPrompt(" cd " + Quote.shell(directory)) else { return }
+        leaving = shellDirectory
+        followed = directory  // the shell's word that it is there isn't news to Files
+    }
+
+    /// The shell's folder before a `cd` typed for Files: until the shell says another, Files stays where it went.
+    private var leaving: String?
+
     /// With Follow in Files on, the Files tab's server pane goes to the folder the shell said it is in (OSC 7) when
     /// that is a new one. Quietly: a folder it can't list stays out.
     private func followShell() {
-        guard followBox.state == .on, let directory = session?.screen.directory, directory != followed,
-              let pane = workspace?.browser?.right else { return }
+        guard followBox.state == .on, let directory = session?.screen.directory, directory != leaving else { return }
+        leaving = nil
+        guard directory != followed, let pane = workspace?.browser?.right else { return }
         followed = directory
         Task { await pane.open(directory, quiet: true) }
     }
@@ -1175,13 +1190,8 @@ final class TerminalView: NSView, NSMenuItemValidation, NSMenuDelegate, NSDraggi
             }
             return
         }
-        if event.clickCount == 2, let screen = session?.screen, at.line < screen.allLines.count {
-            // A word.
-            let cells = screen.allLines[at.line].cells
-            var start = at.column, end = at.column
-            while start > 0, cells[start - 1].character != " " { start -= 1 }
-            while end < cells.count - 1, cells[end + 1].character != " " { end += 1 }
-            selection = ((at.line, start), (at.line, end))
+        if event.clickCount == 2, let word = session?.screen.wordColumns(line: at.line, column: at.column) {
+            selection = ((at.line, word.lowerBound), (at.line, word.upperBound))
         } else if event.clickCount == 3, let screen = session?.screen {
             selection = ((at.line, 0), (at.line, screen.columns - 1))
         } else {
