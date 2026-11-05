@@ -200,6 +200,10 @@ extension FilePane {
     /// The server's entries at `paths` (each folder listed once); a path that is gone is left out.
     func entries(at paths: [String]) async throws -> [RemoteEntry] {
         guard let session else { return [] }
+        return try await Self.entries(at: paths, on: session)
+    }
+
+    static func entries(at paths: [String], on session: Session) async throws -> [RemoteEntry] {
         var byFolder: [String: [RemoteEntry]] = [:]
         var found: [RemoteEntry] = []
         for path in paths {
@@ -249,41 +253,6 @@ extension FilePane {
                 }
                 if deleted { model.removeResults(Set(paths)) }
                 await reload()
-            }
-        }
-    }
-
-    /// Delete… in Disk Usage: asks (naming the host, or the Trash on this Mac), deletes, takes them off the sizes and
-    /// lists the pane again.
-    func deleteUsage(_ items: [DiskUsage.Item], from model: DiskUsageModel) {
-        guard let sheet = view.window?.attachedSheet ?? view.window, !items.isEmpty else { return }
-        let paths = items.map(\.path)
-        let names = items.prefix(8).map { "“\($0.name)”" }.joined(separator: ", ") + (items.count > 8 ? " and \(items.count - 8) more" : "")
-        let what = items.count == 1 ? "“\(items[0].name)”" : FileList.items(items.count)
-        let size = FileList.size(items.reduce(0) { $0 + $1.size })
-        let done = { [self] (deleted: Bool) in
-            if deleted { model.removed(items) }
-            await reload()
-        }
-        guard let session else {
-            return confirm("Move \(what) to the Trash?", info: (items.count == 1 ? paths[0] : names) + "\n\n\(size). Empty the Trash to free the space.",
-                           button: "Move to Trash", on: sheet) { [self] in
-                Task {
-                    await done(await perform("Moving to the Trash…", failure: "Can't move to the Trash") {
-                        try await Task.detached(priority: .userInitiated) {
-                            for path in paths { try FileManager.default.trashItem(at: URL(fileURLWithPath: path), resultingItemURL: nil) }
-                        }.value
-                    })
-                }
-            }
-        }
-        confirm("Delete \(what) on “\(session.host.displayName)”?",
-                info: (items.count == 1 ? paths[0] : names) + "\n\n\(size). Folders are deleted with everything in them. This can't be undone.",
-                button: "Delete", destructive: true, on: sheet) { [self] in
-            Task {
-                await done(await perform("Deleting…", failure: "Can't delete") {
-                    try await session.delete(try await entries(at: paths))
-                })
             }
         }
     }

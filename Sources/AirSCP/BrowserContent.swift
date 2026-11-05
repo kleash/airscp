@@ -727,8 +727,8 @@ final class BrowserContentController: NSViewController {
     }
 
     /// Shows the alert as a sheet and returns the button chosen (Cancel without a window).
-    private func run(_ alert: NSAlert) async -> NSApplication.ModalResponse {
-        guard let window = view.window else { return .cancel }
+    private func run(_ alert: NSAlert, on other: NSWindow? = nil) async -> NSApplication.ModalResponse {
+        guard let window = other ?? view.window else { return .cancel }
         return await withCheckedContinuation { continuation in
             alert.beginSheetModal(for: window) { continuation.resume(returning: $0) }
         }
@@ -740,9 +740,15 @@ final class BrowserContentController: NSViewController {
     /// unpacks it here.
     func downloadArchive(_ items: [FileItem], from pane: FilePane) {
         guard let server = pane.session, let sourceDir = pane.dir else { return }
+        downloadArchive(items, in: sourceDir, from: server, near: pane)
+    }
+
+    /// `items`' names are their paths below `sourceDir` on `server`; the archive goes where `pane`'s would; the questions
+    /// on `window` (Disk Usage's), else the main window.
+    func downloadArchive(_ items: [FileItem], in sourceDir: String, from server: Session, near pane: FilePane, asking window: NSWindow? = nil) {
         let other = otherPane(of: pane)
         let dir = !other.isRemote ? other.dir ?? settings.downloadFolder : settings.downloadFolder
-        if server.s3 != nil { return downloadZip(items, from: server, in: sourceDir, into: dir) }
+        if server.s3 != nil { return downloadZip(items, from: server, in: sourceDir, into: dir, asking: window) }
         planning += 1
         Task {
             defer { planning -= 1 }
@@ -758,7 +764,7 @@ final class BrowserContentController: NSViewController {
             alert.suppressionButton?.toolTip = "Off by default: you get the .tar.gz. On, its items land in the folder instead"
             alert.suppressionButton?.state = .off
             alert.addHelp(.downloadArchive)
-            guard await run(alert) == .alertFirstButtonReturn else { return }
+            guard await run(alert, on: window) == .alertFirstButtonReturn else { return }
             let extract = alert.suppressionButton?.state == .on
             let existing = await Task.detached(priority: .userInitiated) { FileList.localNames(dir) }.value
             var names = items.map(\.name)
@@ -778,7 +784,7 @@ final class BrowserContentController: NSViewController {
 
     /// Download as .zip from S3 storage: the items are downloaded into a private folder on this Mac and zipped there (a
     /// queued job); the .zip is kept in `dir`.
-    private func downloadZip(_ items: [FileItem], from server: Session, in sourceDir: String, into dir: String) {
+    private func downloadZip(_ items: [FileItem], from server: Session, in sourceDir: String, into dir: String, asking window: NSWindow?) {
         planning += 1
         Task {
             defer { planning -= 1 }
@@ -788,7 +794,7 @@ final class BrowserContentController: NSViewController {
             alert.addButton(withTitle: "Download").toolTip = "Start the download; it runs in the Transfers queue"
             alert.addButton(withTitle: "Cancel").toolTip = "Don't download"
             alert.addHelp(.s3Zip)
-            guard await run(alert) == .alertFirstButtonReturn else { return }
+            guard await run(alert, on: window) == .alertFirstButtonReturn else { return }
             let existing = await Task.detached(priority: .userInitiated) { FileList.localNames(dir) }.value
             let archive = Names.unique((items.count == 1 ? items[0].name : "Archive") + ".zip", existing: existing, caseInsensitive: true)
             server.transfers.downloadArchive(items.map(\.name), in: sourceDir, to: RemotePath.join(dir, archive), extract: false)

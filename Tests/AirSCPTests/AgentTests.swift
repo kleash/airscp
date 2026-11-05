@@ -27,15 +27,16 @@ import Testing
 /// An off-screen main window under agent control, with its server's folder in the test's scratch space. Its changes
 /// don't wait for anyone (nobody is at the Mac to allow them), unless a test turns that on again.
 @MainActor
-func agentWindow(_ model: AppModel, _ askpass: AskpassServer) throws -> (main: MainWindowController, server: AgentServer, dir: String) {
+func agentWindow(_ model: AppModel, _ askpass: AskpassServer, windows: @escaping () -> [NSWindow] = { [] }) throws
+    -> (main: MainWindowController, server: AgentServer, dir: String) {
     useAppMenuBar()
     if model.data.settings.askBeforeAgentChanges { model.data.settings.askBeforeAgentChanges = false }
     let main = MainWindowController(model: model, askpass: askpass)
     keptWindows.append(main)
     main.window?.setFrame(NSRect(x: -20000, y: -20000, width: 1000, height: 640), display: false)
     let dir = try scratch() + "/agent"
-    // Only this test's window: other tests' windows and sheets share NSApp.
-    let server = try AgentServer(main: main, model: model, directory: URL(fileURLWithPath: dir), windows: { [] })
+    // Only this test's windows: other tests' windows and sheets share NSApp.
+    let server = try AgentServer(main: main, model: model, directory: URL(fileURLWithPath: dir), windows: windows)
     server.showQuestion = offScreen
     return (main, server, dir)
 }

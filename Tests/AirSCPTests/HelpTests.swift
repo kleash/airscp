@@ -226,7 +226,20 @@ extension FeatureRoundAppTests {
                 _ = await call(agent, "select", ["pane": "right", "names": ["a.txt"]])
             }
             await sheet("Find Files", close: "Done") { _ = await call(agent, "menu", ["path": "File > Find Files…"]) }
-            await sheet("Disk Usage", close: "Done") { _ = await call(agent, "menu", ["path": "File > Disk Usage…"]) }
+            // Disk Usage's window, in each of its views (a row selected: its buttons on).
+            _ = await call(agent, "menu", ["path": "File > Disk Usage…"])
+            if let usage = DiskUsageWindow.open.values.first, let usageWindow = usage.window {
+                #expect(await eventually(timeout: 20) { !usage.model.scanning })
+                usage.model.selection = Set(usage.model.rows.prefix(1).map(\.id))
+                for shown in DiskUsageModel.Shown.allCases {
+                    usage.model.shown = shown
+                    try await Task.sleep(nanoseconds: 300_000_000)
+                    check("Disk Usage, " + shown.rawValue, usageWindow)
+                }
+                usage.close()
+            } else {
+                Issue.record("File > Disk Usage… opened no window")
+            }
             // The server's home folder: Synchronize waits for Compare, then shows the plan.
             await sheet("Synchronize", then: {
                 _ = await call(agent, "press", ["title": "Compare"])
