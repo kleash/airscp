@@ -481,8 +481,8 @@ func diskScan(_ session: Session, _ dir: String, asRoot: Bool = false,
     defer { Task { await session.disconnect() } }
     #expect(session.capabilities.windows && !session.capabilities.loginShell.isEmpty && session.diskUsageProblem == nil)
     let dir = RemotePath.join(session.capabilities.home, "airscp-du-" + UUID().uuidString.prefix(8))
-    let windows = Session.windowsPath(dir)
-    try await session.powershell("$d=\(Session.powershellLiteral(windows));New-Item -ItemType Directory -Path \"$d\\sub\\deep\",\"$d\\empty\",\"\\\\?\\$d\\bad.\" | Out-Null;"
+    let folder = Session.windowsPath(dir)
+    try await session.powershell("$d=\(Session.powershellLiteral(folder));New-Item -ItemType Directory -Path \"$d\\sub\\deep\",\"$d\\empty\",\"\\\\?\\$d\\bad.\" | Out-Null;"
         + "Set-Content -LiteralPath \"$d\\big.bin\" -Value ('x'*5000) -NoNewline;Set-Content -LiteralPath \"$d\\sub\\deep\\it's.txt\" -Value 'abc' -NoNewline")
     do {
         let (usage, skipped, _) = try await diskScan(session, dir)
@@ -502,7 +502,7 @@ func diskScan(_ session: Session, _ dir: String, asRoot: Bool = false,
     } catch {
         Issue.record(error)
     }
-    try await session.powershell("$d=\(Session.powershellLiteral(windows));cmd /c rd \"\\\\?\\$d\\bad.\";Remove-Item -LiteralPath $d -Recurse -Force")
+    try await session.powershell("$d=\(Session.powershellLiteral(folder));cmd /c rd \"\\\\?\\$d\\bad.\";Remove-Item -LiteralPath $d -Recurse -Force")
     #expect(try await !session.exists(dir))
 
     let started = Date()
