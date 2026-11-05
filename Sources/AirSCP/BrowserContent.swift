@@ -147,9 +147,38 @@ final class BrowserContentController: NSViewController {
         workspace?.show(error, title: title)
     }
 
+    /// The saved server the left pane's source menu is connecting, shown there once connected.
+    private(set) var connectingSource: UUID?
+
+    /// The saved servers the left pane can show that aren't connected (S3 storage too; Remote Desktop entries aren't
+    /// hosts), in their saved order.
+    var unconnectedHosts: [SSHHost] {
+        guard let model = workspace?.model else { return [] }
+        let connected = Set(connectedSessions.map(\.host.id))
+        return model.data.hosts.filter { !connected.contains($0.id) }
+    }
+
+    /// The left pane's source menu, for a saved server that isn't connected: connects it (its sheets on the main window
+    /// as for any connect; the window keeps showing this host), then shows it there. A failed or cancelled connect
+    /// leaves the pane as it was.
+    func connectSource(_ hostID: UUID, for pane: FilePane) {
+        guard let other = workspace?.main?.workspace(for: hostID) else { return }
+        connectingSource = hostID
+        pane.updateSourceButton()
+        other.connect(then: { [weak self, weak pane, weak other] in
+            guard let self, let pane, let other, self.connectingSource == hostID else { return }
+            self.chooseSource(.remote(other.session), for: pane)
+        }, otherwise: { [weak self, weak pane] in
+            guard let self, self.connectingSource == hostID else { return }
+            self.connectingSource = nil
+            pane?.updateSourceButton()
+        })
+    }
+
     /// The left pane's source menu.
     func chooseSource(_ source: FilePane.Source, for pane: FilePane) {
-        guard !source.isSame(as: pane.source) else { return }
+        connectingSource = nil
+        guard !source.isSame(as: pane.source) else { return pane.updateSourceButton() }
         switch source {
         case .local: pane.setSource(.local, startIn: localStart)
         case .remote(let session): pane.setSource(source, startIn: remoteStart(session))

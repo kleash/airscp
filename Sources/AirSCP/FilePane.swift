@@ -95,7 +95,7 @@ final class FilePane: NSViewController, NSTableViewDataSource, NSTableViewDelega
     private(set) var pathMenuFolder: FileItem?
 
     let table = FileTableView()
-    private let sourceButton = NSPopUpButton(frame: .zero, pullsDown: false)
+    let sourceButton = NSPopUpButton(frame: .zero, pullsDown: false)
     private let titleLabel = NSTextField(labelWithString: "")
     private let history = NSSegmentedControl()
     private let pathControl = NSPathControl()
@@ -664,6 +664,7 @@ final class FilePane: NSViewController, NSTableViewDataSource, NSTableViewDelega
     }
 
     @objc private func sourceChosen(_ sender: NSPopUpButton) {
+        guard !(sender.selectedItem?.representedObject is UUID) else { return }  // connectChosen
         let session = sender.selectedItem?.representedObject as? Session
         browser?.chooseSource(session.map(Source.remote) ?? .local, for: self)
     }
@@ -926,19 +927,21 @@ final class FilePane: NSViewController, NSTableViewDataSource, NSTableViewDelega
         "kind": "What kind of item it is",
     ]
 
-    private func updateSourceButton() {
+    /// Its title: what the pane shows, or the saved server its source menu is connecting.
+    func updateSourceButton() {
         titleLabel.stringValue = session?.host.displayName ?? "This Mac"
         guard choosesSource else { return }
-        let title = session?.host.displayName ?? "This Mac"
+        let connecting = browser?.connectingSource.flatMap { id in browser?.workspace?.model.host(id) }
+        let title = connecting.map { "Connecting to \($0.displayName)…" } ?? session?.host.displayName ?? "This Mac"
         sourceButton.removeAllItems()
         sourceButton.addItem(withTitle: title)
         sourceButton.lastItem?.representedObject = session
-        sourceButton.lastItem?.image = NSImage(systemSymbolName: isRemote ? "server.rack" : "laptopcomputer",
+        sourceButton.lastItem?.image = NSImage(systemSymbolName: isRemote || connecting != nil ? "server.rack" : "laptopcomputer",
                                                accessibilityDescription: nil)
-        sourceButton.toolTip = "Show this Mac's files or another connected server's here"
+        sourceButton.toolTip = "Show this Mac or another server here"
     }
 
-    /// The source menu lists this Mac and the connected servers when it opens.
+    /// The source menu lists this Mac, the connected servers and the other saved ones when it opens.
     private func fillSourceMenu(_ menu: NSMenu) {
         menu.removeAllItems()
         let local = NSMenuItem(title: "This Mac", action: nil, keyEquivalent: "")
@@ -953,7 +956,29 @@ final class FilePane: NSViewController, NSTableViewDataSource, NSTableViewDelega
             menu.addItem(item)
         }
         let current = menu.items.first { ($0.representedObject as? Session) === session } ?? local
+        // Saved servers that aren't connected: choosing one connects it. (A long list scrolls, as menus do.)
+        let saved = browser?.unconnectedHosts ?? []
+        guard !saved.isEmpty else { return sourceButton.select(current) }
+        menu.addItem(.separator())
+        let header = NSMenuItem(title: "Connect To", action: nil, keyEquivalent: "")
+        header.isEnabled = false
+        header.toolTip = "Choose a saved server below to connect it and show its files in this pane"
+        menu.addItem(header)
+        for host in saved {
+            let item = NSMenuItem(title: host.displayName, action: #selector(connectChosen(_:)), keyEquivalent: "")
+            item.target = self
+            item.representedObject = host.id
+            item.image = NSImage(systemSymbolName: host.s3 == nil ? "server.rack" : "externaldrive.connected.to.line.below",
+                                 accessibilityDescription: nil)
+            item.toolTip = "Connect to this server and show its files in this pane: copies then go server to server"
+            menu.addItem(item)
+        }
         sourceButton.select(current)
+    }
+
+    @objc private func connectChosen(_ sender: NSMenuItem) {
+        guard let id = sender.representedObject as? UUID else { return }
+        browser?.connectSource(id, for: self)
     }
 
     func updatePath() {

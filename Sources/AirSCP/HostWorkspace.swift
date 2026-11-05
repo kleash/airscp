@@ -32,6 +32,8 @@ final class HostWorkspace: NSViewController {
     /// The open prompts and the window each is a sheet on.
     private var prompts: [(alert: NSAlert, on: NSWindow)] = []
     private var whenConnected: [() -> Void] = []
+    /// Run instead of `whenConnected` when connecting ends otherwise (failed or cancelled).
+    private var whenFailed: [() -> Void] = []
     /// Connects and takeovers under way, whose state change may not have arrived yet: the workspace must stay. When the
     /// last one ends, the main window may let it go (a failed connect of a host that isn't shown).
     private var starting = 0 {
@@ -114,12 +116,13 @@ final class HostWorkspace: NSViewController {
     // MARK: For the browser, monitor and RDP code, and the main window
 
     /// Connects unless connecting or connected; failures are shown (not cancels). `work` runs once connected
-    /// (dropped if connecting fails).
-    func connect(then work: (() -> Void)? = nil) {
+    /// (dropped if connecting fails), `failed` if connecting fails or is cancelled.
+    func connect(then work: (() -> Void)? = nil, otherwise failed: (() -> Void)? = nil) {
         if let work {
             if connection.state == .connected { return work() }
             whenConnected.append(work)
         }
+        if let failed { whenFailed.append(failed) }
         switch connection.state {
         case .connecting, .connected: return
         case .idle, .disconnected, .reconnecting: break
@@ -361,12 +364,16 @@ final class HostWorkspace: NSViewController {
         case .connected:
             let work = whenConnected
             whenConnected = []
+            whenFailed = []
             work.forEach { $0() }
         case .connecting:
             break
         case .idle, .disconnected, .reconnecting:
+            let failed = whenFailed
             whenConnected = []
+            whenFailed = []
             closePrompts()
+            failed.forEach { $0() }
         }
         main?.workspaceChanged(self)
     }

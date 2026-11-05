@@ -35,6 +35,17 @@ Move around a server's folders like in Finder.
 - Folders show “—” as their size. **View ▸ Calculate Folder Sizes** (the **Σ** button) works them out. **Settings** can
   do it always.
 
+## Two servers side by side
+
+The right pane shows the server you selected. The left pane shows this Mac, or another server.
+
+1. Click the menu above the left pane (it says **This Mac**).
+2. Choose a server. Servers that are not connected are under **Connect To**: choosing one connects it first.
+3. The left pane shows that server. Copy files between the two panes as usual: they go from server to server.
+
+Choose **This Mac** in the same menu to go back. When the server on the left disconnects, the left pane shows this
+Mac again.
+
 ## Favourites
 
 - **Go ▸ Add to Favourites** keeps the server folder you see, for that host.

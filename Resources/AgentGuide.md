@@ -298,7 +298,8 @@ AirSCP was installed with `./install.sh`).
   Folders download with the same sheet (Leave out, Compress).
 - Speed limit for every host's transfers that start from then on: `set id=transfers.speedLimit value="5 MB/s"`
   (Unlimited, 1, 5, 10 or 50 MB/s); `snapshot` → transfers.speedLimit.
-- Between two servers: show the other server in the left pane (its source menu: `set id=left.source value=<host>`),
+- Between two servers: show the other server in the left pane (its source menu: `set id=left.source value=<host>`;
+  a saved host that isn't connected connects first, its sheets on the main window: wait until panes.left shows it),
   then `drop from=left to=right`.
 - `wait until=transfers_done` (optionally host), then `snapshot include=["transfers"]`: each job's id, host, name,
   direction, size, percent, speed (or "stalled"), eta, status, problem, note. Cancel or retry: `select pane=transfers
@@ -329,9 +330,10 @@ AirSCP was installed with `./install.sh`).
 - Quitting while transfers run asks first ("Quit and cancel the transfers?"): the Quit reply carries that question.
 
 ## files
-- The Files tab (`press title=Files`) has two panes: left = this Mac (or another connected server), right = the host.
-  `snapshot` → panes.left/right: dir, rows, selected, status ("12 items, 2 selected — 30 GB available"). A row's owner
-  and group are names, as Get Info shows them; ownerID and groupID are their numbers where the server tells them.
+- The Files tab (`press title=Files`) has two panes: left = this Mac (or another server: its source menu
+  `left.source`), right = the host. `snapshot` → panes.left/right: dir, rows, selected, status ("12 items, 2 selected
+  — 30 GB available"). A row's owner and group are names, as Get Info shows them; ownerID and groupID are their
+  numbers where the server tells them.
 - Through folders without a click: connect (`select pane=sidebar names=["web"]` → `menu path="Host > Connect"` → `wait
   until=connected`) → `go path=/var/www` (the reply lists the folder; `open name=site` opens a row, `open name=..` goes
   up) → `select pane=right names=["index.html"]` → its command: `menu path="File > Download To…" file=/Users/me/Downloads`,
