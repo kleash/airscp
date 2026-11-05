@@ -398,7 +398,9 @@ func diskScan(_ session: Session, _ dir: String, asRoot: Bool = false,
         #expect(held.map(\.path) == [real + "/held.bin"] && held.first?.size == 9_000)
 
         let sudo = await session.diskUsageSudo()
-        #expect(!sudo.available || sudo.needsPassword, "sudo -n doesn't work for the tests' account")
+        // The throwaway sshd runs as this account: CI's runners have sudo without a password, a Mac usually not.
+        let passwordless = await Runner.run(["/usr/bin/sudo", "-n", "true"]).status == 0
+        #expect(sudo.available && sudo.needsPassword == !passwordless)
     }
 }
 
