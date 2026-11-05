@@ -2,20 +2,20 @@
   "spdxVersion": "SPDX-2.3",
   "dataLicense": "CC0-1.0",
   "SPDXID": "SPDXRef-DOCUMENT",
-  "name": "AirSCP 2.0.3",
-  "documentNamespace": "https://github.com/kleash/airscp/releases/download/v2.0.3/sbom.spdx.json",
+  "name": "AirSCP 2.0.4",
+  "documentNamespace": "https://github.com/kleash/airscp/releases/download/v2.0.4/sbom.spdx.json",
   "comment": "The third-party code built into AirSCP: in the Mac app FreeRDP and OpenSSL, pinned and checksummed in scripts/build-freerdp.sh; in the iPhone and iPad app libssh2 and the same OpenSSL, pinned in scripts/build-libssh2.sh; all linked statically. AirSCP has no package-manager dependencies. At run time the Mac app also uses the OpenSSH that is part of macOS (/usr/bin/ssh, scp, sftp), which Apple updates with macOS; it isn't shipped with AirSCP. Written by scripts/sbom.sh.",
   "creationInfo": {
-    "created": "2026-11-04T14:32:53Z",
+    "created": "2026-11-05T04:46:22Z",
     "creators": ["Tool: scripts/sbom.sh"]
   },
   "packages": [
     {
       "SPDXID": "SPDXRef-AirSCP",
       "name": "AirSCP",
-      "versionInfo": "2.0.3",
+      "versionInfo": "2.0.4",
       "supplier": "Person: kleash",
-      "downloadLocation": "https://github.com/kleash/airscp/releases/download/v2.0.3/AirSCP-2.0.3.zip",
+      "downloadLocation": "https://github.com/kleash/airscp/releases/download/v2.0.4/AirSCP-2.0.4.zip",
       "homepage": "https://kleash.github.io/airscp/",
       "filesAnalyzed": false,
       "licenseConcluded": "Apache-2.0",
@@ -23,7 +23,7 @@
       "copyrightText": "Copyright 2026 kleash",
       "primaryPackagePurpose": "APPLICATION",
       "externalRefs": [
-        {"referenceCategory": "PACKAGE-MANAGER", "referenceType": "purl", "referenceLocator": "pkg:git/github.com/kleash/airscp@v2.0.3"}
+        {"referenceCategory": "PACKAGE-MANAGER", "referenceType": "purl", "referenceLocator": "pkg:git/github.com/kleash/airscp@v2.0.4"}
       ]
     },
     {

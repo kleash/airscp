@@ -60,8 +60,9 @@ the one below. **Done** (or <kbd>Esc</kbd>) closes the find bar.
 
 ## Keep the Files tab in the same folder
 
-Tick **Follow in Files** at the top of the tab. Each time you `cd` to another folder, the Files tab's server pane goes
-there too. It goes only where the shell itself says it is: a folder that a program prints can't move it. And each time
+Tick **Follow in Files** at the top of the tab. The shell goes to the folder the Files tab's server pane shows (AirSCP
+types `cd` at its empty prompt); the server pane stays where it is. After that, each time you `cd` to another folder,
+the server pane goes there too. It goes only where the shell itself says it is: a folder that a program prints can't move it. And each time
 you open a folder in the server pane, AirSCP types `cd` with that folder at the shell's empty prompt, so the shell goes
 there too. While a command runs, AirSCP types nothing.
 
@@ -145,7 +146,7 @@ own shell, as in any terminal. **Insert Path…** and **History…** are AirSCP'
 
 ## Tips
 
-- Select text by dragging; <kbd>⌘C</kbd> copies it and <kbd>⌘V</kbd> pastes. A double-click selects a word.
+- Select text by dragging (only the text you drag over is highlighted); <kbd>⌘C</kbd> copies it and <kbd>⌘V</kbd> pastes. A double-click selects a word.
 - Scroll up to see earlier output. **Clear Scrollback** (right-click) forgets it.
 - <kbd>⌃C</kbd>, <kbd>⌃D</kbd> and the other Ctrl keys go to the shell. <kbd>⌘</kbd> shortcuts stay AirSCP's.
 - When the shell ends (you typed `exit`, or the connection dropped), press <kbd>Return</kbd> in its tab for a new one.

@@ -204,7 +204,7 @@ private func filesTab(_ session: Session) -> BrowserContentController {
                 "Add to Favourites", "Favourites"])
     // View ▸ Columns: the header's menu (not the name column, which always shows).
     let columns = try #require(view.item(withTitle: "Columns")?.submenu)
-    #expect(columns.items.map(\.title) == ["Size", "Date Modified", "Permissions", "Owner", "Group", "Kind"])
+    #expect(columns.items.map(\.title) == ["Size", "Date Modified", "Kind", "Permissions", "Owner", "Group"])
     // Every command is a pane's, and no shortcut is used twice.
     let added = (file.items + view.items + go.items + columns.items)
         .filter { !$0.isSeparatorItem && $0.submenu == nil && $0.title != "New Host…" && $0.title != "Close" }
@@ -380,6 +380,16 @@ private func filesTab(_ session: Session) -> BrowserContentController {
         let forArchive = titles(pane.contextMenu(for: [archive]))
         #expect(forArchive.contains("Extract Here") && forArchive.contains("Get Info") && forArchive.contains("Delete…"))
         #expect(!forArchive.contains("Move to Trash"))
+        // Paste on a row too (a full folder may have no empty space to right-click); Compare for two files.
+        #expect(forArchive.contains("Paste") && !forArchive.contains("Compare"))
+        let pair = [archive, FileItem(RemoteEntry(name: "b.txt", path: server.path("b.txt"), kind: .file, size: 1, modified: nil))]
+        #expect(titles(pane.contextMenu(for: pair)).contains("Compare"))
+        #expect(pane.check(#selector(FilePane.compareFiles(_:)), for: pair).0)
+        #expect(!pane.check(#selector(FilePane.compareFiles(_:)), for: [archive]).0)
+        // The path bar's folders have their own menu: the commands for a folder as a whole.
+        let home = FileItem(RemoteEntry(name: "home", path: server.home, kind: .directory, size: 0, modified: nil))
+        #expect(titles(pane.pathMenu(for: home)) == ["Open", "Get Info", "Download To…", "Download as .tar.gz…",
+                                                     "Open Terminal Here", "Rename…", "Copy Path", "Copy Name"])
         let forFolder = titles(pane.contextMenu(for: []))
         #expect(Array(forFolder.prefix(3)) == ["New Folder…", "New File…", "Upload…"])
         let local = FilePane(source: .local, choosesSource: true, showHidden: false)
@@ -400,6 +410,21 @@ private func filesTab(_ session: Session) -> BrowserContentController {
     await pane.rename(try #require(pane.rows.last), to: "b.txt", in: folder)
     #expect(read(folder + "/b.txt") == "a" && !rawExists(folder + "/a.txt"))
     #expect(pane.rows.map(\.name) == ["Photos", "b.txt"])
+    // A folder the shown one is in (the path bar's Rename): the pane shows the same folder under its new name.
+    try rawMkdir(folder + "/Photos/2026")
+    #expect(await pane.open(folder + "/Photos/2026"))
+    let photos = FileItem(local: "Photos", path: folder + "/Photos", kind: .directory, size: 0, modified: nil, mode: 0o755,
+                          owner: "", group: "")
+    await pane.rename(photos, to: "Pictures", in: folder)
+    #expect(pane.dir == folder + "/Pictures/2026" && rawExists(folder + "/Pictures/2026"))
+}
+
+/// Compare: the lines of both files in order, those only in one of them marked.
+@Test func compareMarksTheLinesOnlyOneFileHas() {
+    let lines = BrowserContentController.lineDifference("one\ntwo\nthree\nfour", "one\nTWO\nthree\nfour\nfive")
+    #expect(lines.map { "\($0.mark)\($0.line)" } == [" one", "-two", "+TWO", " three", " four", "+five"])
+    #expect(BrowserContentController.lineDifference("same\n", "same\n").allSatisfy { $0.mark == " " })
+    #expect(BrowserContentController.lineDifference("", "new").map(\.mark) == ["-", "+"])
 }
 
 @MainActor @Test func draggingServerItemsToFinderDownloadsThem() async throws {
@@ -882,7 +907,7 @@ private func answerSheet(on window: NSWindow, button index: Int = 0, title: Stri
         try write("small\n", to: server.path("small.txt"))
         let browser = filesTab(session)
         let opened = Recorder<URL>()
-        browser.openFile = { opened.append($0) }
+        browser.openFile = { file, _ in opened.append(file) }
         #expect(await eventually { browser.right.rows.count == 2 })
         browser.openWithDefaultApp(browser.right.rows, on: session, from: browser.right)
         #expect(await eventually { opened.all.count == 2 })
@@ -890,6 +915,12 @@ private func answerSheet(on window: NSWindow, button index: Int = 0, title: Stri
         #expect(try Data(contentsOf: big) == Data(contentsOf: URL(fileURLWithPath: server.path("big.bin"))))
         #expect(read(try #require(opened.all.first { $0.lastPathComponent == "small.txt" }).path) == "small\n")
         #expect(session.transfers.jobs.map(\.source) == [server.path("big.bin")])
+        // Open With: the file opens in the app chosen.
+        let apps = Recorder<URL?>()
+        browser.openFile = { _, app in apps.append(app) }
+        let textEdit = URL(fileURLWithPath: "/System/Applications/TextEdit.app")
+        browser.openWithDefaultApp(browser.right.rows.filter { $0.name == "small.txt" }, on: session, from: browser.right, in: textEdit)
+        #expect(await eventually { apps.all == [textEdit] })
     }
 }
 

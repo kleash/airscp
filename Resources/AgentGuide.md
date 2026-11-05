@@ -204,8 +204,8 @@ AirSCP was installed with `./install.sh`).
   empty prompt, so a command typed now runs in it) and `commands`, the last 20: each one's `command` line, `status`
   (exit status), `seconds`, `output` (its last 50 lines) and `running`. Read a command's result there, not from
   `lines`: type it, then snapshot until its entry has a status. Other shells (BusyBox sh, fish) have neither. The tab's
-  bar: `set id=terminal.follow value=true` (Follow in Files: the server pane follows the shell's folder, and the shell
-  the pane's, `cd` typed at its empty prompt), `set id=terminal.snippets value=<snippet name>` (typed at the prompt,
+  bar: `set id=terminal.follow value=true` (Follow in Files: ticked, the shell goes to the server pane's folder and the pane
+  stays; then the server pane follows the shell's folder, and the shell the pane's, `cd` typed at its empty prompt), `set id=terminal.snippets value=<snippet name>` (typed at the prompt,
   not run; as any text for the terminal, it waits for the person at the Mac), `press id=terminal.find` then `set id=terminal.findText value=<text>` (find;
   `terminal.findCount` reads "2 of 5" in `snapshot include=["elements"]`), `press id=terminal.findDone`. Settings'
   `settings.openTerminalHereInTab` sends Open Terminal Here and Run in Terminal to this tab: the `cd` or the command typed

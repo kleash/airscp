@@ -52,7 +52,7 @@
 - [New folder, rename, duplicate, delete, Get Info](https://kleash.github.io/airscp/files/manage-files.html): Everyday file commands work on servers like in Finder. Right-click a file, or use the **File** menu.
 - [Change permissions](https://kleash.github.io/airscp/files/permissions.html): Permissions say who may read, change and run a file on a server (`chmod`).
 - [Compress and extract on the server](https://kleash.github.io/airscp/files/compress-and-extract.html): Make a `.zip` or `.tar.gz` archive on the server, or unpack one there. Nothing goes through your Mac.
-- [Select by pattern, compare folders, move, link](https://kleash.github.io/airscp/files/select-and-compare.html): Commands for many files at once, and for arranging files on a server.
+- [Select by pattern, compare files and folders, move, link](https://kleash.github.io/airscp/files/select-and-compare.html): Commands for many files at once, and for arranging files on a server.
 
 ## Transfers & queue
 - [Transfers & queue](https://kleash.github.io/airscp/transfers/): Every upload and download goes into the **Transfers** list at the bottom of the window. Transfers run in the background, so you keep browsing. Each host runs one transfer at a time; different hosts run at the same time.
