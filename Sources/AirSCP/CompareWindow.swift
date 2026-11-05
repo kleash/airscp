@@ -29,6 +29,8 @@ final class CompareWindow: NSWindowController, NSWindowDelegate {
     private var original: [Side]?
     /// What each file holds, as far as this window knows (read, or saved since).
     private var saved: [UUID: String] = [:]
+    /// Each side's text as Prettify made it: Prettify alone is a way of looking, not a change to save.
+    private var prettified: [UUID: String] = [:]
     private var options = TextDiff.Options()
     private var diff: TextDiff?
     /// The difference gone to (an index of `diff.blocks`).
@@ -363,10 +365,15 @@ final class CompareWindow: NSWindowController, NSWindowDelegate {
             let side = sides[index]
             headers[index].stringValue = side.title
             headers[index].toolTip = side.path
-            set(saveButtons[index], side.text != saved[side.id], "Write this side's text over “\(side.name)”",
+            set(saveButtons[index], isUnsaved(side), "Write this side's text over “\(side.name)”",
                 "Nothing to save: “\(side.name)” has the text shown")
         }
-        window?.isDocumentEdited = sides.contains { $0.text != saved[$0.id] }
+        window?.isDocumentEdited = sides.contains(where: isUnsaved)
+    }
+
+    /// Copied into (or saved elsewhere since): not only prettified.
+    private func isUnsaved(_ side: Side) -> Bool {
+        side.text != saved[side.id] && (original == nil || side.text != prettified[side.id])
     }
 
     // MARK: Going to differences
@@ -450,6 +457,7 @@ final class CompareWindow: NSWindowController, NSWindowDelegate {
         var new = sides
         new[0].text = texts[0]
         new[1].text = texts[1]
+        prettified = [new[0].id: texts[0], new[1].id: texts[1]]
         change("Prettify", sides: new, original: sides)
     }
 
@@ -527,7 +535,7 @@ final class CompareWindow: NSWindowController, NSWindowDelegate {
     }
 
     func windowShouldClose(_ sender: NSWindow) -> Bool {
-        let unsaved = sides.indices.filter { sides[$0].text != saved[sides[$0].id] }
+        let unsaved = sides.indices.filter { isUnsaved(sides[$0]) }
         guard !unsaved.isEmpty else { return true }
         let alert = NSAlert()
         alert.messageText = "Save the changes to " + unsaved.map { "“\(sides[$0].name)”" }.joined(separator: " and ") + " before closing?"

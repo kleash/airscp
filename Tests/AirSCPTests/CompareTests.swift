@@ -136,6 +136,8 @@ extension Array {
         try write("one\ntwo\nthree\n", to: local + "/mine.txt")
         try write("one\nTWO\nthree\nfour\n", to: server.path("theirs.txt"))
         try write("one\n", to: server.path("other.txt"))
+        try write("{\"b\":1,\"a\":2}", to: server.path("a.json"))
+        try write("{\"a\":2,\"b\":3}", to: server.path("b.json"))
         let session = try await server.connectedSession(host)
         let browser = BrowserContentController(workspace: nil, session: session)
         _ = browser.view
@@ -189,5 +191,16 @@ extension Array {
         // Undo puts the left's text back as it was.
         shown.undoManager?.undo()
         #expect(await eventually { shown.subtitle.hasPrefix("2 differences") }, "\(shown.subtitle)")
+
+        // Prettify alone is a way of looking: nothing to save, closing doesn't ask.
+        select(["a.json", "b.json"], in: browser.right)
+        browser.left.table.deselectAll(nil)
+        browser.right.compareFiles(nil)
+        let json = try #require(await eventually { window("a.json ↔ b.json") != nil } ? window("a.json ↔ b.json") : nil)
+        let jsonWindow = try #require(json.window)
+        #expect(await eventually { jsonWindow.subtitle.hasPrefix("1 difference") }, "\(jsonWindow.subtitle)")
+        json.togglePrettify(nil)
+        #expect(await eventually { jsonWindow.subtitle.hasSuffix("(prettified)") }, "\(jsonWindow.subtitle)")
+        #expect(!jsonWindow.isDocumentEdited && json.windowShouldClose(jsonWindow))
     }
 }
