@@ -471,7 +471,7 @@ func diskScan(_ session: Session, _ dir: String, asRoot: Bool = false,
 /// can't be read by Windows programs: it is passed over. (A folder an ACL denies can't serve: sshd gives the
 /// administrator account its backup privilege, which reads through denials.) Then C:\Windows\System32, timed.
 @Test(.enabled(if: windows() != nil)) func diskUsageOnWindows() async throws {
-    let (address, password) = try #require(windows())
+    let (address, password) = try #require(windows(), "AIRSCP_WINDOWS=1 needs the VM's address and credentials")
     let lab = LabRun()
     let session = try lab.session(Lab.host("porter", hostname: address, port: 22, password: true)) { prompt in
         if case .password = prompt.kind { return PromptAnswer(password) }
