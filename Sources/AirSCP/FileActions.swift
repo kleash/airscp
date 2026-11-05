@@ -965,7 +965,9 @@ extension FilePane {
                         shellReason ?? (isThisHost ? "Select one server file to run." : "Run works on the host whose workspace this is."))
         case #selector(openTerminalHere(_:)):
             guard isRemote else { return (false, serverOnly) }
-            return need(listed && hasShell && isThisHost, shellReason ?? "Opens on this workspace's host only.")
+            // A Windows server's cmd.exe or PowerShell starts in the folder too (`HostWorkspace.shellCommand`).
+            let shell = hasShell || isWindows && session?.capabilities.loginShell.isEmpty == false
+            return need(listed && shell && isThisHost, shell ? "Opens on this workspace's host only." : shellReason ?? "")
         case #selector(calculateFolderSizes(_:)):
             guard isRemote else { return (false, serverOnly) }
             return need(listed && hasShell && items.contains(where: \.isFolder), shellReason ?? "There are no folders here to measure.")

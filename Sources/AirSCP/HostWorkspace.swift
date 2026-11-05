@@ -158,11 +158,22 @@ final class HostWorkspace: NSViewController {
             terminal.openShell(in: directory)
             return showTerminal()
         }
-        openTerminal(command: directory.map(OpenSSH.shellIn))
+        openTerminal(command: directory.flatMap(shellCommand))
         #endif
     }
 
-    /// Opens Terminal running `command` with a tty (Run in Terminal), or a login shell when nil; with Settings' Terminal
+    /// The folder the Files tab's server pane shows: where a new shell starts (Open Terminal, the Terminal tab's first).
+    var filesFolder: String? { browser?.right?.dir }
+
+    /// The remote command that starts the login shell in `directory`: through sh on a POSIX server, cmd.exe's or
+    /// PowerShell's own on Windows; nil when the Windows login shell is neither (it starts in the login folder).
+    func shellCommand(in directory: String) -> String? {
+        let capabilities = session.capabilities
+        return capabilities.shell ? OpenSSH.shellIn(directory)
+            : OpenSSH.windowsShell(in: directory, loginShell: capabilities.loginShell)
+    }
+
+    /// Opens Terminal running `command` with a tty (Run in Terminal), or a login shell (in `filesFolder`) when nil; with Settings' Terminal
     /// tab option, the command runs in the Terminal tab instead, as everything does in the App Store version, whose
     /// sandbox can't open another app's window with a command. `sh`: a command for sh (AirSCP's own, with a server's
     /// names in it), which the login shell hands to sh unread (`OpenSSH.viaSh`).
@@ -175,7 +186,7 @@ final class HostWorkspace: NSViewController {
             terminal.run(command, sh: sh)
             return showTerminal()
         }
-        let host = self.host, command = sh ? command.map(OpenSSH.viaSh) : command
+        let host = self.host, command = sh ? command.map(OpenSSH.viaSh) : command ?? filesFolder.flatMap(shellCommand)
         Task { [self] in
             do {
                 try await TerminalLauncher.open(host, jump: model.jump(for: host), command: command,

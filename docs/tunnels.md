@@ -51,6 +51,7 @@ With the first example on, open `http://localhost:8080` in your browser.
 - All tunnels go off when the connection ends. When AirSCP reconnects by itself, it switches on again the ones that
   were on; after you reconnect, switch them on yourself.
 - A tunnel can be edited only while it is off.
+- Tunnels work with Windows' own OpenSSH server too: all three types.
 
 ## If something goes wrong
 

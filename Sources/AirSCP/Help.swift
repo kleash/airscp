@@ -111,7 +111,7 @@ enum MenuHelp {
         (#selector(FilePane.removeFavourite(_:)), "Forget this favourite folder"),
         // Host
         (#selector(MainWindowController.connectHost(_:)), "Connect to the selected host or desktop and show its files or screen"),
-        (#selector(MainWindowController.openTerminal(_:)), "Open an ssh session to this host in Terminal (or iTerm, see Settings)"),
+        (#selector(MainWindowController.openTerminal(_:)), "Open an ssh session to this host in Terminal (or iTerm, see Settings), in the folder its Files tab shows"),
         (#selector(MainWindowController.disconnectHost(_:)), "Close the connection; asks first while transfers run"),
         (#selector(MainWindowController.runCommand(_:)), "Run one command on the host and read its output here (sudo and editors: Terminal)"),
         (#selector(MainWindowController.showTunnels(_:)), "Show the host's port forwards (its Tunnels tab)"),

@@ -454,8 +454,15 @@ private func marked(_ text: String, columns: Int = 30, rows: Int = 8) -> Termina
         _ = await call(agent, "type", ["text": "exit\n", "target": "terminal"])
         #expect(await eventually(timeout: 20) { terminal.session?.running == false })
         #expect(terminal.session?.screen.text.contains("Press Return for a new one") == true)
+        // The new shell starts in the folder the Files tab's server pane shows.
+        #expect(await workspace.browser.right.open(data + "/site"))
         #expect(await call(agent, "key", ["combo": "return", "target": "terminal"]).error == nil)
         #expect(await eventually(timeout: 20) { terminal.session?.running == true && terminal.session?.screen.shellPID != nil })
+        #expect(await eventually(timeout: 20) {
+            folder = await terminal.currentDirectory()
+            return folder.map { URL(fileURLWithPath: $0).resolvingSymlinksInPath().path }
+                == URL(fileURLWithPath: data + "/site").resolvingSymlinksInPath().path
+        }, "\(folder ?? "nil")")
         terminal.session?.close()
     }
 }
