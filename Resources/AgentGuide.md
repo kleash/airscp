@@ -195,7 +195,8 @@ AirSCP was installed with `./install.sh`).
   `menu path="File > Import Hosts…" file=/tmp/hosts.json` (the reply's sheet says how many were imported).
   WinSCP's sites: `menu path="File > Import from WinSCP…" file=/path/WinSCP.ini` (its .ppk keys beside it; the
   reply's sheet says how many hosts were made and what was left out).
-- Terminal tab (a shell inside AirSCP, riding the connection): `menu path="Host > Terminal Tab"`, then
+- Terminal tab (a shell inside AirSCP, riding the connection; it starts in the server pane's folder, as Host ▸ Open
+  Terminal does; on Windows it is the server's cmd.exe or PowerShell): `menu path="Host > Terminal Tab"`, then
   `type target=terminal text="ls -la\n"` (a line break is Return) and `key target=terminal combo=ctrl+c`; `snapshot` →
   terminal: running, lines (the last `rows`, scrollback included), cursor, fullScreen, directory/title when the shell
   says them. `wait until=text text=…` waits for output while the tab is shown. After `exit`, `key
@@ -213,7 +214,7 @@ AirSCP was installed with `./install.sh`).
   Tabs: each tab is its own shell on the same connection. `snapshot` → terminal: `tabs` lists them (`index` from 1,
   `title`, `directory`, `running`, `atPrompt` with bash and zsh, `shown`), `tab` is the index of the one shown, and the
   rest of the section (lines, commands) is that tab's; `type` and `key` with target terminal go to it. `press
-  id=terminal.newTab` (or `menu path="Host > New Terminal Tab"`) opens one in the shown tab's folder; `set
+  id=terminal.newTab` (or `menu path="Host > New Terminal Tab"`) opens one in the shown tab's folder (else the server pane's); `set
   id=terminal.tabs value=2` shows tab 2 (by its index, or its title on the strip);
   `menu path="Host > Show Next Terminal Tab"` and `menu path="Host > Show Previous Terminal Tab"` go through them; `press
   id=terminal.closeTab` closes the tab shown (a sheet "Close this terminal tab?" first while a command runs; the last tab
@@ -415,8 +416,9 @@ AirSCP was installed with `./install.sh`).
 - `press title=Monitor` (the host's tab) → `wait until=monitor` (or `wait until=monitor text=<a process name>`) →
   `snapshot include=["monitor"]`: connected, cpu, load, memory, swap, uptime, system, disks, and the processes as the
   table lists them (pid, user, cpu, memory as % of RAM, name, command, state; its search, sort and selection);
-  `failure` says why there are no figures (an sftp-only account, a server that is neither Linux nor macOS), `processNote` why there
-  are no processes (no ps). It refreshes every 3 s while it is shown, also behind other windows while you are at work;
+  `failure` says why there are no figures (an sftp-only account, a BSD server), `processNote` why there are no processes
+  (no ps). Windows servers (read with PowerShell, about 1 s a refresh): `load` empty, `state` empty, `user` only for an
+  administrator account; Kill and Force Kill both stop the process at once (Kill only the account's own), never sudo. It refreshes every 3 s while it is shown, also behind other windows while you are at work;
   disconnected, it shows nothing.
 - Sort: `sort pane=processes column=pid` (user, cpu, mem: % of RAM, memory: RSS, time, state, command;
   `ascending=false`).

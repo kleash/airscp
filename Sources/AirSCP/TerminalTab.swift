@@ -208,7 +208,7 @@ final class TerminalController: NSViewController, NSMenuDelegate, NSSearchFieldD
             showNote()
             return
         }
-        start(in: nil)
+        start(in: workspace.filesFolder)
     }
 
     /// A new shell in `directory` (else the login folder), or `command` with a terminal (Run in Terminal), in a new tab
@@ -222,9 +222,10 @@ final class TerminalController: NSViewController, NSMenuDelegate, NSSearchFieldD
         screen.markToken = token
         screen.onCommand = { [weak self] in self?.history.add($0) }
         let host = workspace.session.host
-        // Without a POSIX shell (Windows: cmd.exe or PowerShell) the sh lines can't run: an empty command, for which ssh
-        // starts the server's own login shell (with a terminal, as -t asks).
-        let shell = workspace.session.capabilities.shell ? OpenSSH.terminalShell(in: directory, token: token) : ""
+        // Without a POSIX shell (Windows: cmd.exe or PowerShell) the sh lines can't run: that shell's own start in the
+        // folder, else an empty command, for which ssh starts the server's login shell (with a terminal, as -t asks).
+        let shell = workspace.session.capabilities.shell ? OpenSSH.terminalShell(in: directory, token: token)
+            : directory.flatMap(workspace.shellCommand) ?? ""
         let argv = OpenSSH.terminal(host, jump: workspace.model.jump(for: host), socket: workspace.session.socketPath,
                                     command: command ?? shell)
         do {
@@ -255,7 +256,7 @@ final class TerminalController: NSViewController, NSMenuDelegate, NSSearchFieldD
     /// Return after the shell ended: a new one in its tab, if the host is connected.
     func restartIfEnded() -> Bool {
         guard session?.running != true else { return false }
-        if workspace?.session.state == .connected { start(in: nil) }
+        if let workspace, workspace.session.state == .connected { start(in: workspace.filesFolder) }
         return true
     }
 
@@ -316,12 +317,12 @@ final class TerminalController: NSViewController, NSMenuDelegate, NSSearchFieldD
         view.window?.makeFirstResponder(terminal)
     }
 
-    /// New Terminal Tab (⇧⌘T, +): another shell on the host, in the folder the shown one said it is in (else the login
-    /// folder).
+    /// New Terminal Tab (⇧⌘T, +): another shell on the host, in the folder the shown one said it is in (else the Files
+    /// tab's server folder, else the login folder).
     @objc func newTab(_ sender: Any?) {
         wanted = true
         guard workspace?.session.state == .connected else { return }
-        start(in: session?.screen.directory, newTab: true)
+        start(in: session?.screen.directory ?? workspace?.filesFolder, newTab: true)
         view.window?.makeFirstResponder(terminal)
     }
 
