@@ -17,6 +17,10 @@ import Testing
     let block = TextDiff(left: "a\n1\n2\nb", right: "a\nX\nb")
     #expect(block.rows.map(\.kind) == [.same, .changed, .leftOnly, .same])
     #expect(block.rows[2].right == nil && block.blocks.count == 1)
+    // An added line beside a changed one: the changed lines are paired, the added one stands alone.
+    let shifted = TextDiff(left: "a\nlevel = info\nb", right: "a\ntimeout = 30\nlevel = debug\nb")
+    #expect(shifted.rows.map(\.kind) == [.same, .rightOnly, .changed, .same])
+    #expect(shifted.rows[2].left == 1 && shifted.rows[2].right == 2 && shifted.rows[1].left == nil)
     #expect(TextDiff(left: "same\n", right: "same\n").blocks.isEmpty)
     #expect(TextDiff(left: "", right: "new").rows.map(\.kind) == [.changed])
     // Windows line ends against Unix ones: no difference.

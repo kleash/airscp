@@ -61,8 +61,8 @@ final class CompareWindow: NSWindowController, NSWindowDelegate {
         window.title = sides[0].name + " ↔ " + sides[1].name
         super.init(window: window)
         window.delegate = self
-        load(texts)
         window.open(size: NSSize(width: 1000, height: 640))
+        load(texts)  // after: the checksums' layout makes the window smaller
     }
 
     required init?(coder: NSCoder) { fatalError("not used") }
@@ -194,6 +194,7 @@ final class CompareWindow: NSWindowController, NSWindowDelegate {
             scroll.hasVerticalScroller = true
             scroll.hasHorizontalScroller = true
             scroll.borderType = .noBorder
+            scroll.findBarPosition = .belowContent  // above, it would push this side's rows out of line with the other's
             scroll.verticalRulerView = LineNumbers(scrollView: scroll, orientation: .verticalRuler)
             scroll.hasVerticalRuler = true
             scroll.rulersVisible = true
@@ -288,6 +289,7 @@ final class CompareWindow: NSWindowController, NSWindowDelegate {
             view.textStorage?.setAttributedString(storage)
             (scrolls[index].verticalRulerView as? LineNumbers)?.numbers = numbers
         }
+        for scroll in scrolls { (scroll.verticalRulerView as? LineNumbers)?.fit(max(diff.leftLines.count, diff.rightLines.count)) }
         let first = self.diff == nil
         self.diff = diff
         map.rows = diff.rows.count
@@ -301,7 +303,9 @@ final class CompareWindow: NSWindowController, NSWindowDelegate {
         } else if let current {
             self.current = min(current, diff.blocks.count - 1)
         }
-        if first, !diff.blocks.isEmpty {
+        if let current {
+            go(to: current)
+        } else if first, !diff.blocks.isEmpty {
             go(to: 0)
         } else {
             markCurrent()
@@ -372,11 +376,9 @@ final class CompareWindow: NSWindowController, NSWindowDelegate {
         current = block
         let y = CGFloat(diff.blocks[block].rows.lowerBound) * views[0].rowHeight
         syncing = true
-        for scroll in scrolls {
-            let clip = scroll.contentView
-            let target = NSPoint(x: clip.bounds.minX, y: max(0, y - clip.bounds.height / 3))
-            clip.scroll(to: clip.constrainBoundsRect(NSRect(origin: target, size: clip.bounds.size)).origin)
-            scroll.reflectScrolledClipView(clip)
+        for view in views {
+            let height = view.visibleRect.height
+            view.scrollToVisible(NSRect(x: 0, y: max(0, y - height / 3), width: 1, height: height))
         }
         syncing = false
         markCurrent()
@@ -605,6 +607,7 @@ final class CompareWindow: NSWindowController, NSWindowDelegate {
                                      stack.leadingAnchor.constraint(equalTo: content.leadingAnchor),
                                      stack.trailingAnchor.constraint(lessThanOrEqualTo: content.trailingAnchor)])
         window?.contentView = content
+        window?.setContentSize(NSSize(width: max(720, stack.fittingSize.width), height: max(320, stack.fittingSize.height)))
         window?.subtitle = "Working out checksums…"
         let sides = sides
         hashing = Task { [weak self] in
@@ -652,7 +655,7 @@ final class CompareTextView: NSTextView {
         container.widthTracksTextView = false
         storage.addLayoutManager(layout)
         layout.addTextContainer(container)
-        layout.allowsNonContiguousLayout = true
+        layout.allowsNonContiguousLayout = false  // estimated places of lines not laid out yet put rows out of line
         self.init(frame: NSRect(x: 0, y: 0, width: 400, height: 400), textContainer: container)
         isEditable = false
         isSelectable = true
@@ -688,7 +691,9 @@ final class CompareTextView: NSTextView {
         }
         if let current {
             NSColor.controlAccentColor.setFill()
-            NSRect(x: visibleRect.minX, y: CGFloat(current.lowerBound) * rowHeight, width: 3,
+            // Right of the line numbers, which lie over the text's left edge.
+            let left = visibleRect.minX + (enclosingScrollView?.contentView.contentInsets.left ?? 0)
+            NSRect(x: left, y: CGFloat(current.lowerBound) * rowHeight, width: 3,
                    height: CGFloat(max(1, current.count)) * rowHeight).fill()
         }
     }
@@ -697,11 +702,12 @@ final class CompareTextView: NSTextView {
 /// The line numbers beside a side's text (none beside a filler row).
 final class LineNumbers: NSRulerView {
     var numbers: [Int?] = [] {
-        didSet {
-            let digits = String((numbers.last { $0 != nil } ?? 1) ?? 1).count
-            ruleThickness = CGFloat(max(digits, 2)) * 7.5 + 14
-            needsDisplay = true
-        }
+        didSet { needsDisplay = true }
+    }
+
+    /// Wide enough for `lines` (both sides get the same width, so that they scroll sideways alike).
+    func fit(_ lines: Int) {
+        ruleThickness = CGFloat(max(String(lines).count, 2)) * 7.5 + 14
     }
     private let font = NSFont.monospacedDigitSystemFont(ofSize: NSFont.smallSystemFontSize, weight: .regular)
 
@@ -791,6 +797,6 @@ enum Prettify {
     /// Indented by XMLDocument (macOS only); external entities are never loaded.
     static func xml(_ text: String) -> String? {
         guard let document = try? XMLDocument(xmlString: text, options: [.nodeLoadExternalEntitiesNever]) else { return nil }
-        return document.xmlString(options: [.nodePrettyPrint]) + "\n"
+        return document.xmlString(options: [.nodePrettyPrint, .nodeCompactEmptyElement]) + "\n"
     }
 }

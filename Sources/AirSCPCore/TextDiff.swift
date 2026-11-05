@@ -56,8 +56,12 @@ public struct TextDiff: Sendable {
             // Only blank lines (and Ignore blank lines on): no difference.
             let ignored = options.blankLines && (left.map { leftLines[$0] } + right.map { rightLines[$0] }).allSatisfy(Self.isBlank)
             let start = rows.count
+            // The shorter side's lines go opposite the run of the longer side's that they are most like.
+            let shift = Self.bestShift(left.map { leftLines[$0] }, right.map { rightLines[$0] })
             for k in 0..<max(left.count, right.count) {
-                let l = k < left.count ? left.lowerBound + k : nil, r = k < right.count ? right.lowerBound + k : nil
+                let lk = left.count < right.count ? k - shift : k, rk = right.count < left.count ? k - shift : k
+                let l = (0..<left.count).contains(lk) ? left.lowerBound + lk : nil
+                let r = (0..<right.count).contains(rk) ? right.lowerBound + rk : nil
                 var row = Row(left: l, right: r, kind: ignored ? .same : l == nil ? .rightOnly : r == nil ? .leftOnly : .changed)
                 if row.kind == .changed, let l, let r {
                     (row.leftRanges, row.rightRanges) = Self.characterDifference(Self.shown(leftLines[l]), Self.shown(rightLines[r]))
@@ -170,6 +174,22 @@ public struct TextDiff: Sendable {
             }
         }
         return (ranges(removed, oa), ranges(inserted, ob))
+    }
+
+    /// Where the shorter of a block's two runs of lines goes along the longer one (how many of its lines come first): where
+    /// its lines share the most characters at their start and end with those opposite. 0 for runs of the same length,
+    /// or too long to try every place.
+    static func bestShift(_ a: [String], _ b: [String]) -> Int {
+        let (short, long) = a.count < b.count ? (a, b) : (b, a)
+        guard !short.isEmpty, short.count != long.count, short.count * (long.count - short.count + 1) <= 2_000 else { return 0 }
+        func likeness(_ x: String, _ y: String) -> Int {
+            let prefix = zip(x, y).prefix { $0 == $1 }.count
+            return prefix + zip(x.dropFirst(prefix).reversed(), y.dropFirst(prefix).reversed()).prefix { $0 == $1 }.count
+        }
+        return (0...(long.count - short.count)).max { first, second in
+            let score = { (shift: Int) in short.indices.reduce(0) { $0 + likeness(short[$1], long[$1 + shift]) } }
+            return score(first) < score(second)
+        } ?? 0
     }
 
     /// The text of the other side after copying `block`'s lines to it (`toRight`: from the left), in place of the lines
