@@ -5,6 +5,17 @@ nav_order: 18
 
 # What's new
 
+## AirSCP 2.0.6
+
+- **Disk Usage opens in its own window**: keep browsing while it scans, and open several. It works on every server:
+  Windows, servers that only allow file transfers (sftp), and S3 storage too.
+- See how full the disk is, totals **By Type** (.log, .gz, …), and in **Changes** what grew since your last scan.
+- **Open but Deleted** finds deleted files that a program still holds open: their room comes back only when the
+  program closes them.
+- **Empty File…** frees a big log's room at once, even while a program writes to it. **Download as .tar.gz…** keeps a
+  copy before you delete, and **Export as CSV…** saves any list.
+- Disk Usage says which folders it couldn't read and, where your account can use sudo, offers **Scan as Root…**.
+
 ## AirSCP 2.0.5
 
 - **Compare, side by side**: the two files in two columns, lines kept in line, with line numbers and the changed
