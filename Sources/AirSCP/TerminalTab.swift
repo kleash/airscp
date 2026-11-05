@@ -441,10 +441,12 @@ final class TerminalController: NSViewController, NSMenuDelegate, NSSearchFieldD
 
     // MARK: Follow in Files
 
+    /// Ticked: the shell goes to the folder the Files tab's server pane shows. Files stays where it is, also when the
+    /// shell can't go now (a command runs); after that each goes where the other goes.
     @objc private func followChanged(_ sender: NSButton) {
-        followed = nil
+        followed = session?.screen.directory
         leaving = nil
-        followShell()
+        if sender.state == .on, let directory = workspace?.browser?.right?.dir { filesOpened(directory) }
         updateBar()
     }
 
@@ -852,9 +854,11 @@ final class TerminalView: NSView, NSMenuItemValidation, NSMenuDelegate, NSDraggi
                 // A run of cells that look alike, drawn as one string (the font is monospaced).
                 let cell = line.cells[x]
                 var run = String(cell.character), end = x + 1
-                let ascii = cell.character.isASCII
+                let ascii = cell.character.isASCII, selected = isSelected(line: first + row, from: x, to: x)
+                // A run ends where the selection does: only the selected cells take its colour.
                 while ascii, end < line.cells.count, line.cells[end].attributes == cell.attributes,
-                      line.cells[end].character.isASCII, !line.cells[end].continuation {
+                      line.cells[end].character.isASCII, !line.cells[end].continuation,
+                      isSelected(line: first + row, from: end, to: end) == selected {
                     run.append(line.cells[end].character)
                     end += 1
                 }

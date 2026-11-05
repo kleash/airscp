@@ -5,6 +5,20 @@ nav_order: 18
 
 # What's new
 
+## AirSCP 2.0.4
+
+- **Compare two files**: select two text files, right-click ▸ **Compare**. Lines only in one of them are marked red or
+  green.
+- **Open With**: right-click a file ▸ **Open With** to open it in an app you choose.
+- **The path bar**: click the folder shown to type a path. Right-click any folder in it for **Get Info**, **Download
+  To…**, **Rename…**, **Copy Path** and more.
+- **Paste** is in a file's right-click menu too, and a full folder keeps empty space below its last item to right-click
+  for the folder's menu (**New Folder…**, **Show in Finder**…).
+- The **Kind** column now comes after **Date Modified**.
+- **Follow in Files**: ticking it sends the shell to the folder the Files tab shows, and the Files tab stays there.
+- **Fixed**: <kbd>Return</kbd> didn't answer the Delete question. In the Terminal tab, a selection highlighted the whole
+  line instead of only the text selected.
+
 ## AirSCP 2.0.3
 
 - **The monitor works on Mac servers**: CPU, memory, swap, load, disks and processes, with Kill, in the Monitor tab

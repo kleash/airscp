@@ -1505,8 +1505,11 @@ Move around a server's folders like in Finder.
 - **Go up**: the **↑** button, or <kbd>⌘↑</kbd> (**Go ▸ Enclosing Folder**).
 - **Back and forward**: the arrow buttons, or <kbd>⌘[</kbd> and <kbd>⌘]</kbd>.
 - **Home folder**: the house button, or <kbd>⇧⌘H</kbd>.
-- **Type a path**: <kbd>⇧⌘G</kbd> (**Go ▸ Go to Folder…**). `~` means your home folder.
+- **Type a path**: click the folder shown at the end of the path bar, or press <kbd>⇧⌘G</kbd> (**Go ▸ Go to
+  Folder…**). Type the path and press <kbd>Return</kbd>. `~` means your home folder.
 - **Click a folder in the path bar** under the buttons to jump there.
+- **Right-click a folder in the path bar** for its commands: **Open**, **Get Info**, **Download To…**, **Rename…**,
+  **Copy Path** and more.
 - **Filter**: type in **Filter by name** (or press <kbd>⌘F</kbd>) to show only matching names.
 - **Hidden files**: the eye button, or <kbd>⇧⌘.</kbd>, shows names that start with a dot.
 - **Refresh**: the circle arrow, or <kbd>⌘R</kbd>.
@@ -1516,8 +1519,8 @@ Move around a server's folders like in Finder.
 ## Columns and sorting
 
 - Click a column heading to sort by it. Click again to reverse.
-- Right-click the headings (or **View ▸ Columns**) to show or hide columns: size, date modified, permissions, owner,
-  group and kind.
+- Right-click the headings (or **View ▸ Columns**) to show or hide columns: size, date modified, kind, permissions,
+  owner and group. Drag a heading to move its column.
 - **Owner** and **Group** show names, as **Get Info** does. Point at one to see its number (user ID or group ID).
   Servers that allow only file transfers (sftp) show the names without numbers.
 - Folders show “—” as their size. **View ▸ Calculate Folder Sizes** (the **Σ** button) works them out. **Settings** can
@@ -1533,6 +1536,8 @@ Move around a server's folders like in Finder.
 
 ## Tips
 
+- There is always some empty space below the last item. Right-click it for the folder's own menu (**New Folder…**,
+  **Paste**, **Show in Finder**…), even when the folder is full.
 - The status line under each pane shows the number of items, your selection and its size, and the free space.
 - A folder your account can't read shows an error, not an empty list.
 - Large folders list fast: 50,000 items in about a second on most Linux servers.
@@ -1568,7 +1573,8 @@ The copies run in the **Transfers** list. See [Transfers and the queue](https://
 
 - **File ▸ Copy to Other Pane** copies the selection into the folder the other pane shows. Its name says where:
   “Upload to …”, “Download to …”.
-- **Edit ▸ Copy** and **Edit ▸ Paste**. Files copied in Finder can be pasted into a server pane: they are uploaded.
+- **Edit ▸ Copy** and **Edit ▸ Paste** (or right-click ▸ **Copy**, then right-click ▸ **Paste**). Paste puts the items
+  into the folder the pane shows. Files copied in Finder can be pasted into a server pane: they are uploaded.
 - **File ▸ Upload…** chooses Mac files to upload.
 - **File ▸ Upload Compressed** packs the selected Mac items into one stream and unpacks them on the server.
 - **File ▸ Download as .tar.gz…**: see [Download as one archive](https://kleash.github.io/airscp/transfers/download-as-archive.html).
@@ -1576,7 +1582,8 @@ The copies run in the **Transfers** list. See [Transfers and the queue](https://
 ## Within one server
 
 - Dragging inside one server **moves** the items. Hold <kbd>⌥</kbd> to copy instead.
-- **Edit ▸ Cut** and **Edit ▸ Paste** move too.
+- **Edit ▸ Copy** and **Edit ▸ Paste** copy (pasted into the same folder, the copy gets a new name, like “notes 2.txt”).
+- **Edit ▸ Cut** and **Edit ▸ Paste** move.
 
 ## Tips
 
@@ -1698,6 +1705,7 @@ Open a server file in its Mac app, preview it, or edit a text file right in AirS
   and press <kbd>⌘S</kbd> to save it back to the server.
 - **Open in its app**: double-click the file, or choose **File ▸ Open** (<kbd>⌘O</kbd>). AirSCP downloads it and opens
   it. When you save it in that app, AirSCP offers to upload it again.
+- **Open in another app**: right-click the file ▸ **Open With**, and choose the app (or **Other…** to pick one).
 - **Preview**: press <kbd>Space</kbd> (Quick Look), for files up to 100 MB.
 
 (Picture: AirSCP's editor with notes.txt from the server, and Revert and Save buttons)
@@ -1752,6 +1760,7 @@ Everyday file commands work on servers like in Finder. Right-click a file, or us
 
 ## Tips
 
+- In the Delete question, <kbd>Return</kbd> deletes and <kbd>Esc</kbd> cancels.
 - Delete on a server can't be undone. Turn the question off only if you are sure: **Settings ▸ Ask before deleting on
   a server**.
 - Deleting folders works on file-transfer-only (sftp) accounts too.
@@ -1822,7 +1831,7 @@ Make a `.zip` or `.tar.gz` archive on the server, or unpack one there. Nothing g
 
 Source: https://kleash.github.io/airscp/files/select-and-compare.html
 
-# Select by pattern, compare folders, move, link
+# Select by pattern, compare files and folders, move, link
 
 Commands for many files at once, and for arranging files on a server.
 
@@ -1834,7 +1843,16 @@ Commands for many files at once, and for arranging files on a server.
 - **Edit ▸ Select Same Kind**: selects every item with the selected item's extension (all `.jpg` files, say).
 - **Edit ▸ Invert Selection** (<kbd>⇧⌘I</kbd>): selects what wasn't selected.
 - **File ▸ Copy Names**: copies the names of the selection, one per line (**Copy Path**, <kbd>⌥⌘C</kbd>, copies full
-  paths). To copy the path of the folder shown, right-click the path above the list and choose **Copy Path**.
+  paths). To copy the path of a folder, right-click it in the path above the list and choose **Copy Path**.
+
+## Compare two files
+
+1. Select two text files in one pane (click one, then <kbd>⌘</kbd>-click the other).
+2. Right-click one of them and choose **Compare**.
+3. A window shows both files' lines in order. Lines only in the first file are red, with **−**. Lines only in the
+   second file are green, with **+**.
+
+Compare works with plain text files (UTF-8) up to 4 MB.
 
 ## Compare two folders
 
@@ -2956,8 +2974,9 @@ the one below. **Done** (or <kbd>Esc</kbd>) closes the find bar.
 
 ## Keep the Files tab in the same folder
 
-Tick **Follow in Files** at the top of the tab. Each time you `cd` to another folder, the Files tab's server pane goes
-there too. It goes only where the shell itself says it is: a folder that a program prints can't move it. And each time
+Tick **Follow in Files** at the top of the tab. The shell goes to the folder the Files tab's server pane shows (AirSCP
+types `cd` at its empty prompt); the server pane stays where it is. After that, each time you `cd` to another folder,
+the server pane goes there too. It goes only where the shell itself says it is: a folder that a program prints can't move it. And each time
 you open a folder in the server pane, AirSCP types `cd` with that folder at the shell's empty prompt, so the shell goes
 there too. While a command runs, AirSCP types nothing.
 
@@ -3041,7 +3060,7 @@ own shell, as in any terminal. **Insert Path…** and **History…** are AirSCP'
 
 ## Tips
 
-- Select text by dragging; <kbd>⌘C</kbd> copies it and <kbd>⌘V</kbd> pastes. A double-click selects a word.
+- Select text by dragging (only the text you drag over is highlighted); <kbd>⌘C</kbd> copies it and <kbd>⌘V</kbd> pastes. A double-click selects a word.
 - Scroll up to see earlier output. **Clear Scrollback** (right-click) forgets it.
 - <kbd>⌃C</kbd>, <kbd>⌃D</kbd> and the other Ctrl keys go to the shell. <kbd>⌘</kbd> shortcuts stay AirSCP's.
 - When the shell ends (you typed `exit`, or the connection dropped), press <kbd>Return</kbd> in its tab for a new one.
@@ -3876,6 +3895,20 @@ Source: https://kleash.github.io/airscp/whats-new.html
 
 # What's new
 
+## AirSCP 2.0.4
+
+- **Compare two files**: select two text files, right-click ▸ **Compare**. Lines only in one of them are marked red or
+  green.
+- **Open With**: right-click a file ▸ **Open With** to open it in an app you choose.
+- **The path bar**: click the folder shown to type a path. Right-click any folder in it for **Get Info**, **Download
+  To…**, **Rename…**, **Copy Path** and more.
+- **Paste** is in a file's right-click menu too, and a full folder keeps empty space below its last item to right-click
+  for the folder's menu (**New Folder…**, **Show in Finder**…).
+- The **Kind** column now comes after **Date Modified**.
+- **Follow in Files**: ticking it sends the shell to the folder the Files tab shows, and the Files tab stays there.
+- **Fixed**: <kbd>Return</kbd> didn't answer the Delete question. In the Terminal tab, a selection highlighted the whole
+  line instead of only the text selected.
+
 ## AirSCP 2.0.3
 
 - **The monitor works on Mac servers**: CPU, memory, swap, load, disks and processes, with Kill, in the Monitor tab
@@ -4306,8 +4339,8 @@ AirSCP was installed with `./install.sh`).
   empty prompt, so a command typed now runs in it) and `commands`, the last 20: each one's `command` line, `status`
   (exit status), `seconds`, `output` (its last 50 lines) and `running`. Read a command's result there, not from
   `lines`: type it, then snapshot until its entry has a status. Other shells (BusyBox sh, fish) have neither. The tab's
-  bar: `set id=terminal.follow value=true` (Follow in Files: the server pane follows the shell's folder, and the shell
-  the pane's, `cd` typed at its empty prompt), `set id=terminal.snippets value=<snippet name>` (typed at the prompt,
+  bar: `set id=terminal.follow value=true` (Follow in Files: ticked, the shell goes to the server pane's folder and the pane
+  stays; then the server pane follows the shell's folder, and the shell the pane's, `cd` typed at its empty prompt), `set id=terminal.snippets value=<snippet name>` (typed at the prompt,
   not run; as any text for the terminal, it waits for the person at the Mac), `press id=terminal.find` then `set id=terminal.findText value=<text>` (find;
   `terminal.findCount` reads "2 of 5" in `snapshot include=["elements"]`), `press id=terminal.findDone`. Settings'
   `settings.openTerminalHereInTab` sends Open Terminal Here and Run in Terminal to this tab: the `cd` or the command typed

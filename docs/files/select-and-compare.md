@@ -1,10 +1,10 @@
 ---
-title: Select by pattern, compare folders, move, link
+title: Select by pattern, compare files and folders, move, link
 parent: Files
 nav_order: 10
 ---
 
-# Select by pattern, compare folders, move, link
+# Select by pattern, compare files and folders, move, link
 
 Commands for many files at once, and for arranging files on a server.
 
@@ -16,7 +16,16 @@ Commands for many files at once, and for arranging files on a server.
 - **Edit ▸ Select Same Kind**: selects every item with the selected item's extension (all `.jpg` files, say).
 - **Edit ▸ Invert Selection** (<kbd>⇧⌘I</kbd>): selects what wasn't selected.
 - **File ▸ Copy Names**: copies the names of the selection, one per line (**Copy Path**, <kbd>⌥⌘C</kbd>, copies full
-  paths). To copy the path of the folder shown, right-click the path above the list and choose **Copy Path**.
+  paths). To copy the path of a folder, right-click it in the path above the list and choose **Copy Path**.
+
+## Compare two files
+
+1. Select two text files in one pane (click one, then <kbd>⌘</kbd>-click the other).
+2. Right-click one of them and choose **Compare**.
+3. A window shows both files' lines in order. Lines only in the first file are red, with **−**. Lines only in the
+   second file are green, with **+**.
+
+Compare works with plain text files (UTF-8) up to 4 MB.
 
 ## Compare two folders
 

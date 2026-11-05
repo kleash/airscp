@@ -31,6 +31,7 @@ Everyday file commands work on servers like in Finder. Right-click a file, or us
 
 ## Tips
 
+- In the Delete question, <kbd>Return</kbd> deletes and <kbd>Esc</kbd> cancels.
 - Delete on a server can't be undone. Turn the question off only if you are sure: **Settings ▸ Ask before deleting on
   a server**.
 - Deleting folders works on file-transfer-only (sftp) accounts too.

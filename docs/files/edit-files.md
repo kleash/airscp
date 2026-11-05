@@ -14,6 +14,7 @@ Open a server file in its Mac app, preview it, or edit a text file right in AirS
   and press <kbd>⌘S</kbd> to save it back to the server.
 - **Open in its app**: double-click the file, or choose **File ▸ Open** (<kbd>⌘O</kbd>). AirSCP downloads it and opens
   it. When you save it in that app, AirSCP offers to upload it again.
+- **Open in another app**: right-click the file ▸ **Open With**, and choose the app (or **Other…** to pick one).
 - **Preview**: press <kbd>Space</kbd> (Quick Look), for files up to 100 MB.
 
 {% include shot.html name="editor" alt="AirSCP's editor with notes.txt from the server, and Revert and Save buttons" %}

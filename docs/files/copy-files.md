@@ -30,7 +30,8 @@ The copies run in the **Transfers** list. See [Transfers and the queue](../trans
 
 - **File ▸ Copy to Other Pane** copies the selection into the folder the other pane shows. Its name says where:
   “Upload to …”, “Download to …”.
-- **Edit ▸ Copy** and **Edit ▸ Paste**. Files copied in Finder can be pasted into a server pane: they are uploaded.
+- **Edit ▸ Copy** and **Edit ▸ Paste** (or right-click ▸ **Copy**, then right-click ▸ **Paste**). Paste puts the items
+  into the folder the pane shows. Files copied in Finder can be pasted into a server pane: they are uploaded.
 - **File ▸ Upload…** chooses Mac files to upload.
 - **File ▸ Upload Compressed** packs the selected Mac items into one stream and unpacks them on the server.
 - **File ▸ Download as .tar.gz…**: see [Download as one archive](../transfers/download-as-archive.md).
@@ -38,7 +39,8 @@ The copies run in the **Transfers** list. See [Transfers and the queue](../trans
 ## Within one server
 
 - Dragging inside one server **moves** the items. Hold <kbd>⌥</kbd> to copy instead.
-- **Edit ▸ Cut** and **Edit ▸ Paste** move too.
+- **Edit ▸ Copy** and **Edit ▸ Paste** copy (pasted into the same folder, the copy gets a new name, like “notes 2.txt”).
+- **Edit ▸ Cut** and **Edit ▸ Paste** move.
 
 ## Tips
 

@@ -802,7 +802,7 @@ func field(_ sheet: [String: Any]?, _ id: String) -> [String: Any]? {
         #expect(await call(agent, "open", ["name": ".cache"]).error?.contains("isn't shown") == true)
         // A file opens as Return opens it: downloaded, then handed to its app (here: recorded).
         let opened = Recorder<URL>()
-        right.browser?.openFile = { opened.append($0) }
+        right.browser?.openFile = { file, _ in opened.append(file) }
         reply = await call(agent, "open", ["name": "notes.txt"])
         #expect(reply.error == nil && reply["opened"] as? String == "notes.txt" && right.selectedItems.map(\.name) == ["notes.txt"])
         #expect(await eventually { opened.all.first.map { read($0.path) } == "notes\n" })

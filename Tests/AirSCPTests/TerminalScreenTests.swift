@@ -678,11 +678,14 @@ extension FeatureRoundAppTests {
             #expect(workspace.tabs.selectedTabViewItemIndex == 3)
             #expect(await eventually(timeout: 20) { screen.directory == server.path("other") }, "\(screen.directory ?? "nil")")
 
-            // Follow in Files the other way: the shell goes to a folder Files opens (cd typed at its empty prompt), and
-            // Files stays there, without going back to the shell's folder while the cd runs.
-            #expect(await call(agent, "set", ["id": "terminal.follow", "value": true]).error == nil)
+            // Follow in Files the other way. Ticked, the shell goes to the folder Files shows (cd typed at its empty
+            // prompt), and Files stays where it is. Then the shell goes to a folder Files opens, and Files stays
+            // there, without going back to the shell's folder while the cd runs.
             let pane = workspace.browser.right!
-            #expect(await eventually(timeout: 20) { pane.dir == server.path("other") && screen.waitsAtPrompt })
+            #expect(pane.dir == server.home && screen.directory == server.path("other"))
+            #expect(await call(agent, "set", ["id": "terminal.follow", "value": true]).error == nil)
+            #expect(await eventually(timeout: 20) { screen.directory == server.home && screen.waitsAtPrompt }, "\(screen.directory ?? "nil")")
+            #expect(pane.dir == server.home)
             let backs = pane.back.count
             _ = await call(agent, "press", ["title": "Files"])
             let went = await call(agent, "go", ["pane": "right", "path": server.path("site")])
@@ -842,7 +845,8 @@ extension FeatureRoundAppTests {
             #expect(await eventually(timeout: 20) { screen(0)?.text.contains("back-3") == true })
             #expect(screen(1)?.text.contains("back-3") == false)
             #expect(await call(agent, "menu", ["path": "Host > Show Next Terminal Tab"]).error == nil && terminal.current == 1)
-            // Follow in Files follows the tab shown.
+            // Follow in Files follows the tab shown (ticked with Files in its folder, so that the shell stays there).
+            #expect(await workspace.browser.right.open(server.path("site")))
             #expect(await call(agent, "set", ["id": "terminal.follow", "value": true]).error == nil)
             await type("cd ..\n")
             #expect(await eventually(timeout: 20) { workspace.browser.right.dir == server.home }, "\(workspace.browser.right.dir ?? "nil")")

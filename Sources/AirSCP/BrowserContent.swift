@@ -24,6 +24,8 @@ final class BrowserContentController: NSViewController {
     private let split = SurfaceSplitView()
     private var placedDivider = false
     private var clipboard: Clipboard?
+    /// Compare's windows, while open.
+    private var comparisons: [NSWindow] = []
     private var editors: [String: RemoteEditor] = [:]
     private var watched: [WatchedFile] = []
     /// Files for "Open" that download through the transfer queue, by job: opened once there.
@@ -59,6 +61,8 @@ final class BrowserContentController: NSViewController {
         let remotePath: String
         let local: URL
         var modified: Date
+        /// The app it opens in (Open With); nil: its default app.
+        var app: URL?
     }
 
     /// `workspace` nil (tests): no window to show errors in, and the settings' defaults.
@@ -920,6 +924,95 @@ final class BrowserContentController: NSViewController {
         }
     }
 
+    // MARK: Compare
+
+    /// Two text files (of one pane) in one listing, line by line: what only the first has is red (−), what only the
+    /// second has green (+).
+    func compare(_ files: [FileItem], from pane: FilePane) {
+        guard files.count == 2 else { return }
+        Task {
+            var texts: [String] = []
+            guard await pane.perform("Reading the files…", failure: "Can't compare the files", {
+                for file in files {
+                    do {
+                        if let server = pane.session {
+                            texts.append(try await server.readText(file.path, limit: RemoteEditor.limit))
+                        } else {
+                            let data = try Data(contentsOf: URL(fileURLWithPath: file.path))
+                            guard data.count <= RemoteEditor.limit, let text = String(data: data, encoding: .utf8) else {
+                                throw AirSCPError(.notText, "")
+                            }
+                            texts.append(text)
+                        }
+                    } catch let error as AirSCPError where error.kind == .notText {
+                        throw AirSCPError(.notText, "“\(file.name)” isn't a text file AirSCP can compare: plain text (UTF-8), "
+                                          + "up to \(FileList.size(Int64(RemoteEditor.limit))).")
+                    }
+                }
+            }) else { return }
+            showComparison(files, Self.lineDifference(texts[0], texts[1]))
+        }
+    }
+
+    /// The lines of `old` and `new` in order, each marked " " (in both), "-" (only in `old`) or "+" (only in `new`).
+    nonisolated static func lineDifference(_ old: String, _ new: String) -> [(mark: Character, line: String)] {
+        let a = old.components(separatedBy: "\n"), b = new.components(separatedBy: "\n")
+        var removed = Set<Int>(), inserted = Set<Int>()
+        for change in b.difference(from: a) {
+            switch change {
+            case .remove(let offset, _, _): removed.insert(offset)
+            case .insert(let offset, _, _): inserted.insert(offset)
+            }
+        }
+        var lines: [(mark: Character, line: String)] = [], i = 0, j = 0
+        while i < a.count || j < b.count {
+            if i < a.count, removed.contains(i) {
+                lines.append(("-", a[i]))
+                i += 1
+            } else if j < b.count, inserted.contains(j) {
+                lines.append(("+", b[j]))
+                j += 1
+            } else {
+                lines.append((" ", a[i]))
+                i += 1
+                j += 1
+            }
+        }
+        return lines
+    }
+
+    private func showComparison(_ files: [FileItem], _ lines: [(mark: Character, line: String)]) {
+        let font = NSFont.monospacedSystemFont(ofSize: NSFont.systemFontSize, weight: .regular)
+        let text = NSMutableAttributedString()
+        for (mark, line) in lines {
+            var attributes: [NSAttributedString.Key: Any] = [.font: font, .foregroundColor: NSColor.labelColor]
+            if mark != " " { attributes[.backgroundColor] = (mark == "-" ? NSColor.systemRed : .systemGreen).withAlphaComponent(0.18) }
+            text.append(NSAttributedString(string: "\(mark == "-" ? "−" : mark) \(line)\n", attributes: attributes))
+        }
+        let scroll = NSTextView.scrollableTextView()
+        let view = scroll.documentView as! NSTextView
+        view.isEditable = false
+        view.textContainerInset = NSSize(width: 4, height: 6)
+        view.textStorage?.setAttributedString(text)
+        view.setAccessibilityIdentifier("compare.text")
+        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 780, height: 560),
+                              styleMask: [.titled, .closable, .miniaturizable, .resizable], backing: .buffered, defer: false)
+        window.isReleasedWhenClosed = false
+        window.isRestorable = false
+        window.title = files[0].name + " ↔ " + files[1].name
+        let only = (lines.filter { $0.mark == "-" }.count, lines.filter { $0.mark == "+" }.count)
+        func count(_ lines: Int) -> String { lines == 1 ? "1 line" : "\(lines) lines" }
+        window.subtitle = only == (0, 0) ? "The files are the same"
+            : "\(count(only.0)) only in “\(files[0].name)” (−), \(count(only.1)) only in “\(files[1].name)” (+)"
+        window.contentView = scroll
+        window.open(size: NSSize(width: 780, height: 560))
+        window.makeKeyAndOrderFront(nil)
+        comparisons.append(window)
+        NotificationCenter.default.addObserver(forName: NSWindow.willCloseNotification, object: window, queue: .main) { [weak self] _ in
+            MainActor.assumeIsolated { self?.comparisons.removeAll { $0 === window } }
+        }
+    }
+
     // MARK: Editor, Get Info, other apps
 
     /// The built-in editor (one window per file) for a text file up to a few MB.
@@ -992,18 +1085,21 @@ final class BrowserContentController: NSViewController {
     /// Files bigger than this download through the transfer queue for "Open" (progress and Cancel, and the browsing
     /// goes on meanwhile); smaller ones at once.
     static let openDirectlyLimit = Int64(RemoteEditor.limit)
-    /// Opens a downloaded file in its app (tests replace it).
-    var openFile: (URL) -> Void = { NSWorkspace.shared.open($0) }
+    /// Opens a downloaded file in an app, nil: its default app (tests replace it).
+    var openFile: (URL, URL?) -> Void = { file, app in
+        guard let app else { return _ = NSWorkspace.shared.open(file) }
+        NSWorkspace.shared.open([file], withApplicationAt: app, configuration: NSWorkspace.OpenConfiguration())
+    }
 
     /// Opens server files in their apps: each is downloaded to a temporary folder and watched; when it changes,
     /// AirSCP offers to upload it.
-    func openWithDefaultApp(_ files: [FileItem], on server: Session, from pane: FilePane) {
+    func openWithDefaultApp(_ files: [FileItem], on server: Session, from pane: FilePane, in app: URL? = nil) {
         Task {
             var failures: [(name: String, error: Error)] = []
             for item in files {
                 guard let folder = temporaryFolder() else { return }
                 let file = WatchedFile(session: server, remotePath: item.path, local: folder.appendingPathComponent(item.name),
-                                       modified: .distantPast)
+                                       modified: .distantPast, app: app)
                 if item.size > Self.openDirectlyLimit {
                     opening[server.transfers.download(item.path, to: file.local.path, isFolder: false)] = file
                     continue
@@ -1046,7 +1142,7 @@ final class BrowserContentController: NSViewController {
         file.modified = modified(file.local)
         watched.removeAll { $0.session === file.session && $0.remotePath == file.remotePath }
         watched.append(file)
-        openFile(file.local)
+        openFile(file.local, file.app)
         startWatching()
     }
 

@@ -1,5 +1,6 @@
 import AirSCPCore
 import AppKit
+import UniformTypeIdentifiers
 
 /// A pane's file operations: the context menu, the File / View / Go menu items and the checks that enable them.
 /// Each runs as one command (sftp, or a shell command where the plan says so), shows a status while it runs, shows
@@ -32,13 +33,70 @@ extension FilePane {
         openFiles(targets.filter { $0.kind != .directory })
     }
 
-    private func openFiles(_ files: [FileItem]) {
+    /// `app` nil: each file's default app.
+    private func openFiles(_ files: [FileItem], in app: URL? = nil) {
         guard !files.isEmpty else { return }
         if let session {
-            browser?.openWithDefaultApp(files, on: session, from: self)
+            browser?.openWithDefaultApp(files, on: session, from: self, in: app)
+        } else if let app {
+            NSWorkspace.shared.open(files.map { URL(fileURLWithPath: $0.path) }, withApplicationAt: app, configuration: NSWorkspace.OpenConfiguration())
         } else {
             files.forEach { NSWorkspace.shared.open(URL(fileURLWithPath: $0.path)) }
         }
+    }
+
+    /// Open With: the app is the menu item's (Other…: one picked in an Open panel).
+    @objc func openWith(_ sender: NSMenuItem) {
+        let files = targets(sender).filter { !$0.isFolder }
+        if let app = sender.representedObject as? URL { return openFiles(files, in: app) }
+        guard let window = view.window else { return }
+        let panel = NSOpenPanel()
+        panel.directoryURL = URL(fileURLWithPath: "/Applications")
+        panel.allowedContentTypes = [.application]
+        panel.prompt = "Open"
+        panel.message = "Choose the app to open " + (files.count == 1 ? "“\(files[0].name)”" : FileList.items(files.count)) + " in"
+        panel.beginSheetModal(for: window) { [self] response in
+            if response == .OK, let app = panel.url { openFiles(files, in: app) }
+        }
+    }
+
+    /// Open With's submenu: the apps for the first file's kind, its default app first, then Other….
+    func openWithMenu(for targets: [FileItem]) -> NSMenuItem {
+        let menu = NSMenu(title: "Open With")
+        let files = targets.filter { !$0.isFolder }
+        let type = files.first.flatMap { UTType(filenameExtension: ($0.name as NSString).pathExtension) } ?? .data
+        let workspace = NSWorkspace.shared
+        let preferred = workspace.urlForApplication(toOpen: type)
+        func name(_ app: URL) -> String { FileManager.default.displayName(atPath: app.path).replacingOccurrences(of: ".app", with: "") }
+        let others = workspace.urlsForApplications(toOpen: type).filter { $0 != preferred }
+            .sorted { name($0).localizedStandardCompare(name($1)) == .orderedAscending }
+        let apps = (preferred.map { [$0] } ?? []) + others
+        let downloaded = isRemote ? " (downloaded first; AirSCP offers to upload your changes)" : ""
+        for app in apps {
+            let name = name(app)
+            let item = NSMenuItem(title: app == preferred ? name + " (default)" : name, action: #selector(openWith(_:)), keyEquivalent: "")
+            item.image = workspace.icon(forFile: app.path)
+            item.image?.size = NSSize(width: 16, height: 16)
+            item.representedObject = app
+            item.target = self
+            item.toolTip = "Open in \(name)" + downloaded
+            menu.addItem(item)
+            if app == preferred { menu.addItem(.separator()) }
+        }
+        if menu.items.last?.isSeparatorItem == false { menu.addItem(.separator()) }
+        let other = NSMenuItem(title: "Other…", action: #selector(openWith(_:)), keyEquivalent: "")
+        other.target = self
+        other.toolTip = "Choose another app to open it in" + downloaded
+        menu.addItem(other)
+        let item = NSMenuItem(title: "Open With", action: nil, keyEquivalent: "")
+        item.submenu = menu
+        item.toolTip = "Open in an app you choose, not the file's default app"
+        return item
+    }
+
+    /// Two text files compared line by line.
+    @objc func compareFiles(_ sender: Any?) {
+        browser?.compare(targets(sender), from: self)
     }
 
     /// The built-in text editor.
@@ -123,19 +181,27 @@ extension FilePane {
 
     @objc func renameItem(_ sender: Any?) {
         guard let item = targets(sender).first, let dir, let window = view.window else { return }
+        // A folder of the path bar's is in the folder above it, not in the one shown.
+        let folder = item.path == pathMenuFolder?.path ? RemotePath.parent(item.path) : dir
         askName("Rename “\(item.name)”", initial: item.name, button: "Rename", id: "prompt.rename", on: window,
                 selectBaseName: true, windows: isWindows) { [self] name in
             // By the bytes: "café" composed and decomposed are two names on a Linux server.
             guard !name.utf8.elementsEqual(item.name.utf8) else { return }
-            Task { await rename(item, to: name, in: dir) }
+            Task { await rename(item, to: name, in: folder) }
         }
     }
 
     /// Renames within the folder; an existing name asks Replace / Keep Both (a different case or Unicode form of the
-    /// same name is just a rename).
+    /// same name is just a rename). `dir` may be another than the one shown (a folder of the path bar's).
     func rename(_ item: FileItem, to name: String, in dir: String) async {
         if let session, let browser, await !browser.confirmFolderWork([item], on: session, verb: "Rename") { return }
         var others = items.filter { $0.path != item.path }
+        if dir != self.dir {
+            guard await perform("Renaming “\(item.name)”…", failure: "Can't rename “\(item.name)”", {
+                if let session { others = try await session.list(dir).map(FileItem.init) } else { others = try FileList.local(dir) }
+                others.removeAll { $0.path == item.path }
+            }) else { return }
+        }
         // The listing may be older than the server: a name taken since (checked now) brings a fresh listing, so that
         // the question below asks about it instead of replacing it unasked.
         if let session, Names.existing(name, in: others.map(\.name), caseInsensitive: ignoresCase) == nil,
@@ -166,6 +232,11 @@ extension FilePane {
                 if let replaced { try FileManager.default.trashItem(at: URL(fileURLWithPath: replaced.path), resultingItemURL: nil) }
                 if Darwin.rename(item.path, path) != 0 { throw AirSCPError(.other, String(cString: strerror(errno))) }
             }
+        }
+        // The folder shown, or one it is in (from the path bar): the pane shows it under its new name.
+        if renamed, let shown = self.dir, shown == item.path || shown.hasPrefix(item.path + "/") {
+            await open(path + shown.dropFirst(item.path.count), record: false)
+            return
         }
         if renamed || isRemote { await relist(dir, select: [target]) }
     }
@@ -690,6 +761,21 @@ extension FilePane {
 
     // MARK: Menus
 
+    /// The path bar's menu for one of its folders: the commands for that folder as a whole.
+    func pathMenu(for folder: FileItem) -> [(String, Selector)?] {
+        var entries: [(String, Selector)?] = [("Open", #selector(openItems(_:)))]
+        entries += isRemote ? [("Get Info", #selector(getInfo(_:)))] : [("Show in Finder", #selector(revealInFinder(_:)))]
+        entries.append(nil)
+        if let title = browser?.transferTitle(for: self).menu { entries += [(title, #selector(copyToOtherPane(_:)))] }
+        if isRemote {
+            entries += [("Download To…", #selector(downloadTo(_:))),
+                        (isS3 ? "Download as .zip…" : "Download as .tar.gz…", #selector(downloadArchive(_:)))]
+            if !isS3 { entries += [nil, ("Open Terminal Here", #selector(openTerminalHere(_:)))] }
+        }
+        if folder.path != "/" { entries += [nil, ("Rename…", #selector(renameItem(_:)))] }
+        return entries + [nil, ("Copy Path", #selector(copyPath(_:))), ("Copy Name", #selector(copyNames(_:)))]
+    }
+
     /// The context menu for these rows (none: the folder's own menu). nil entries are separators.
     func contextMenu(for targets: [FileItem]) -> [(String, Selector)?] {
         let single = targets.count == 1 ? targets[0] : nil
@@ -714,6 +800,7 @@ extension FilePane {
             return entries
         }
         entries += [("Open", #selector(openItems(_:)))]
+        if targets.count == 2, !targets.contains(where: \.isFolder) { entries += [("Compare", #selector(compareFiles(_:)))] }
         if isRemote, single?.isFolder == false { entries += [("Edit in AirSCP", #selector(editItem(_:)))] }
         entries += [("Quick Look", #selector(quickLook(_:)))]
         entries += isRemote ? [("Get Info", #selector(getInfo(_:)))] : [("Show in Finder", #selector(revealInFinder(_:)))]
@@ -751,7 +838,8 @@ extension FilePane {
         }
         entries += [nil]
         if isRemote { entries += [("Cut", #selector(cut(_:)))] }
-        entries += [("Copy", #selector(copy(_:))), ("Copy Path", #selector(copyPath(_:))), ("Copy Name", #selector(copyNames(_:))), nil,
+        entries += [("Copy", #selector(copy(_:))), ("Paste", #selector(paste(_:))), ("Copy Path", #selector(copyPath(_:))),
+                    ("Copy Name", #selector(copyNames(_:))), nil,
                     (isRemote ? "Delete…" : "Move to Trash", #selector(deleteItems(_:)))]
         return entries
     }
@@ -807,6 +895,10 @@ extension FilePane {
             return (true, nil)
         case #selector(openItems(_:)), #selector(quickLook(_:)), #selector(copy(_:)):
             return need(listed && !targets.isEmpty, "Select something first.")
+        case #selector(openWith(_:)):
+            return need(listed && targets.contains { !$0.isFolder }, "Select a file first.")
+        case #selector(compareFiles(_:)):
+            return need(listed && targets.count == 2 && !targets.contains(where: \.isFolder), "Select two files.")
         case #selector(revealInFinder(_:)):
             return isRemote ? (false, "Works in the This Mac pane.") : need(dir != nil, "")
         case #selector(editItem(_:)):
