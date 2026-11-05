@@ -249,6 +249,81 @@ struct LabFeatureTests {
         }
     }
 
+    /// Disk Usage on Linux beyond the scan: a folder dev can't read is named, then read as root (Debian: sudo with the
+    /// password, which stays out of the command log; a wrong one is refused in plain words; Alpine: sudo without one,
+    /// a password given anyway left unread); a file deleted while a process holds it is found through /proc (GNU and
+    /// BusyBox stat), the disk (GNU and BusyBox df), Empty File. Without sudo (minimal) Scan as Root isn't offered.
+    @Test func diskUsageSkipsAsRootOpenDeletedSpaceAndEmptyFile() async throws {
+        try await withLab { lab in
+            var sudo = Lab.host("dev", port: 42205)
+            sudo.label = "sudo"
+            for host in [Lab.target(), sudo] {
+                let session = try await lab.connected(host)
+                let debian = host.port == Lab.target().port
+                let dir = try await lab.folder(on: session, in: "/home/dev")
+                let q = Quote.shell(dir)
+                #expect(try await session.run("cd \(q) && mkdir -p locked open && printf 1234567 > locked/in.txt && printf ab > open/x "
+                                              + "&& chmod 000 locked").status == 0)
+                let plain = try await diskScan(session, dir)
+                #expect(plain.skipped == .init(count: 1, paths: ["locked"]), "\(host.label): \(plain.skipped)")
+                // (du's record of the folder it couldn't read makes it look like a file: the shortcut in DiskUsage.add.)
+                #expect(plain.usage.root.children.contains { $0.name == "open" && $0.files == 1 })
+
+                let password: String? = Lab.devPassword  // the sudo container's sudo doesn't ask: the line stays unread
+                #expect(await session.diskUsageSudo() == (true, debian))
+                let root = try await diskScan(session, dir, asRoot: true, password: password)
+                #expect(root.skipped == .init() && root.usage.root.files == 2, "\(host.label)")
+                #expect(!debian || root.usage.root.size == 9)  // BusyBox's du counts kilobytes
+                if debian {
+                    do {
+                        _ = try await diskScan(session, dir, asRoot: true)
+                        Issue.record("sudo ran without its password")
+                    } catch let error as AirSCPError {
+                        #expect(error.message == "sudo needs this account's password.")
+                    }
+                    do {
+                        _ = try await diskScan(session, dir, asRoot: true, password: "not-the-password")
+                        Issue.record("a wrong password was taken")
+                    } catch let error as AirSCPError {
+                        #expect(error.message == "sudo refused the password." && !error.details.contains("not-the-password"))
+                    }
+                } else {
+                    #expect(try await diskScan(session, dir, asRoot: true).usage.root.files == 2)
+                }
+
+                let started = try await session.run("cd \(q) && (sh -c 'exec 3>held.bin; head -c 12345 /dev/zero >&3; rm held.bin; "
+                                                     + "exec sleep 600' >/dev/null 2>&1 </dev/null & echo $!)")
+                let pid = started.output.split(separator: "\n").last.flatMap { Int($0) }
+                var held: [DiskUsage.OpenDeleted] = []
+                _ = await eventually {
+                    held = (try? await session.openDeletedFiles(below: dir)) ?? []
+                    return held.first?.process == "sleep"
+                }
+                #expect(held == [.init(pid: pid ?? 0, process: "sleep", user: "dev", path: dir + "/held.bin", size: 12_345)],
+                        "\(host.label): \(held)")
+                do {
+                    // Root in a container lacks CAP_SYS_PTRACE, so it can't read other users' descriptors: no more than dev's.
+                    let asRoot = try await session.openDeletedFiles(below: dir, asRoot: true, password: password)
+                    #expect(asRoot.allSatisfy { held.contains($0) })
+                } catch {
+                    Issue.record(error, "\(host.label): \((error as? AirSCPError)?.details ?? "")")
+                }
+                #expect(try await session.openDeletedFiles(below: dir + "/open").isEmpty)
+                _ = try await session.run("kill \(pid ?? 0)")
+
+                let space = try #require(try await session.diskSpace(of: dir))
+                #expect(space.total > 0 && space.free > 0 && space.free <= space.total)
+                try await session.emptyFile(dir + "/open/x")
+                #expect(try await session.list(dir + "/open").first?.size == 0)
+                _ = try await session.run("chmod 755 \(q)/locked")
+            }
+            #expect(!(await lab.logEntries()).contains { $0.command.contains(Lab.devPassword) || $0.stderr.contains(Lab.devPassword) })
+            let minimal = try await lab.connected(Lab.minimal())
+            #expect(await minimal.diskUsageSudo() == (false, false))
+            await #expect(throws: AirSCPError.self) { try await diskScan(minimal, "/home/dev", asRoot: true) }
+        }
+    }
+
     @Test func folderSizesAndGetInfo() async throws {
         try await withLab { lab in
             let session = try await lab.connected(Lab.target())

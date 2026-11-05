@@ -521,24 +521,11 @@ extension FilePane {
         }
     }
 
-    /// Disk Usage of the folder shown (or the one folder selected), on a server or on this Mac.
+    /// Disk Usage of the folder shown (or the one folder selected), on a server or on this Mac, in its own window.
     @objc func showDiskUsage(_ sender: Any?) {
-        guard let dir, let window = view.window else { return }
+        guard let dir else { return }
         let picked = targets(sender)
-        let model = DiskUsageModel(session: session, dir: picked.count == 1 && picked[0].isFolder ? picked[0].path : dir)
-        presentSheet(on: window) { close in
-            DiskUsageView(model: model, show: { [weak self] path in
-                model.stop()
-                close()
-                self?.reveal(path)
-            }, close: {
-                model.stop()
-                close()
-            }, delete: { [weak self] items in
-                self?.deleteUsage(items, from: model)
-            })
-        }
-        model.start()
+        DiskUsageWindow.show(picked.count == 1 && picked[0].isFolder ? picked[0].path : dir, on: session, from: browser)
     }
 
     /// The item at `path` selected in its folder (hidden files are shown if it is one).
@@ -796,7 +783,8 @@ extension FilePane {
             entries += [nil, ("Paste", #selector(paste(_:))), ("Copy Path", #selector(copyPath(_:))), nil]
             if isRemote && !isS3 { entries += [("New Symbolic Link…", #selector(newSymbolicLink(_:)))] }
             if isS3 {
-                entries += [("Copy S3 Link", #selector(copyS3Link(_:))), ("Find Files…", #selector(findFiles(_:)))]
+                entries += [("Copy S3 Link", #selector(copyS3Link(_:))), ("Find Files…", #selector(findFiles(_:))),
+                            ("Disk Usage…", #selector(showDiskUsage(_:)))]
             } else if isRemote {
                 entries += [("Open Terminal Here", #selector(openTerminalHere(_:))),
                             ("Calculate Folder Sizes", #selector(calculateFolderSizes(_:))), ("Find Files…", #selector(findFiles(_:))),
@@ -974,8 +962,8 @@ extension FilePane {
         case #selector(findFiles(_:)):
             return isRemote ? need(listed, "") : (false, "Find Files searches a server's folders.")
         case #selector(showDiskUsage(_:)):
-            if isS3 { return (false, "Disk Usage measures a server's or this Mac's folders, not S3 storage.") }
-            return need(listed && (!isRemote || hasShell), shellReason ?? "This server doesn't run commands.")
+            let problem = session?.diskUsageProblem
+            return need(listed && problem == nil, problem ?? "")
         case #selector(addToFavourites(_:)):
             guard isRemote else { return (false, "Favourites keep a server's folders: focus a pane that shows a server.") }
             let kept = dir.map(favourites.contains) ?? false

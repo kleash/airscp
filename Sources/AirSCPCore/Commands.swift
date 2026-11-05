@@ -377,8 +377,11 @@ public enum OpenSSH {
     /// standard input, the keyboard, as other scripts do (`longScript`), so it rides on the login shell's command line;
     /// fish, csh and tcsh mis-read POSIX quoting there (a quote, backslash, "!" or line break in a name could run
     /// commands), but this line holds only letters, digits, spaces and \ " $ ( ) in single quotes, read alike by all.
-    public static func viaSh(_ command: String) -> String {
-        "exec sh -c 'eval \"$(printf \"" + command.utf8.map { String(format: "\\%03o", Int($0)) }.joined() + "\")\"'"
+    public static func viaSh(_ command: String) -> String { viaSh(command, sudo: "") }
+
+    /// `viaSh`, sh run by `sudo` (a sudo command line, "sudo -n ").
+    static func viaSh(_ command: String, sudo: String) -> String {
+        "exec " + sudo + "sh -c 'eval \"$(printf \"" + command.utf8.map { String(format: "\\%03o", Int($0)) }.joined() + "\")\"'"
     }
 
     /// The ssh command for "Copy ssh command" (a fresh connection, no master).

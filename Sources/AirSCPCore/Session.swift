@@ -764,31 +764,34 @@ public final class Session {
 
     /// Runs over the master in the control lane: one command at a time per host, next to at most one transfer
     /// (two sessions, which even MaxSessions 2 allows).
-    func runControl(_ argv: [String], input: String? = nil, cancellation: Cancellation? = nil,
+    func runControl(_ argv: [String], input: String? = nil, secretInput: Bool = false, cancellation: Cancellation? = nil,
                     standardOutput: ((Data) -> Void)? = nil, errorOutput: ((Data) -> Void)? = nil) async throws -> CommandResult {
         try await controlLane.run {
-            try await runMuxed(argv, input: input, cancellation: cancellation, standardOutput: standardOutput, errorOutput: errorOutput)
+            try await runMuxed(argv, input: input, secretInput: secretInput, cancellation: cancellation, standardOutput: standardOutput,
+                               errorOutput: errorOutput)
         }
     }
 
-    private func runOver(_ slot: Slot, _ argv: [String], input: String? = nil, cancellation: Cancellation? = nil,
+    private func runOver(_ slot: Slot, _ argv: [String], input: String? = nil, secretInput: Bool = false, cancellation: Cancellation? = nil,
                          standardOutput: ((Data) -> Void)? = nil, errorOutput: ((Data) -> Void)? = nil) async throws -> CommandResult {
         switch slot {
         case .control:
-            return try await runControl(argv, input: input, cancellation: cancellation, standardOutput: standardOutput,
-                                        errorOutput: errorOutput)
+            return try await runControl(argv, input: input, secretInput: secretInput, cancellation: cancellation,
+                                        standardOutput: standardOutput, errorOutput: errorOutput)
         case .transfer:
-            return try await runMuxed(argv, input: input, cancellation: cancellation, standardOutput: standardOutput,
-                                      errorOutput: errorOutput)
+            return try await runMuxed(argv, input: input, secretInput: secretInput, cancellation: cancellation,
+                                      standardOutput: standardOutput, errorOutput: errorOutput)
         }
     }
 
-    /// `command` on the server, as `ssh host command` runs it: over the master, or the transport.
-    private func remote(_ command: String, input: String? = nil, slot: Slot = .control, cancellation: Cancellation? = nil,
-                        standardOutput: ((Data) -> Void)? = nil, errorOutput: ((Data) -> Void)? = nil) async throws -> CommandResult {
+    /// `command` on the server, as `ssh host command` runs it: over the master, or the transport. `secretInput`: the
+    /// input (a password) isn't in the command log or the debug log.
+    func remote(_ command: String, input: String? = nil, secretInput: Bool = false, slot: Slot = .control,
+                cancellation: Cancellation? = nil, standardOutput: ((Data) -> Void)? = nil,
+                errorOutput: ((Data) -> Void)? = nil) async throws -> CommandResult {
         guard let transport else {
             return try await runOver(slot, OpenSSH.remote(command, host, jump: jump, socket: socketPath), input: input,
-                                     cancellation: cancellation, standardOutput: standardOutput, errorOutput: errorOutput)
+                                     secretInput: secretInput, cancellation: cancellation, standardOutput: standardOutput, errorOutput: errorOutput)
         }
         return try await overTransport(slot, cancellation) {
             try await transport.exec(command, input: input, cancellation: $0, standardOutput: standardOutput, errorOutput: errorOutput)
@@ -818,7 +821,8 @@ public final class Session {
 
     /// Runs over the master. A missing socket or "Control socket connect" means the master is gone: Disconnected,
     /// no fallback. "session request failed" means the server is out of sessions: wait and retry.
-    func runMuxed(_ argv: [String], input: String? = nil, cancellation: Cancellation? = nil, terminal: ((Data) -> Void)? = nil,
+    func runMuxed(_ argv: [String], input: String? = nil, secretInput: Bool = false, cancellation: Cancellation? = nil,
+                  terminal: ((Data) -> Void)? = nil,
                   standardOutput: ((Data) -> Void)? = nil, errorOutput: ((Data) -> Void)? = nil) async throws -> CommandResult {
         // An S3 connection runs nothing (and has no master whose absence would read as a lost connection).
         if s3 != nil { throw AirSCPError(.sftpOnly, capabilities.noShellReason ?? "") }
@@ -833,7 +837,7 @@ public final class Session {
                 result = await Runner.runOnTerminal(argv, input: input, cancellation: cancellation, hostID: host.id, log: emit,
                                                     output: terminal)
             } else {
-                result = await Runner.run(argv, input: input, cancellation: cancellation, hostID: host.id, log: emit,
+                result = await Runner.run(argv, input: input, secretInput: secretInput, cancellation: cancellation, hostID: host.id, log: emit,
                                           standardOutput: standardOutput, errorOutput: errorOutput)
             }
             if cancellation.isCancelled { throw AirSCPError.cancelled }
@@ -864,7 +868,7 @@ public final class Session {
     /// noise). A long script (many names) goes to `sh -s` on standard input: a server takes a command line of at most
     /// 128 KB, and ssh's connection sharing even less.
     /// `asLoginUser`: not as the user the host browses as (the probe).
-    private func sentinelShell(_ script: String, slot: Slot = .control, cancellation: Cancellation? = nil, asLoginUser: Bool = false,
+    func sentinelShell(_ script: String, slot: Slot = .control, cancellation: Cancellation? = nil, asLoginUser: Bool = false,
                                output: ((Data) -> Void)? = nil) async throws -> (Data, Int32, String) {
         let (command, input) = OpenSSH.longScript(OpenSSH.sentinelScript(script), sudo: asLoginUser ? "" : host.sudoUser)
         let result = try await remote(command, input: input, slot: slot, cancellation: cancellation, standardOutput: output)

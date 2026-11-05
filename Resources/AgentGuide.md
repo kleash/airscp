@@ -362,6 +362,20 @@ AirSCP was installed with `./install.sh`).
   value=Whitespace` (Case, Blank Lines) turns one on or off; `set id=compare.sync value=false`. Files that aren't text
   (or are over 4 MB) are compared by SHA-256: `compare.hash` says "The files are the same" or "…different" (`press
   id=compare.stop` stops it). Closing with changes not saved asks first.
+- Disk Usage: `menu path="File > Disk Usage…"` (the folder a pane shows, or the one folder selected; any server, S3
+  too, or this Mac) → a window titled "Disk Usage — <folder> on <server>" (This Mac), one per folder: the same command
+  again brings it forward, and closing it stops its scan. The scan has ended when `wait until=text text=Scanned` finds
+  it (`diskUsage.status`: "Scanned 1,234 files in 12 s."). Read it with `snapshot include=["elements"] in="window:Disk
+  Usage"` (`diskUsage.space`: the disk's figures; `diskUsage.list`: name, size, share, files, change since the last
+  scan). `set id=diskUsage.show value="Largest Files"` (Contents, By Type, Changes, Open but Deleted),
+  `set id=diskUsage.filter value=log`; `select in="window:Disk Usage" names=["logs"]`, then `press id=diskUsage.open`
+  (`diskUsage.back`, `diskUsage.up`), `diskUsage.showInPane`, `diskUsage.copyPaths`, `diskUsage.download` (the
+  Download as .tar.gz question), `diskUsage.empty` (Empty File…: asks, then makes the files 0 bytes),
+  `diskUsage.delete` (asks), `diskUsage.scan` (Stop / Scan Again), `press id=diskUsage.export file=/tmp/usage.csv`
+  (the view shown, as CSV). By Type: select a type, `press id=diskUsage.showType` (its largest files). Folders the scan
+  couldn't read: `diskUsage.skipped`; `press id=diskUsage.asRoot` scans through sudo (a password sheet when sudo asks:
+  `set id=diskUsage.sudoPassword value=-` with the password on standard input, then `press title="Scan as Root"`).
+  Open but Deleted: `diskUsage.openDeleted` lists them (`diskUsage.lookAgain`, `diskUsage.openAsRoot`).
 - Favourites (a server's folders, kept per host): `focus pane=right` → `menu path="Go > Add to Favourites"` keeps the
   folder shown; `menu path='Go > Favourites > /var/log'` goes back to it, `menu path='Go > Favourites > Remove >
   /var/log'` drops it. `snapshot` → the pane's favourites (and `include=["menus"]` lists them).
@@ -612,7 +626,7 @@ AirSCP was installed with `./install.sh`).
   `key combo=escape` cancels a question with Cancel; `press title=OK` closes a message with only OK.
 - Menus are never in screenshots (they open only for a person): read `snapshot include=["menus"]`.
 - File > Find Files… searches a server's folders (focus the server's pane); File > Disk Usage… measures the folder a
-  pane shows (a server with a shell, or this Mac) below it; File > Synchronize… needs this Mac in one
+  pane shows (a server, S3 storage or this Mac) below it, in its own window; File > Synchronize… needs this Mac in one
   pane and a connected server in the other. `wait until=found` / `compared` needs its sheet open.
 - Synchronize compares times as the server lists them: to the minute (the day for files over six months old, or dated
   after the server's clock: those count as newer), so two versions with the same size saved within one minute count as
