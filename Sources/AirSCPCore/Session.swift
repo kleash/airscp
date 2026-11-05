@@ -17,7 +17,7 @@ public struct Capabilities: Equatable {
     public var windows = false
     /// Names that differ only in case are the same file (Windows, and macOS servers' disks as a rule).
     public var caseInsensitive = false
-    /// The account's login shell ("bash", "fish"), when it has a shell.
+    /// The account's login shell ("bash", "fish"), when it has a shell; on Windows "cmd" or "powershell" (else empty).
     public var loginShell = ""
     /// For a host browsed as another user (`SSHHost.sudoUser`): the server's sftp-server program, and why sudo can't be
     /// used (nil when it can).
@@ -742,6 +742,19 @@ public final class Session {
         return output
     }
 
+    /// A PowerShell script on a Windows server (`OpenSSH.powershell`): its output, throwing when it exits non-zero
+    /// (the details: what it printed, as a script's `catch` prints an error's message).
+    @discardableResult
+    func powershell(_ script: String, cancellation: Cancellation? = nil) async throws -> String {
+        let result = try await remote(OpenSSH.powershell(script), cancellation: cancellation)
+        guard result.status == 0 else {
+            let printed = result.output.trimmingCharacters(in: .whitespacesAndNewlines)
+            throw AirSCPError(.other, "PowerShell on the server failed" + (printed.isEmpty ? "." : ": " + printed),
+                              details: printed + result.stderr)
+        }
+        return result.output.replacingOccurrences(of: "\r\n", with: "\n")
+    }
+
     func requireShell() throws {
         let capabilities = self.capabilities
         guard capabilities.shell else {
@@ -1119,7 +1132,10 @@ public final class Session {
             found.windows = Session.isWindowsHome(found.home)
             found.caseInsensitive = found.windows
             if found.windows {  // cmd.exe's own words ("The system cannot find the path specified") explain nothing
-                found.noShellReason = "This Windows SSH server has no POSIX shell: AirSCP uses file transfers (sftp) only here."
+                found.noShellReason = "This Windows SSH server has no POSIX shell, which this needs (the Terminal and Monitor tabs work there)."
+                // Which login shell (sshd's DefaultShell): cmd.exe expands %OS%, PowerShell prints it as it is.
+                let os = (try? await remote("echo %OS%"))?.output.trimmingCharacters(in: .whitespacesAndNewlines)
+                found.loginShell = os == "Windows_NT" ? "cmd" : os == "%OS%" ? "powershell" : ""
             }
         }
         capabilities = found

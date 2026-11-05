@@ -18,10 +18,14 @@ search.
 2. Click **Terminal** above the files, or choose **Host ▸ Terminal Tab** (<kbd>⌃⌘T</kbd>).
 3. Type as in any terminal. Programs such as `less`, `vim`, `top` and `nano` work full screen.
 
+The shell starts in the folder the Files tab's server pane shows. On a Windows server it is the server's own shell
+(cmd.exe or PowerShell), also in that folder.
+
 ## Open more shells in tabs
 
 Click **+** above the terminal, or choose **Host ▸ New Terminal Tab** (<kbd>⇧⌘T</kbd>). The new shell starts in the
-folder of the one you were looking at, on the same connection: no second login.
+folder of the one you were looking at (when AirSCP can't tell, in the Files tab's folder), on the same connection: no
+second login.
 
 - Click a tab to show its shell. **Host ▸ Show Previous Terminal Tab** (<kbd>⇧⌘[</kbd>) and **Show Next Terminal Tab**
   (<kbd>⇧⌘]</kbd>) go through them.

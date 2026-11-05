@@ -162,6 +162,27 @@ private func optionValues(_ argv: [String]) -> [String] {
     #expect(!OpenSSH.terminal(host, jump: nil, socket: "/s").contains("-t"))
 }
 
+/// A Windows server's shell in a folder: cmd.exe reads every special character after ^ (so %OS% stays as it is), PowerShell
+/// gets the folder in a single-quoted string inside -EncodedCommand. Both checked on Windows 11's OpenSSH (2.0.5).
+@Test func windowsShellStartsInTheFolder() throws {
+    let folder = "/C:/Users/porter/a b & c % d $e ' f ` g ^ h (i) é %OS% ’x;y,z=!"
+    #expect(OpenSSH.windowsShell(in: folder, loginShell: "cmd")
+            == #"cd /d C:\Users\porter\a b ^& c ^% d $e ' f ` g ^^ h ^(i^) é ^%OS^% ’x;y,z=! & cmd"#)
+    #expect(OpenSSH.windowsShell(in: "/D:", loginShell: "cmd") == #"cd /d D:\ & cmd"#)
+    let powershell = try #require(OpenSSH.windowsShell(in: folder, loginShell: "powershell"))
+    let prefix = "& (Get-Process -Id $PID).Path -NoExit -EncodedCommand "
+    #expect(powershell.hasPrefix(prefix))
+    let bytes = try #require(Data(base64Encoded: String(powershell.dropFirst(prefix.count))))
+    let script = String(decoding: stride(from: 0, to: bytes.count, by: 2).map { UInt16(bytes[$0]) | UInt16(bytes[$0 + 1]) << 8 },
+                        as: UTF16.self)
+    #expect(script == #"Set-Location -LiteralPath 'C:\Users\porter\a b & c % d $e '' f ` g ^ h (i) é %OS% ’’x;y,z=!'"#)
+    #expect(OpenSSH.windowsShell(in: folder, loginShell: "") == nil)
+    // Any PowerShell script: one line of base64 that neither login shell changes.
+    let line = OpenSSH.powershell("'@@os'")
+    #expect(line.hasPrefix("powershell -NoProfile -NonInteractive -EncodedCommand ")
+            && line.split(separator: " ").last!.allSatisfy { $0.isLetter || $0.isNumber || "+/=".contains($0) })
+}
+
 /// The Terminal tab's shell: the pid line, the folder, then bash and zsh started with their marks (signed with the
 /// tab's token), else the login shell as before; sh (dash too) reads it all. TerminalScreenTests run it on servers.
 @Test func terminalShellStartsBashAndZshWithMarks() async {

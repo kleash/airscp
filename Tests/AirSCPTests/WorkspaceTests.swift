@@ -419,14 +419,6 @@ private func filesTab(_ session: Session) -> BrowserContentController {
     #expect(pane.dir == folder + "/Pictures/2026" && rawExists(folder + "/Pictures/2026"))
 }
 
-/// Compare: the lines of both files in order, those only in one of them marked.
-@Test func compareMarksTheLinesOnlyOneFileHas() {
-    let lines = BrowserContentController.lineDifference("one\ntwo\nthree\nfour", "one\nTWO\nthree\nfour\nfive")
-    #expect(lines.map { "\($0.mark)\($0.line)" } == [" one", "-two", "+TWO", " three", " four", "+five"])
-    #expect(BrowserContentController.lineDifference("same\n", "same\n").allSatisfy { $0.mark == " " })
-    #expect(BrowserContentController.lineDifference("", "new").map(\.mark) == ["-", "+"])
-}
-
 @MainActor @Test func draggingServerItemsToFinderDownloadsThem() async throws {
     _ = NSApplication.shared
     try await withServer { @MainActor server in

@@ -94,9 +94,19 @@ extension FilePane {
         return item
     }
 
-    /// Two text files compared line by line.
+    /// Two files compared side by side.
     @objc func compareFiles(_ sender: Any?) {
-        browser?.compare(targets(sender), from: self)
+        if let pair = comparePair(targets(sender)) { browser?.compare(pair) }
+    }
+
+    /// What Compare compares: two files selected here, or one here and one selected in the other pane (the left
+    /// pane's on the left).
+    func comparePair(_ targets: [FileItem]) -> [(item: FileItem, pane: FilePane)]? {
+        guard !targets.contains(where: \.isFolder) else { return nil }
+        if targets.count == 2 { return targets.map { ($0, self) } }
+        guard targets.count == 1, let browser, case let other = browser.otherPane(of: self), other.isConnected, other.dir != nil,
+              other.selectedItems.count == 1, let theirs = other.selectedItems.first, !theirs.isFolder else { return nil }
+        return other === browser.left ? [(theirs, other), (targets[0], self)] : [(targets[0], self), (theirs, other)]
     }
 
     /// The built-in text editor.
@@ -800,7 +810,10 @@ extension FilePane {
             return entries
         }
         entries += [("Open", #selector(openItems(_:)))]
-        if targets.count == 2, !targets.contains(where: \.isFolder) { entries += [("Compare", #selector(compareFiles(_:)))] }
+        if let pair = comparePair(targets) {
+            let theirs = pair.first { $0.pane !== self }?.item.name
+            entries += [(theirs.map { "Compare with “\($0)”" } ?? "Compare", #selector(compareFiles(_:)))]
+        }
         if isRemote, single?.isFolder == false { entries += [("Edit in AirSCP", #selector(editItem(_:)))] }
         entries += [("Quick Look", #selector(quickLook(_:)))]
         entries += isRemote ? [("Get Info", #selector(getInfo(_:)))] : [("Show in Finder", #selector(revealInFinder(_:)))]
@@ -898,7 +911,7 @@ extension FilePane {
         case #selector(openWith(_:)):
             return need(listed && targets.contains { !$0.isFolder }, "Select a file first.")
         case #selector(compareFiles(_:)):
-            return need(listed && targets.count == 2 && !targets.contains(where: \.isFolder), "Select two files.")
+            return need(listed && comparePair(targets) != nil, "Select two files, or one file here and one in the other pane.")
         case #selector(revealInFinder(_:)):
             return isRemote ? (false, "Works in the This Mac pane.") : need(dir != nil, "")
         case #selector(editItem(_:)):
@@ -952,7 +965,9 @@ extension FilePane {
                         shellReason ?? (isThisHost ? "Select one server file to run." : "Run works on the host whose workspace this is."))
         case #selector(openTerminalHere(_:)):
             guard isRemote else { return (false, serverOnly) }
-            return need(listed && hasShell && isThisHost, shellReason ?? "Opens on this workspace's host only.")
+            // A Windows server's cmd.exe or PowerShell starts in the folder too (`HostWorkspace.shellCommand`).
+            let shell = hasShell || isWindows && session?.capabilities.loginShell.isEmpty == false
+            return need(listed && shell && isThisHost, shell ? "Opens on this workspace's host only." : shellReason ?? "")
         case #selector(calculateFolderSizes(_:)):
             guard isRemote else { return (false, serverOnly) }
             return need(listed && hasShell && items.contains(where: \.isFolder), shellReason ?? "There are no folders here to measure.")

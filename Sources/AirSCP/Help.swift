@@ -43,7 +43,7 @@ enum MenuHelp {
         (#selector(FilePane.newFolder(_:)), "Make a folder in the pane that has the focus"),
         (#selector(FilePane.newFile(_:)), "Make an empty file in the server folder shown"),
         (#selector(FilePane.openItems(_:)), "Open the folder here, or the file in its app (a server file is downloaded first)"),
-        (#selector(FilePane.compareFiles(_:)), "Compare the two text files line by line: what only one of them has is marked"),
+        (#selector(FilePane.compareFiles(_:)), "Compare two files side by side: two selected in one pane, or one in each pane"),
         (#selector(FilePane.editItem(_:)), "Open the text file in AirSCP's own editor; ⌘S saves it back to the server"),
         (#selector(FilePane.quickLook(_:)), "Preview the selected files without opening them (Space does the same)"),
         (#selector(FilePane.getInfo(_:)), "Show the size, dates, owner and permissions of one server item"),
@@ -111,7 +111,7 @@ enum MenuHelp {
         (#selector(FilePane.removeFavourite(_:)), "Forget this favourite folder"),
         // Host
         (#selector(MainWindowController.connectHost(_:)), "Connect to the selected host or desktop and show its files or screen"),
-        (#selector(MainWindowController.openTerminal(_:)), "Open an ssh session to this host in Terminal (or iTerm, see Settings)"),
+        (#selector(MainWindowController.openTerminal(_:)), "Open an ssh session to this host in Terminal (or iTerm, see Settings), in the folder its Files tab shows"),
         (#selector(MainWindowController.disconnectHost(_:)), "Close the connection; asks first while transfers run"),
         (#selector(MainWindowController.runCommand(_:)), "Run one command on the host and read its output here (sudo and editors: Terminal)"),
         (#selector(MainWindowController.showTunnels(_:)), "Show the host's port forwards (its Tunnels tab)"),

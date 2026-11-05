@@ -3,9 +3,9 @@ title: Monitor
 nav_order: 9
 ---
 
-# Watch a Linux or Mac server
+# Watch a Linux, Mac or Windows server
 
-The **Monitor** tab shows what a Linux or Mac server is doing: CPU, memory, disks, processes and the ports it listens on. You can
+The **Monitor** tab shows what a Linux, Mac or Windows server is doing: CPU, memory, disks, processes and the ports it listens on. You can
 also stop a process.
 
 ## Steps
@@ -15,7 +15,7 @@ also stop a process.
 3. Read the figures. They refresh every 3 seconds while the tab is on screen.
 
 The top of the window shows the server's CPU, memory and main disk on every tab, refreshed every 10 seconds. It isn't
-there for other servers (Windows, BSD).
+there for other servers (BSD).
 
 {% include shot.html name="monitor" alt="The Monitor tab: CPU, memory, swap, load, uptime, disks and the list of processes" %}
 
@@ -23,7 +23,7 @@ there for other servers (Windows, BSD).
 |---|---|
 | **CPU** | How busy the processors are, since the last refresh. |
 | **Memory** and **Swap** | Used and total. |
-| **Load** | The load averages for 1, 5 and 15 minutes. |
+| **Load** | The load averages for 1, 5 and 15 minutes (not on Windows, which has none). |
 | **Up** | How long the server has run since it started. |
 | **System** | The server's operating system. |
 | **Disks** | Free space on each file system, with a bar. |
@@ -39,7 +39,7 @@ there for other servers (Windows, BSD).
 
 ## See which ports a server listens on
 
-Ports are listed on Linux servers only.
+Ports are listed on Linux and Windows servers.
 
 1. In the **Monitor** tab, click **Ports** above the list of processes.
 2. Read the list: each port the server listens on, with the program that listens and how many connections it has.
@@ -63,6 +63,10 @@ program in the list of processes.
 - Click a column heading to sort the processes, for example by CPU.
 - Kill uses your account's rights. When your account may not stop a process, AirSCP offers **Kill with sudo in
   Terminal**, where sudo can ask for your password (on servers that have sudo).
+- On Windows, **Kill** and **Force Kill** both stop the process at once. **Kill** stops only your own processes;
+  **Force Kill** also stops other users' processes when your account is an administrator.
+- On Windows, AirSCP reads the figures with PowerShell, which takes about a second each time (about three with
+  **Ports**). The **User** column is empty unless your account is an administrator.
 - The list of processes isn't read while the tab isn't shown. The figures at the top of the window still refresh
   every 10 seconds.
 - Reading the ports takes some work on the server, so AirSCP reads them only while **Ports** is shown: at once, then
@@ -72,7 +76,7 @@ program in the list of processes.
 
 ## If something goes wrong
 
-- **“The system monitor works only on Linux and macOS servers”**: Windows and BSD servers aren't supported. The Files
+- **“The system monitor works only on Linux, macOS and Windows servers”**: BSD servers aren't supported. The Files
   and Tunnels tabs work as usual.
 - On a Mac, the disks are the Data volume (where your files are) and the disks under /Volumes.
 - **“This account allows file transfers (sftp) only”**: AirSCP can't read the system there. The Files tab works.

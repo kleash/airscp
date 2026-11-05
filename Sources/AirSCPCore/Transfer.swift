@@ -1341,7 +1341,7 @@ public final class TransferQueue {
         return RemotePath.join(dir, partName(job.id))
     }
 
-    static func partName(_ id: UUID) -> String {
+    public static func partName(_ id: UUID) -> String {
         ".airscp-" + id.uuidString.prefix(8).lowercased() + ".part"
     }
 
@@ -1350,7 +1350,7 @@ public final class TransferQueue {
         names.count == 1 ? names[0] : "\(names.count) items"
     }
 
-    static func localSize(_ path: String) -> Int64? {
+    public static func localSize(_ path: String) -> Int64? {
         var info = stat()
         return stat(path, &info) == 0 ? Int64(info.st_size) : nil
     }

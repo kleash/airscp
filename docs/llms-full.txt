@@ -1526,6 +1526,17 @@ Move around a server's folders like in Finder.
 - Folders show “—” as their size. **View ▸ Calculate Folder Sizes** (the **Σ** button) works them out. **Settings** can
   do it always.
 
+## Two servers side by side
+
+The right pane shows the server you selected. The left pane shows this Mac, or another server.
+
+1. Click the menu above the left pane (it says **This Mac**).
+2. Choose a server. Servers that are not connected are under **Connect To**: choosing one connects it first.
+3. The left pane shows that server. Copy files between the two panes as usual: they go from server to server.
+
+Choose **This Mac** in the same menu to go back. When the server on the left disconnects, the left pane shows this
+Mac again.
+
 ## Favourites
 
 - **Go ▸ Add to Favourites** keeps the server folder you see, for that host.
@@ -1549,7 +1560,7 @@ Source: https://kleash.github.io/airscp/files/copy-files.html
 
 # Copy files
 
-Upload files from your Mac to a server, or download them from a server to your Mac.
+Upload files from your Mac to a server, download them from a server to your Mac, or copy them between two servers.
 
 ## Steps
 
@@ -1578,6 +1589,12 @@ The copies run in the **Transfers** list. See [Transfers and the queue](https://
 - **File ▸ Upload…** chooses Mac files to upload.
 - **File ▸ Upload Compressed** packs the selected Mac items into one stream and unpacks them on the server.
 - **File ▸ Download as .tar.gz…**: see [Download as one archive](https://kleash.github.io/airscp/transfers/download-as-archive.html).
+
+## Between two servers
+
+1. Show the other server in the left pane: the menu above it ▸ the server (see
+   [Two servers side by side](https://kleash.github.io/airscp/files/browse.html#two-servers-side-by-side)).
+2. Drag files from one pane to the other, or select them and click **Copy**.
 
 ## Within one server
 
@@ -1847,12 +1864,31 @@ Commands for many files at once, and for arranging files on a server.
 
 ## Compare two files
 
-1. Select two text files in one pane (click one, then <kbd>⌘</kbd>-click the other).
-2. Right-click one of them and choose **Compare**.
-3. A window shows both files' lines in order. Lines only in the first file are red, with **−**. Lines only in the
-   second file are green, with **+**.
+1. Select two files in one pane (click one, then <kbd>⌘</kbd>-click the other). Or select one file in each pane: a
+   file on this Mac and one on a server, say.
+2. Right-click one of them and choose **Compare** (with one file in each pane: **Compare with “name”**).
+3. A window shows the two files side by side, line by line:
+   - Red lines are only in the left file, green lines only in the right file. A grey gap stands opposite them.
+   - A line that changed is tinted on both sides, and the letters that changed are darker.
+   - The bar at the far right marks where the differences are. Click a mark to go there.
 
-Compare works with plain text files (UTF-8) up to 4 MB.
+What you can do in the window:
+
+- **Previous** and **Next** (<kbd>⌥⌘↑</kbd> and <kbd>⌥⌘↓</kbd>) go from one difference to the next. "3 of 12" says
+  where you are.
+- **Sync Scrolling** keeps both sides scrolling together. Turn it off to scroll one side alone.
+- **Ignore** leaves out **Whitespace**, **Case** or **Blank Lines**. The window's title bar then says, for example,
+  "The files are the same apart from whitespace".
+- **Prettify** lays out JSON or XML files neatly on both sides, then compares again. **Original** (or <kbd>⌘Z</kbd>)
+  puts the text back.
+- **Copy →** and **← Copy** copy the difference shown to the other side. **Save Left** or **Save Right** then writes
+  that side back to its file (on this Mac or on the server). <kbd>⌘Z</kbd> undoes a copy.
+- **Swap** puts the files the other way round. **Reload** reads both files again. **Find** (<kbd>⌘F</kbd>) looks for
+  text in the side you clicked last.
+
+Compare shows plain text files (UTF-8) up to 4 MB side by side. Other files (pictures, programs, archives, or larger
+files) are compared by their SHA-256 checksum instead: the window shows each file's size and checksum, and says **The
+files are the same** or **The files are different**. Click **Stop** to stop a long check.
 
 ## Compare two folders
 
@@ -2631,9 +2667,9 @@ downloads, zips or unpacks, and uploads.
 
 Source: https://kleash.github.io/airscp/monitor.html
 
-# Watch a Linux or Mac server
+# Watch a Linux, Mac or Windows server
 
-The **Monitor** tab shows what a Linux or Mac server is doing: CPU, memory, disks, processes and the ports it listens on. You can
+The **Monitor** tab shows what a Linux, Mac or Windows server is doing: CPU, memory, disks, processes and the ports it listens on. You can
 also stop a process.
 
 ## Steps
@@ -2643,7 +2679,7 @@ also stop a process.
 3. Read the figures. They refresh every 3 seconds while the tab is on screen.
 
 The top of the window shows the server's CPU, memory and main disk on every tab, refreshed every 10 seconds. It isn't
-there for other servers (Windows, BSD).
+there for other servers (BSD).
 
 (Picture: The Monitor tab: CPU, memory, swap, load, uptime, disks and the list of processes)
 
@@ -2651,7 +2687,7 @@ there for other servers (Windows, BSD).
 |---|---|
 | **CPU** | How busy the processors are, since the last refresh. |
 | **Memory** and **Swap** | Used and total. |
-| **Load** | The load averages for 1, 5 and 15 minutes. |
+| **Load** | The load averages for 1, 5 and 15 minutes (not on Windows, which has none). |
 | **Up** | How long the server has run since it started. |
 | **System** | The server's operating system. |
 | **Disks** | Free space on each file system, with a bar. |
@@ -2667,7 +2703,7 @@ there for other servers (Windows, BSD).
 
 ## See which ports a server listens on
 
-Ports are listed on Linux servers only.
+Ports are listed on Linux and Windows servers.
 
 1. In the **Monitor** tab, click **Ports** above the list of processes.
 2. Read the list: each port the server listens on, with the program that listens and how many connections it has.
@@ -2691,6 +2727,10 @@ program in the list of processes.
 - Click a column heading to sort the processes, for example by CPU.
 - Kill uses your account's rights. When your account may not stop a process, AirSCP offers **Kill with sudo in
   Terminal**, where sudo can ask for your password (on servers that have sudo).
+- On Windows, **Kill** and **Force Kill** both stop the process at once. **Kill** stops only your own processes;
+  **Force Kill** also stops other users' processes when your account is an administrator.
+- On Windows, AirSCP reads the figures with PowerShell, which takes about a second each time (about three with
+  **Ports**). The **User** column is empty unless your account is an administrator.
 - The list of processes isn't read while the tab isn't shown. The figures at the top of the window still refresh
   every 10 seconds.
 - Reading the ports takes some work on the server, so AirSCP reads them only while **Ports** is shown: at once, then
@@ -2700,7 +2740,7 @@ program in the list of processes.
 
 ## If something goes wrong
 
-- **“The system monitor works only on Linux and macOS servers”**: Windows and BSD servers aren't supported. The Files
+- **“The system monitor works only on Linux, macOS and Windows servers”**: BSD servers aren't supported. The Files
   and Tunnels tabs work as usual.
 - On a Mac, the disks are the Data volume (where your files are) and the disks under /Volumes.
 - **“This account allows file transfers (sftp) only”**: AirSCP can't read the system there. The Files tab works.
@@ -2759,6 +2799,7 @@ With the first example on, open `http://localhost:8080` in your browser.
 - All tunnels go off when the connection ends. When AirSCP reconnects by itself, it switches on again the ones that
   were on; after you reconnect, switch them on yourself.
 - A tunnel can be edited only while it is off.
+- Tunnels work with Windows' own OpenSSH server too: all three types.
 
 ## If something goes wrong
 
@@ -2874,7 +2915,8 @@ Open an ssh session to a host in Terminal or iTerm. It rides on AirSCP's open co
 
 ## Steps
 
-- **Host ▸ Open Terminal** (<kbd>⌘T</kbd>), or the **Open Terminal** button in the toolbar.
+- **Host ▸ Open Terminal** (<kbd>⌘T</kbd>), or the **Open Terminal** button in the toolbar. The shell starts in the
+  folder the Files tab's server pane shows.
 - To start in the folder you are looking at: right-click in the server pane and choose **Open Terminal Here**
   (<kbd>⌥⌘T</kbd>).
 - To use iTerm instead of Terminal: **AirSCP ▸ Settings… ▸ Open terminals in**.
@@ -2932,10 +2974,14 @@ search.
 2. Click **Terminal** above the files, or choose **Host ▸ Terminal Tab** (<kbd>⌃⌘T</kbd>).
 3. Type as in any terminal. Programs such as `less`, `vim`, `top` and `nano` work full screen.
 
+The shell starts in the folder the Files tab's server pane shows. On a Windows server it is the server's own shell
+(cmd.exe or PowerShell), also in that folder.
+
 ## Open more shells in tabs
 
 Click **+** above the terminal, or choose **Host ▸ New Terminal Tab** (<kbd>⇧⌘T</kbd>). The new shell starts in the
-folder of the one you were looking at, on the same connection: no second login.
+folder of the one you were looking at (when AirSCP can't tell, in the Files tab's folder), on the same connection: no
+second login.
 
 - Click a tab to show its shell. **Host ▸ Show Previous Terminal Tab** (<kbd>⇧⌘[</kbd>) and **Show Next Terminal Tab**
   (<kbd>⇧⌘]</kbd>) go through them.
@@ -3809,8 +3855,8 @@ Yes: **View ▸ Show Command Log**. Every line can be copied and run in Terminal
 **Does it work with Windows servers?**
 Yes, in two ways. The built-in [Remote Desktop](https://kleash.github.io/airscp/remote-desktop/) opens Windows desktops. And Windows' own
 OpenSSH server works for browsing and transfers: the top of the path (the server's name) lists its drives, and the
-Terminal tab opens its own shell (cmd.exe or PowerShell). Run commands, compress and the monitor need a Linux or Mac
-server.
+Terminal tab opens its own shell (cmd.exe or PowerShell) in the folder you are looking at. The Monitor tab shows its
+CPU, memory, drives, processes and ports, and tunnels work. Run commands and compress need a Linux or Mac server.
 
 **Does it support FTP or telnet?**
 No. AirSCP is for SSH (scp and sftp) and Remote Desktop. It can connect through HTTP and SOCKS5 proxies: see
@@ -3894,6 +3940,22 @@ Please don't open a public issue: follow the security policy (`SECURITY.md`) in
 Source: https://kleash.github.io/airscp/whats-new.html
 
 # What's new
+
+## AirSCP 2.0.5
+
+- **Compare, side by side**: the two files in two columns, lines kept in line, with line numbers and the changed
+  letters marked. Scrolling moves both sides together (untick **Sync Scrolling** to move one). Go from one difference
+  to the next with <kbd>⌥⌘↓</kbd> and <kbd>⌥⌘↑</kbd>, or click the bar at the right.
+- In Compare, **Prettify** lays out JSON and XML before comparing (**Original** or <kbd>⌘Z</kbd> puts them back), and
+  **Ignore** leaves out whitespace, case or blank lines. Copy a difference to the other side, then save either file, on
+  this Mac or on the server. **Swap**, **Reload** and find (<kbd>⌘F</kbd>) are there too.
+- **Compare a file on this Mac with one on a server**: select one file in each pane, right-click ▸ **Compare with**.
+  Files that aren't text are compared by their SHA-256 checksums.
+- **Two servers side by side**: the menu above the left pane lists every saved server. Choose one and AirSCP connects
+  it and shows it there, so you can copy between the two servers.
+- **Open Terminal** and the **Terminal** tab start in the folder the Files tab shows, on every server.
+- **Windows servers**: the **Monitor** tab shows CPU, memory, drives, processes and ports, and **Kill** stops a
+  process. The Terminal tab and **Open Terminal Here** open cmd.exe or PowerShell in the folder you are looking at.
 
 ## AirSCP 2.0.4
 
@@ -4330,7 +4392,8 @@ AirSCP was installed with `./install.sh`).
   `menu path="File > Import Hosts…" file=/tmp/hosts.json` (the reply's sheet says how many were imported).
   WinSCP's sites: `menu path="File > Import from WinSCP…" file=/path/WinSCP.ini` (its .ppk keys beside it; the
   reply's sheet says how many hosts were made and what was left out).
-- Terminal tab (a shell inside AirSCP, riding the connection): `menu path="Host > Terminal Tab"`, then
+- Terminal tab (a shell inside AirSCP, riding the connection; it starts in the server pane's folder, as Host ▸ Open
+  Terminal does; on Windows it is the server's cmd.exe or PowerShell): `menu path="Host > Terminal Tab"`, then
   `type target=terminal text="ls -la\n"` (a line break is Return) and `key target=terminal combo=ctrl+c`; `snapshot` →
   terminal: running, lines (the last `rows`, scrollback included), cursor, fullScreen, directory/title when the shell
   says them. `wait until=text text=…` waits for output while the tab is shown. After `exit`, `key
@@ -4348,7 +4411,7 @@ AirSCP was installed with `./install.sh`).
   Tabs: each tab is its own shell on the same connection. `snapshot` → terminal: `tabs` lists them (`index` from 1,
   `title`, `directory`, `running`, `atPrompt` with bash and zsh, `shown`), `tab` is the index of the one shown, and the
   rest of the section (lines, commands) is that tab's; `type` and `key` with target terminal go to it. `press
-  id=terminal.newTab` (or `menu path="Host > New Terminal Tab"`) opens one in the shown tab's folder; `set
+  id=terminal.newTab` (or `menu path="Host > New Terminal Tab"`) opens one in the shown tab's folder (else the server pane's); `set
   id=terminal.tabs value=2` shows tab 2 (by its index, or its title on the strip);
   `menu path="Host > Show Next Terminal Tab"` and `menu path="Host > Show Previous Terminal Tab"` go through them; `press
   id=terminal.closeTab` closes the tab shown (a sheet "Close this terminal tab?" first while a command runs; the last tab
@@ -4433,7 +4496,8 @@ AirSCP was installed with `./install.sh`).
   Folders download with the same sheet (Leave out, Compress).
 - Speed limit for every host's transfers that start from then on: `set id=transfers.speedLimit value="5 MB/s"`
   (Unlimited, 1, 5, 10 or 50 MB/s); `snapshot` → transfers.speedLimit.
-- Between two servers: show the other server in the left pane (its source menu: `set id=left.source value=<host>`),
+- Between two servers: show the other server in the left pane (its source menu: `set id=left.source value=<host>`;
+  a saved host that isn't connected connects first, its sheets on the main window: wait until panes.left shows it),
   then `drop from=left to=right`.
 - `wait until=transfers_done` (optionally host), then `snapshot include=["transfers"]`: each job's id, host, name,
   direction, size, percent, speed (or "stalled"), eta, status, problem, note. Cancel or retry: `select pane=transfers
@@ -4464,9 +4528,10 @@ AirSCP was installed with `./install.sh`).
 - Quitting while transfers run asks first ("Quit and cancel the transfers?"): the Quit reply carries that question.
 
 ## files
-- The Files tab (`press title=Files`) has two panes: left = this Mac (or another connected server), right = the host.
-  `snapshot` → panes.left/right: dir, rows, selected, status ("12 items, 2 selected — 30 GB available"). A row's owner
-  and group are names, as Get Info shows them; ownerID and groupID are their numbers where the server tells them.
+- The Files tab (`press title=Files`) has two panes: left = this Mac (or another server: its source menu
+  `left.source`), right = the host. `snapshot` → panes.left/right: dir, rows, selected, status ("12 items, 2 selected
+  — 30 GB available"). A row's owner and group are names, as Get Info shows them; ownerID and groupID are their
+  numbers where the server tells them.
 - Through folders without a click: connect (`select pane=sidebar names=["web"]` → `menu path="Host > Connect"` → `wait
   until=connected`) → `go path=/var/www` (the reply lists the folder; `open name=site` opens a row, `open name=..` goes
   up) → `select pane=right names=["index.html"]` → its command: `menu path="File > Download To…" file=/Users/me/Downloads`,
@@ -4484,6 +4549,16 @@ AirSCP was installed with `./install.sh`).
   ask for a server folder (`set id=transfer.folder`, then Move or Copy); `menu path="File > New Symbolic Link…"` asks its
   name (`link.name`, Next) then its target (`link.target`, Create). `menu path="File > Compare Folders"` marks the rows
   that differ (snapshot rows carry `mark`, e.g. "Newer here").
+- Compare two files: `select pane=right names=["a.txt", "b.txt"]` → `menu path="context > Compare" pane=right` (one file
+  selected in each pane: `context > Compare with “<other file>”`) → a window titled "a.txt ↔ b.txt" (the left pane's
+  file on the left). Its subtitle sums up ("2 differences: 1 line changed, 1 line only on the right", "The files are the
+  same"); read the sides with `snapshot include=["elements"] in="window:a.txt ↔ b.txt"` (`compare.left`,
+  `compare.right`). `press id=compare.next` / `compare.previous` (`compare.position` says "1 of 2"), `compare.copyRight` /
+  `compare.copyLeft` (the difference shown, to the other side), `compare.saveLeft` / `compare.saveRight`,
+  `compare.prettify` (JSON or XML; again: Original), `compare.swap`, `compare.reload`; `set id=compare.ignore
+  value=Whitespace` (Case, Blank Lines) turns one on or off; `set id=compare.sync value=false`. Files that aren't text
+  (or are over 4 MB) are compared by SHA-256: `compare.hash` says "The files are the same" or "…different" (`press
+  id=compare.stop` stops it). Closing with changes not saved asks first.
 - Favourites (a server's folders, kept per host): `focus pane=right` → `menu path="Go > Add to Favourites"` keeps the
   folder shown; `menu path='Go > Favourites > /var/log'` goes back to it, `menu path='Go > Favourites > Remove >
   /var/log'` drops it. `snapshot` → the pane's favourites (and `include=["menus"]` lists them).
@@ -4550,8 +4625,9 @@ AirSCP was installed with `./install.sh`).
 - `press title=Monitor` (the host's tab) → `wait until=monitor` (or `wait until=monitor text=<a process name>`) →
   `snapshot include=["monitor"]`: connected, cpu, load, memory, swap, uptime, system, disks, and the processes as the
   table lists them (pid, user, cpu, memory as % of RAM, name, command, state; its search, sort and selection);
-  `failure` says why there are no figures (an sftp-only account, a server that is neither Linux nor macOS), `processNote` why there
-  are no processes (no ps). It refreshes every 3 s while it is shown, also behind other windows while you are at work;
+  `failure` says why there are no figures (an sftp-only account, a BSD server), `processNote` why there are no processes
+  (no ps). Windows servers (read with PowerShell, about 1 s a refresh): `load` empty, `state` empty, `user` only for an
+  administrator account; Kill and Force Kill both stop the process at once (Kill only the account's own), never sudo. It refreshes every 3 s while it is shown, also behind other windows while you are at work;
   disconnected, it shows nothing.
 - Sort: `sort pane=processes column=pid` (user, cpu, mem: % of RAM, memory: RSS, time, state, command;
   `ascending=false`).

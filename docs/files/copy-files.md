@@ -6,7 +6,7 @@ nav_order: 2
 
 # Copy files
 
-Upload files from your Mac to a server, or download them from a server to your Mac.
+Upload files from your Mac to a server, download them from a server to your Mac, or copy them between two servers.
 
 ## Steps
 
@@ -35,6 +35,12 @@ The copies run in the **Transfers** list. See [Transfers and the queue](../trans
 - **File ▸ Upload…** chooses Mac files to upload.
 - **File ▸ Upload Compressed** packs the selected Mac items into one stream and unpacks them on the server.
 - **File ▸ Download as .tar.gz…**: see [Download as one archive](../transfers/download-as-archive.md).
+
+## Between two servers
+
+1. Show the other server in the left pane: the menu above it ▸ the server (see
+   [Two servers side by side](browse.md#two-servers-side-by-side)).
+2. Drag files from one pane to the other, or select them and click **Copy**.
 
 ## Within one server
 

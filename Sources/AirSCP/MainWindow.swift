@@ -581,7 +581,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
     #if APPSTORE
     private static let terminalTip = "Open a shell on this host in its Terminal tab (⌘T)"
     #else
-    private static let terminalTip = "Open an ssh session to this host in Terminal (⌘T)"
+    private static let terminalTip = "Open an ssh session to this host in Terminal, in the folder its Files tab shows (⌘T)"
     #endif
 
     /// The toolbar items' tooltips (while one is off: why).
