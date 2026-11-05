@@ -20,7 +20,7 @@ func unexplained(_ window: NSWindow, sheetsOnly: Bool = false, checked: inout In
                                     "combobox", "slider", "link", "disclosuretriangle", "searchfield"]
     // AppKit's own parts, which say nothing of AirSCP: the window's buttons and the scroll bars' arrows and pages. SwiftUI
     // table headers have no API for a tooltip (their rows say what they hold). An editor's text is the document itself,
-    // as is the server's version shown beside it.
+    // as is the server's version shown beside it, and Compare's two sides.
     let exempt: Set<String> = ["closebutton", "minimizebutton", "zoombutton", "fullscreenbutton", "sortbutton",
                                "incrementarrow", "decrementarrow", "incrementpage", "decrementpage"]
     var windows = sheetsOnly ? [] : [window], sheet = window.attachedSheet
@@ -30,7 +30,7 @@ func unexplained(_ window: NSWindow, sheetsOnly: Bool = false, checked: inout In
     }
     let controls = windows.flatMap { root in
         AXNode.flatten(root).filter { interactive.contains($0.role) && !exempt.contains($0.subrole)
-            && !["editor.text", "editor.serverText"].contains($0.id) }
+            && !["editor.text", "editor.serverText", "compare.left", "compare.right"].contains($0.id) }
             .map { (root, $0) }
     }
     checked += controls.count
@@ -302,7 +302,16 @@ extension FeatureRoundAppTests {
             let tips = textWindow(title: "AirSCP Tips", text: AirSCPTips.text)
             let guide = textWindow(title: "Agent Guide", text: AgentBridge.guideText)
             let editor = RemoteEditor(session: try #require(main.selectedWorkspace?.session), path: server.path("a.txt"), text: "hello")
-            let windows = [settings, keysWindow, emptyKeysWindow, snippets, tips, guide, try #require(editor.window)]
+            // Compare: two texts side by side, and two files compared by checksum.
+            func side(_ path: String) -> CompareWindow.Side { CompareWindow.Side(name: RemotePath.name(path), path: path, session: nil, size: 4) }
+            let compare = CompareWindow([side(local + "/a.txt"), side(local + "/folder/inside.txt")], texts: ["mine\nsame", "x\nsame"])
+            let checksums = CompareWindow([side(local + "/a.txt"), side(local + "/folder/inside.txt")], texts: [nil, "x"])
+            compare.window?.setFrameOrigin(NSPoint(x: -24000, y: -21000))
+            checksums.window?.setFrameOrigin(NSPoint(x: -25000, y: -21000))
+            compare.showWindow(nil)
+            checksums.showWindow(nil)
+            let windows = [settings, keysWindow, emptyKeysWindow, snippets, tips, guide, try #require(editor.window),
+                           try #require(compare.window), try #require(checksums.window)]
             defer { windows.forEach { $0.orderOut(nil) } }
             for (index, window) in [tips, guide].enumerated() {  // off the screen, as the tests' other windows
                 window.setFrameOrigin(NSPoint(x: -22000, y: -21000 - 700 * index))

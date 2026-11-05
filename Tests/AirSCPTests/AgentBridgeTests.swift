@@ -326,7 +326,7 @@ private func agent(_ arguments: [String], support: String) async -> CommandResul
     // Control ids (hostEditor.hostname and the like) are written somewhere in the app's sources.
     let sources = try FileManager.default.contentsOfDirectory(atPath: sourceFolder).filter { $0.hasSuffix(".swift") }
         .map { try String(contentsOfFile: sourceFolder + "/" + $0, encoding: .utf8) }.joined()
-    let id = #"((?:hostEditor|rdpEditor|proxyEditor|tunnelEditor|runCommand|monitor|newKey|importKey|exportKey|keyResult|keys|permissions|prompt|rdpLogin|settings|editor|run|compress|transfers|transfer|find|sync|snippet|snippets|terminal|certificates|s3Editor|presign)\.[a-zA-Z]+)"#
+    let id = #"((?:hostEditor|rdpEditor|proxyEditor|tunnelEditor|runCommand|monitor|newKey|importKey|exportKey|keyResult|keys|permissions|prompt|rdpLogin|settings|editor|run|compress|transfers|transfer|find|sync|snippet|snippets|terminal|certificates|s3Editor|presign|compare)\.[a-zA-Z]+)"#
     func found(_ pattern: String, in text: String) throws -> Set<String> {
         let regex = try NSRegularExpression(pattern: pattern)
         return Set(regex.matches(in: text, range: NSRange(text.startIndex..., in: text))

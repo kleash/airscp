@@ -25,7 +25,7 @@ final class BrowserContentController: NSViewController {
     private var placedDivider = false
     private var clipboard: Clipboard?
     /// Compare's windows, while open.
-    private var comparisons: [NSWindow] = []
+    private var comparisons: [CompareWindow] = []
     private var editors: [String: RemoteEditor] = [:]
     private var watched: [WatchedFile] = []
     /// Files for "Open" that download through the transfer queue, by job: opened once there.
@@ -955,90 +955,28 @@ final class BrowserContentController: NSViewController {
 
     // MARK: Compare
 
-    /// Two text files (of one pane) in one listing, line by line: what only the first has is red (−), what only the
-    /// second has green (+).
-    func compare(_ files: [FileItem], from pane: FilePane) {
+    /// Two files side by side (each with its pane: they may be in different panes), in a window of their own.
+    func compare(_ files: [(item: FileItem, pane: FilePane)]) {
         guard files.count == 2 else { return }
-        Task {
-            var texts: [String] = []
-            guard await pane.perform("Reading the files…", failure: "Can't compare the files", {
-                for file in files {
-                    do {
-                        if let server = pane.session {
-                            texts.append(try await server.readText(file.path, limit: RemoteEditor.limit))
-                        } else {
-                            let data = try Data(contentsOf: URL(fileURLWithPath: file.path))
-                            guard data.count <= RemoteEditor.limit, let text = String(data: data, encoding: .utf8) else {
-                                throw AirSCPError(.notText, "")
-                            }
-                            texts.append(text)
-                        }
-                    } catch let error as AirSCPError where error.kind == .notText {
-                        throw AirSCPError(.notText, "“\(file.name)” isn't a text file AirSCP can compare: plain text (UTF-8), "
-                                          + "up to \(FileList.size(Int64(RemoteEditor.limit))).")
-                    }
+        let sides = files.map { file in
+            CompareWindow.Side(name: file.item.name, path: file.item.path, session: file.pane.session,
+                               size: file.pane.isRemote ? file.item.size : TransferQueue.localSize(file.item.path) ?? file.item.size)
+        }
+        Task { [weak self] in
+            var texts: [String?] = []
+            guard await files[1].pane.perform("Reading the files…", failure: "Can't compare the files", {
+                for side in sides { texts.append(try await CompareWindow.read(side)) }
+            }), let self else { return }
+            let window = CompareWindow(sides, texts: texts)
+            window.onSaved = { [weak self] side in
+                guard let self else { return }
+                for pane in [self.left!, self.right!] where pane.session?.host.id == side.session?.host.id && pane.dir == RemotePath.parent(side.path) {
+                    Task { await pane.reload() }
                 }
-            }) else { return }
-            showComparison(files, Self.lineDifference(texts[0], texts[1]))
-        }
-    }
-
-    /// The lines of `old` and `new` in order, each marked " " (in both), "-" (only in `old`) or "+" (only in `new`).
-    nonisolated static func lineDifference(_ old: String, _ new: String) -> [(mark: Character, line: String)] {
-        let a = old.components(separatedBy: "\n"), b = new.components(separatedBy: "\n")
-        var removed = Set<Int>(), inserted = Set<Int>()
-        for change in b.difference(from: a) {
-            switch change {
-            case .remove(let offset, _, _): removed.insert(offset)
-            case .insert(let offset, _, _): inserted.insert(offset)
             }
-        }
-        var lines: [(mark: Character, line: String)] = [], i = 0, j = 0
-        while i < a.count || j < b.count {
-            if i < a.count, removed.contains(i) {
-                lines.append(("-", a[i]))
-                i += 1
-            } else if j < b.count, inserted.contains(j) {
-                lines.append(("+", b[j]))
-                j += 1
-            } else {
-                lines.append((" ", a[i]))
-                i += 1
-                j += 1
-            }
-        }
-        return lines
-    }
-
-    private func showComparison(_ files: [FileItem], _ lines: [(mark: Character, line: String)]) {
-        let font = NSFont.monospacedSystemFont(ofSize: NSFont.systemFontSize, weight: .regular)
-        let text = NSMutableAttributedString()
-        for (mark, line) in lines {
-            var attributes: [NSAttributedString.Key: Any] = [.font: font, .foregroundColor: NSColor.labelColor]
-            if mark != " " { attributes[.backgroundColor] = (mark == "-" ? NSColor.systemRed : .systemGreen).withAlphaComponent(0.18) }
-            text.append(NSAttributedString(string: "\(mark == "-" ? "−" : mark) \(line)\n", attributes: attributes))
-        }
-        let scroll = NSTextView.scrollableTextView()
-        let view = scroll.documentView as! NSTextView
-        view.isEditable = false
-        view.textContainerInset = NSSize(width: 4, height: 6)
-        view.textStorage?.setAttributedString(text)
-        view.setAccessibilityIdentifier("compare.text")
-        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 780, height: 560),
-                              styleMask: [.titled, .closable, .miniaturizable, .resizable], backing: .buffered, defer: false)
-        window.isReleasedWhenClosed = false
-        window.isRestorable = false
-        window.title = files[0].name + " ↔ " + files[1].name
-        let only = (lines.filter { $0.mark == "-" }.count, lines.filter { $0.mark == "+" }.count)
-        func count(_ lines: Int) -> String { lines == 1 ? "1 line" : "\(lines) lines" }
-        window.subtitle = only == (0, 0) ? "The files are the same"
-            : "\(count(only.0)) only in “\(files[0].name)” (−), \(count(only.1)) only in “\(files[1].name)” (+)"
-        window.contentView = scroll
-        window.open(size: NSSize(width: 780, height: 560))
-        window.makeKeyAndOrderFront(nil)
-        comparisons.append(window)
-        NotificationCenter.default.addObserver(forName: NSWindow.willCloseNotification, object: window, queue: .main) { [weak self] _ in
-            MainActor.assumeIsolated { self?.comparisons.removeAll { $0 === window } }
+            window.onClose = { [weak self, weak window] in self?.comparisons.removeAll { $0 === window } }
+            self.comparisons.append(window)
+            window.showWindow(nil)
         }
     }
 

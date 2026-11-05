@@ -351,6 +351,16 @@ AirSCP was installed with `./install.sh`).
   ask for a server folder (`set id=transfer.folder`, then Move or Copy); `menu path="File > New Symbolic Link…"` asks its
   name (`link.name`, Next) then its target (`link.target`, Create). `menu path="File > Compare Folders"` marks the rows
   that differ (snapshot rows carry `mark`, e.g. "Newer here").
+- Compare two files: `select pane=right names=["a.txt", "b.txt"]` → `menu path="context > Compare" pane=right` (one file
+  selected in each pane: `context > Compare with “<other file>”`) → a window titled "a.txt ↔ b.txt" (the left pane's
+  file on the left). Its subtitle sums up ("2 differences: 1 line changed, 1 line only on the right", "The files are the
+  same"); read the sides with `snapshot include=["elements"] in="window:a.txt ↔ b.txt"` (`compare.left`,
+  `compare.right`). `press id=compare.next` / `compare.previous` (`compare.position` says "1 of 2"), `compare.copyRight` /
+  `compare.copyLeft` (the difference shown, to the other side), `compare.saveLeft` / `compare.saveRight`,
+  `compare.prettify` (JSON or XML; again: Original), `compare.swap`, `compare.reload`; `set id=compare.ignore
+  value=Whitespace` (Case, Blank Lines) turns one on or off; `set id=compare.sync value=false`. Files that aren't text
+  (or are over 4 MB) are compared by SHA-256: `compare.hash` says "The files are the same" or "…different" (`press
+  id=compare.stop` stops it). Closing with changes not saved asks first.
 - Favourites (a server's folders, kept per host): `focus pane=right` → `menu path="Go > Add to Favourites"` keeps the
   folder shown; `menu path='Go > Favourites > /var/log'` goes back to it, `menu path='Go > Favourites > Remove >
   /var/log'` drops it. `snapshot` → the pane's favourites (and `include=["menus"]` lists them).
