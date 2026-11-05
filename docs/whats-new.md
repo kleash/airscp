@@ -5,6 +5,22 @@ nav_order: 18
 
 # What's new
 
+## AirSCP 2.0.5
+
+- **Compare, side by side**: the two files in two columns, lines kept in line, with line numbers and the changed
+  letters marked. Scrolling moves both sides together (untick **Sync Scrolling** to move one). Go from one difference
+  to the next with <kbd>⌥⌘↓</kbd> and <kbd>⌥⌘↑</kbd>, or click the bar at the right.
+- In Compare, **Prettify** lays out JSON and XML before comparing (**Original** or <kbd>⌘Z</kbd> puts them back), and
+  **Ignore** leaves out whitespace, case or blank lines. Copy a difference to the other side, then save either file, on
+  this Mac or on the server. **Swap**, **Reload** and find (<kbd>⌘F</kbd>) are there too.
+- **Compare a file on this Mac with one on a server**: select one file in each pane, right-click ▸ **Compare with**.
+  Files that aren't text are compared by their SHA-256 checksums.
+- **Two servers side by side**: the menu above the left pane lists every saved server. Choose one and AirSCP connects
+  it and shows it there, so you can copy between the two servers.
+- **Open Terminal** and the **Terminal** tab start in the folder the Files tab shows, on every server.
+- **Windows servers**: the **Monitor** tab shows CPU, memory, drives, processes and ports, and **Kill** stops a
+  process. The Terminal tab and **Open Terminal Here** open cmd.exe or PowerShell in the folder you are looking at.
+
 ## AirSCP 2.0.4
 
 - **Compare two files**: select two text files, right-click ▸ **Compare**. Lines only in one of them are marked red or
