@@ -338,13 +338,50 @@ public enum OpenSSH {
         viaSh("cd " + Quote.shell(directory) + " && exec \"$SHELL\" -l")
     }
 
+    /// The remote command that starts a Windows server's login shell in `directory` (a Windows OpenSSH folder,
+    /// "/C:/Users/name"), leaving the person in that shell: cmd.exe changes folder and starts cmd, PowerShell starts its own
+    /// program again with -NoExit after Set-Location. `loginShell`: "cmd" or "powershell", as `Session`'s probe found;
+    /// nil for any other (the login folder, then). The folder is never parsed as code: cmd gets each of its special
+    /// characters behind ^ (a % too, which keeps %NAME% from expanding: the name would end in ^), PowerShell gets it in a
+    /// single-quoted string inside -EncodedCommand (its other quote characters doubled too, as PowerShell reads ‘ ’ as ').
+    public static func windowsShell(in directory: String, loginShell: String) -> String? {
+        var path = directory.split(separator: "/").joined(separator: "\\")
+        if path.hasSuffix(":") { path += "\\" }  // "/D:" is the drive's root, not its current folder
+        switch loginShell {
+        case "cmd":
+            return "cd /d " + path.map { "^&|<>()%".contains($0) ? "^\($0)" : "\($0)" }.joined() + " & cmd"
+        case "powershell":
+            let literal = path.map { "'‘’‚‛".contains($0) ? "\($0)\($0)" : "\($0)" }.joined()
+            return "& (Get-Process -Id $PID).Path -NoExit -EncodedCommand " + encoded("Set-Location -LiteralPath '\(literal)'")
+        default:
+            return nil
+        }
+    }
+
+    /// `script` run by Windows PowerShell on a Windows server, whichever its login shell is (cmd.exe and PowerShell both
+    /// read this line alike): as -EncodedCommand, so neither re-reads it. Its output in UTF-8, and no progress records
+    /// (which PowerShell writes to a redirected error output as XML). cmd.exe takes at most 8,191 characters, so the
+    /// script must stay under about 3,000.
+    public static func powershell(_ script: String) -> String {
+        "powershell -NoProfile -NonInteractive -EncodedCommand "
+            + encoded("$ProgressPreference='SilentlyContinue';[Console]::OutputEncoding=[Text.Encoding]::UTF8;" + script)
+    }
+
+    /// PowerShell's -EncodedCommand: the script as UTF-16LE, in base64.
+    private static func encoded(_ script: String) -> String {
+        Data(script.utf16.flatMap { [UInt8($0 & 0xff), UInt8($0 >> 8)] }).base64EncodedString()
+    }
+
     /// A POSIX sh command (with a server's names in it) as a command line that the login shell hands to sh unread: its
     /// bytes as printf's octal escapes, which sh turns back into it. A command with a terminal (ssh -t) can't come on
     /// standard input, the keyboard, as other scripts do (`longScript`), so it rides on the login shell's command line;
     /// fish, csh and tcsh mis-read POSIX quoting there (a quote, backslash, "!" or line break in a name could run
     /// commands), but this line holds only letters, digits, spaces and \ " $ ( ) in single quotes, read alike by all.
-    public static func viaSh(_ command: String) -> String {
-        "exec sh -c 'eval \"$(printf \"" + command.utf8.map { String(format: "\\%03o", Int($0)) }.joined() + "\")\"'"
+    public static func viaSh(_ command: String) -> String { viaSh(command, sudo: "") }
+
+    /// `viaSh`, sh run by `sudo` (a sudo command line, "sudo -n ").
+    static func viaSh(_ command: String, sudo: String) -> String {
+        "exec " + sudo + "sh -c 'eval \"$(printf \"" + command.utf8.map { String(format: "\\%03o", Int($0)) }.joined() + "\")\"'"
     }
 
     /// The ssh command for "Copy ssh command" (a fresh connection, no master).

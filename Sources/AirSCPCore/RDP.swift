@@ -1,3 +1,4 @@
+#if canImport(CRDP)  // FreeRDP: the Mac only (Remote Desktop on iPad comes after 2.0)
 import CRDP
 import CoreGraphics
 import Foundation
@@ -954,3 +955,4 @@ extension RDPSession {
         return paths
     }
 }
+#endif

@@ -56,9 +56,18 @@ enum TestEnvironment {
         Keychain.writeItem = { _ in errSecSuccess }
         // These stand-ins are the tests' Keychain, whatever AIRSCP_SUPPORT_DIR a test sets (it would make it memory-only).
         Keychain.memoryOnly = false
-        // After a menu (macOS 27's SwiftUI pop-ups) window-server events stop the main run loop: rerun it, as NSApp.run does.
+        // After a menu (macOS 27's SwiftUI pop-ups) window-server events stop the main run loop, and the bottom one
+        // stopping (Swift's CFRunLoopRun) ended the test process: as it ends, a run loop that goes on takes its place, as
+        // NSApp.run does. Only there, with no task current: a timer ran it at times inside a run loop that a main-actor
+        // test runs (Process.waitUntilExit), where neither that test nor the main queue went on again.
         if #available(macOS 27, *) {
-            RunLoop.main.add(Timer(timeInterval: 0, repeats: false) { _ in RunLoop.main.run() }, forMode: .common)
+            let main = CFRunLoopGetMain()
+            let ending = CFRunLoopObserverCreateWithHandler(nil, CFRunLoopActivity.exit.rawValue, true, 0) { observer, _ in
+                guard withUnsafeCurrentTask(body: { $0 == nil }) else { return }
+                CFRunLoopRemoveObserver(main, observer, .defaultMode)
+                RunLoop.main.run()
+            }
+            CFRunLoopAddObserver(main, ending, .defaultMode)
         }
     }()
 
@@ -234,9 +243,10 @@ final class TestServer {
 
     /// A session whose prompts are recorded in `prompts` and answered by `answer` (nil cancels). Disconnected by
     /// `shutdown`.
-    func session(_ host: SSHHost? = nil, jump: SSHHost? = nil, answer: ((Prompt) -> PromptAnswer?)? = nil) throws -> Session {
+    func session(_ host: SSHHost? = nil, jump: SSHHost? = nil, transport: RemoteTransport? = nil,
+                 answer: ((Prompt) -> PromptAnswer?)? = nil) throws -> Session {
         let askpass = try AskpassServer(helperPath: TestEnvironment.airscpBinary)
-        let session = Session(host: host ?? self.host(), jump: jump, askpass: askpass)
+        let session = Session(host: host ?? self.host(), jump: jump, askpass: askpass, transport: transport)
         session.savedPassword = { _ in nil }
         session.savePassword = { _, _ in }
         let prompts = self.prompts, log = self.log
@@ -259,7 +269,7 @@ final class TestServer {
     func shutdown() async {
         for session in sessions {
             await session.disconnect()
-            session.askpass.close()
+            session.askpass!.close()
         }
         sessions = []
         stopServer()

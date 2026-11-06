@@ -208,7 +208,7 @@ final class TerminalController: NSViewController, NSMenuDelegate, NSSearchFieldD
             showNote()
             return
         }
-        start(in: nil)
+        start(in: workspace.filesFolder)
     }
 
     /// A new shell in `directory` (else the login folder), or `command` with a terminal (Run in Terminal), in a new tab
@@ -222,8 +222,12 @@ final class TerminalController: NSViewController, NSMenuDelegate, NSSearchFieldD
         screen.markToken = token
         screen.onCommand = { [weak self] in self?.history.add($0) }
         let host = workspace.session.host
+        // Without a POSIX shell (Windows: cmd.exe or PowerShell) the sh lines can't run: that shell's own start in the
+        // folder, else an empty command, for which ssh starts the server's login shell (with a terminal, as -t asks).
+        let shell = workspace.session.capabilities.shell ? OpenSSH.terminalShell(in: directory, token: token)
+            : directory.flatMap(workspace.shellCommand) ?? ""
         let argv = OpenSSH.terminal(host, jump: workspace.model.jump(for: host), socket: workspace.session.socketPath,
-                                    command: command ?? OpenSSH.terminalShell(in: directory, token: token))
+                                    command: command ?? shell)
         do {
             let session = try TerminalSession(argv, environment: workspace.connection.askpass.terminalEnvironment, screen: screen)
             session.onChange = { [weak self, weak session] in session.map { self?.changed($0) } }
@@ -252,7 +256,7 @@ final class TerminalController: NSViewController, NSMenuDelegate, NSSearchFieldD
     /// Return after the shell ended: a new one in its tab, if the host is connected.
     func restartIfEnded() -> Bool {
         guard session?.running != true else { return false }
-        if workspace?.session.state == .connected { start(in: nil) }
+        if let workspace, workspace.session.state == .connected { start(in: workspace.filesFolder) }
         return true
     }
 
@@ -294,6 +298,7 @@ final class TerminalController: NSViewController, NSMenuDelegate, NSSearchFieldD
         current = index
         terminal.session = session
         followed = nil
+        leaving = nil
         updateStrip()
         screenChanged()
         if !findBar.isHidden { runFind(keep: false) }
@@ -312,12 +317,12 @@ final class TerminalController: NSViewController, NSMenuDelegate, NSSearchFieldD
         view.window?.makeFirstResponder(terminal)
     }
 
-    /// New Terminal Tab (⇧⌘T, +): another shell on the host, in the folder the shown one said it is in (else the login
-    /// folder).
+    /// New Terminal Tab (⇧⌘T, +): another shell on the host, in the folder the shown one said it is in (else the Files
+    /// tab's server folder, else the login folder).
     @objc func newTab(_ sender: Any?) {
         wanted = true
         guard workspace?.session.state == .connected else { return }
-        start(in: session?.screen.directory, newTab: true)
+        start(in: session?.screen.directory ?? workspace?.filesFolder, newTab: true)
         view.window?.makeFirstResponder(terminal)
     }
 
@@ -402,7 +407,7 @@ final class TerminalController: NSViewController, NSMenuDelegate, NSSearchFieldD
         pathButton.toolTip = running ? "Type a file or folder name from the server at the prompt, picked from a list (⌥⇥)"
             : notRunning
         followBox.isEnabled = following
-        followBox.toolTip = following ? "Move the Files tab's server pane to the shell's folder each time the shell changes folder"
+        followBox.toolTip = following ? "Keep the Files tab's server pane and the shell in the same folder: each goes where the other goes"
             : "Works with bash and zsh, which say their folder at each prompt: this shell doesn't"
         previousButton.isEnabled = marks
         nextButton.isEnabled = marks
@@ -437,17 +442,33 @@ final class TerminalController: NSViewController, NSMenuDelegate, NSSearchFieldD
 
     // MARK: Follow in Files
 
+    /// Ticked: the shell goes to the folder the Files tab's server pane shows. Files stays where it is, also when the
+    /// shell can't go now (a command runs); after that each goes where the other goes.
     @objc private func followChanged(_ sender: NSButton) {
-        followed = nil
-        followShell()
+        followed = session?.screen.directory
+        leaving = nil
+        if sender.state == .on, let directory = workspace?.browser?.right?.dir { filesOpened(directory) }
         updateBar()
     }
+
+    /// With Follow in Files on, a folder the Files tab's server pane opened: `cd` there, typed only at the shell's empty
+    /// prompt (never into a command), unless the shell is there already.
+    func filesOpened(_ directory: String) {
+        guard followBox.state == .on, let screen = session?.screen, let shellDirectory = screen.directory,
+              directory != shellDirectory, typeAtPrompt(" cd " + Quote.shell(directory)) else { return }
+        leaving = shellDirectory
+        followed = directory  // the shell's word that it is there isn't news to Files
+    }
+
+    /// The shell's folder before a `cd` typed for Files: until the shell says another, Files stays where it went.
+    private var leaving: String?
 
     /// With Follow in Files on, the Files tab's server pane goes to the folder the shell said it is in (OSC 7) when
     /// that is a new one. Quietly: a folder it can't list stays out.
     private func followShell() {
-        guard followBox.state == .on, let directory = session?.screen.directory, directory != followed,
-              let pane = workspace?.browser?.right else { return }
+        guard followBox.state == .on, let directory = session?.screen.directory, directory != leaving else { return }
+        leaving = nil
+        guard directory != followed, let pane = workspace?.browser?.right else { return }
         followed = directory
         Task { await pane.open(directory, quiet: true) }
     }
@@ -834,9 +855,11 @@ final class TerminalView: NSView, NSMenuItemValidation, NSMenuDelegate, NSDraggi
                 // A run of cells that look alike, drawn as one string (the font is monospaced).
                 let cell = line.cells[x]
                 var run = String(cell.character), end = x + 1
-                let ascii = cell.character.isASCII
+                let ascii = cell.character.isASCII, selected = isSelected(line: first + row, from: x, to: x)
+                // A run ends where the selection does: only the selected cells take its colour.
                 while ascii, end < line.cells.count, line.cells[end].attributes == cell.attributes,
-                      line.cells[end].character.isASCII, !line.cells[end].continuation {
+                      line.cells[end].character.isASCII, !line.cells[end].continuation,
+                      isSelected(line: first + row, from: end, to: end) == selected {
                     run.append(line.cells[end].character)
                     end += 1
                 }
@@ -1175,13 +1198,8 @@ final class TerminalView: NSView, NSMenuItemValidation, NSMenuDelegate, NSDraggi
             }
             return
         }
-        if event.clickCount == 2, let screen = session?.screen, at.line < screen.allLines.count {
-            // A word.
-            let cells = screen.allLines[at.line].cells
-            var start = at.column, end = at.column
-            while start > 0, cells[start - 1].character != " " { start -= 1 }
-            while end < cells.count - 1, cells[end + 1].character != " " { end += 1 }
-            selection = ((at.line, start), (at.line, end))
+        if event.clickCount == 2, let word = session?.screen.wordColumns(line: at.line, column: at.column) {
+            selection = ((at.line, word.lowerBound), (at.line, word.upperBound))
         } else if event.clickCount == 3, let screen = session?.screen {
             selection = ((at.line, 0), (at.line, screen.columns - 1))
         } else {

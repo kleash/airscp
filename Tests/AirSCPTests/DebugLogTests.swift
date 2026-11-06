@@ -163,8 +163,8 @@ import Testing
             host.label = "ae-secrets-" + UUID().uuidString.prefix(6)
             host.proxyID = savedProxy.id
             let session = try server.session(host)
-            answer(savedProxy, password: proxyPassword, on: session.askpass)
-            let token = try #require(session.askpass.environment(for: "x")["AIRSCP_ASKPASS_TOKEN"])
+            answer(savedProxy, password: proxyPassword, on: session.askpass!)
+            let token = try #require(session.askpass!.environment(for: "x")["AIRSCP_ASKPASS_TOKEN"])
             let local = try server.scratch()
             try write(content, to: local + "/secret.txt")
             try await withDebugLog {
@@ -318,7 +318,7 @@ import Testing
             try await withLab { lab in
                 let (bastion, target) = chain("ae-chain", proxy: Lab.proxy)
                 let session = try lab.session(target, jump: bastion)
-                session.askpass.proxyHandler = { id, _, _, reply in reply(id == Lab.proxy.id ? (Lab.proxy, Lab.proxyPassword) : nil) }
+                session.askpass!.proxyHandler = { id, _, _, reply in reply(id == Lab.proxy.id ? (Lab.proxy, Lab.proxyPassword) : nil) }
                 try await session.connect()
                 #expect(try await session.run("hostname").output.hasSuffix("private\n"))
                 let logged = debugLines(target.label).joined(separator: "\n")
@@ -391,7 +391,7 @@ private func brokenChain(_ name: String, proxy: (Proxy, String)? = nil, bastionA
             let (bastion, private_) = chain(name, proxy: proxy?.0, bastionAt: bastionAt, target: target, key: key)
             let session = try lab.session(private_, jump: bastion)
             if let (saved, password) = proxy {
-                session.askpass.proxyHandler = { id, _, _, reply in reply(id == saved.id ? (saved, password) : nil) }
+                session.askpass!.proxyHandler = { id, _, _, reply in reply(id == saved.id ? (saved, password) : nil) }
             }
             await #expect(throws: AirSCPError.self) { try await session.connect() }
             logged = debugLines(private_.label).joined(separator: "\n")

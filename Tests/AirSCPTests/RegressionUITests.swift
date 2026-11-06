@@ -439,3 +439,19 @@ private func allViews<T: NSView>(_ type: T.Type, in view: NSView?) -> [T] {
     view.focusIn()
     #expect(view.modifiers == NSEvent.modifierFlags.intersection(.capsLock))
 }
+
+/// Return answers a question whose button is destructive (Delete…): macOS 26 and later take Return off such a button.
+@MainActor @Test func returnPressesADestructiveQuestionsButton() async throws {
+    _ = NSApplication.shared
+    let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 480, height: 300), styleMask: [.titled], backing: .buffered,
+                          defer: false)
+    window.isReleasedWhenClosed = false
+    window.orderFront(nil)
+    defer { window.orderOut(nil) }
+    confirm("Delete “a.txt”?", info: "This can't be undone.", button: "Delete", destructive: true, on: window) {}
+    #expect(await eventually { window.attachedSheet != nil })
+    let sheet = try #require(window.attachedSheet)
+    let delete = AXNode.flatten(sheet).compactMap { $0.view as? NSButton }.first { $0.title == "Delete" }
+    #expect(delete?.keyEquivalent == "\r" && delete?.hasDestructiveAction == true)
+    window.endSheet(sheet)
+}

@@ -20,7 +20,7 @@ func unexplained(_ window: NSWindow, sheetsOnly: Bool = false, checked: inout In
                                     "combobox", "slider", "link", "disclosuretriangle", "searchfield"]
     // AppKit's own parts, which say nothing of AirSCP: the window's buttons and the scroll bars' arrows and pages. SwiftUI
     // table headers have no API for a tooltip (their rows say what they hold). An editor's text is the document itself,
-    // as is the server's version shown beside it.
+    // as is the server's version shown beside it, and Compare's two sides.
     let exempt: Set<String> = ["closebutton", "minimizebutton", "zoombutton", "fullscreenbutton", "sortbutton",
                                "incrementarrow", "decrementarrow", "incrementpage", "decrementpage"]
     var windows = sheetsOnly ? [] : [window], sheet = window.attachedSheet
@@ -30,7 +30,7 @@ func unexplained(_ window: NSWindow, sheetsOnly: Bool = false, checked: inout In
     }
     let controls = windows.flatMap { root in
         AXNode.flatten(root).filter { interactive.contains($0.role) && !exempt.contains($0.subrole)
-            && !["editor.text", "editor.serverText"].contains($0.id) }
+            && !["editor.text", "editor.serverText", "compare.left", "compare.right"].contains($0.id) }
             .map { (root, $0) }
     }
     checked += controls.count
@@ -226,7 +226,20 @@ extension FeatureRoundAppTests {
                 _ = await call(agent, "select", ["pane": "right", "names": ["a.txt"]])
             }
             await sheet("Find Files", close: "Done") { _ = await call(agent, "menu", ["path": "File > Find Files…"]) }
-            await sheet("Disk Usage", close: "Done") { _ = await call(agent, "menu", ["path": "File > Disk Usage…"]) }
+            // Disk Usage's window, in each of its views (a row selected: its buttons on).
+            _ = await call(agent, "menu", ["path": "File > Disk Usage…"])
+            if let usage = DiskUsageWindow.open.values.first, let usageWindow = usage.window {
+                #expect(await eventually(timeout: 20) { !usage.model.scanning })
+                usage.model.selection = Set(usage.model.rows.prefix(1).map(\.id))
+                for shown in DiskUsageModel.Shown.allCases {
+                    usage.model.shown = shown
+                    try await Task.sleep(nanoseconds: 300_000_000)
+                    check("Disk Usage, " + shown.rawValue, usageWindow)
+                }
+                usage.close()
+            } else {
+                Issue.record("File > Disk Usage… opened no window")
+            }
             // The server's home folder: Synchronize waits for Compare, then shows the plan.
             await sheet("Synchronize", then: {
                 _ = await call(agent, "press", ["title": "Compare"])
@@ -302,7 +315,16 @@ extension FeatureRoundAppTests {
             let tips = textWindow(title: "AirSCP Tips", text: AirSCPTips.text)
             let guide = textWindow(title: "Agent Guide", text: AgentBridge.guideText)
             let editor = RemoteEditor(session: try #require(main.selectedWorkspace?.session), path: server.path("a.txt"), text: "hello")
-            let windows = [settings, keysWindow, emptyKeysWindow, snippets, tips, guide, try #require(editor.window)]
+            // Compare: two texts side by side, and two files compared by checksum.
+            func side(_ path: String) -> CompareWindow.Side { CompareWindow.Side(name: RemotePath.name(path), path: path, session: nil, size: 4) }
+            let compare = CompareWindow([side(local + "/a.txt"), side(local + "/folder/inside.txt")], texts: ["mine\nsame", "x\nsame"])
+            let checksums = CompareWindow([side(local + "/a.txt"), side(local + "/folder/inside.txt")], texts: [nil, "x"])
+            compare.window?.setFrameOrigin(NSPoint(x: -24000, y: -21000))
+            checksums.window?.setFrameOrigin(NSPoint(x: -25000, y: -21000))
+            compare.showWindow(nil)
+            checksums.showWindow(nil)
+            let windows = [settings, keysWindow, emptyKeysWindow, snippets, tips, guide, try #require(editor.window),
+                           try #require(compare.window), try #require(checksums.window)]
             defer { windows.forEach { $0.orderOut(nil) } }
             for (index, window) in [tips, guide].enumerated() {  // off the screen, as the tests' other windows
                 window.setFrameOrigin(NSPoint(x: -22000, y: -21000 - 700 * index))

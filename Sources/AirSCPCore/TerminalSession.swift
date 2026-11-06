@@ -3,8 +3,10 @@ import Darwin
 import Foundation
 
 /// A program on a pseudo-terminal, shown by a `TerminalScreen`: AirSCP's own terminal runs ssh there, riding the host's
-/// master connection (no second login). What the program writes goes to the screen on the main queue; keys and pastes
-/// go back with `send`. The screen's answers (cursor position…) go back by themselves.
+/// master connection (no second login); on iPhone and iPad, which have no ssh, the program runs on the server's terminal
+/// over the connection's transport instead (`init(transport:command:screen:)`). What the program writes goes to the
+/// screen on the main queue; keys and pastes go back with `send`. The screen's answers (cursor position…) go back by
+/// themselves.
 public final class TerminalSession {
     public let screen: TerminalScreen
     /// Called on the main queue after the screen changed.
@@ -12,12 +14,15 @@ public final class TerminalSession {
     /// Called on the main queue once the program has ended, with its exit status.
     public var onExit: (Int32) -> Void = { _ in }
     public private(set) var running = false
+    /// The program's process on this Mac; 0 over a transport.
     public let pid: pid_t
 
     private let master: Int32
-    private let reader: DispatchSourceRead
-    private let exitWatch: DispatchSourceProcess
+    private let reader: DispatchSourceRead?
+    private let exitWatch: DispatchSourceProcess?
     private let queue = DispatchQueue(label: "AirSCP terminal")
+    /// The server's terminal, over a transport; nil for a program on this Mac.
+    private var shell: RemoteShell?
 
     /// Starts `argv` on a terminal of the screen's size. Throws when it can't start.
     public init(_ argv: [String], environment: [String: String], screen: TerminalScreen) throws {
@@ -40,8 +45,9 @@ public final class TerminalSession {
         }
         #endif
         running = true
-        reader = DispatchSource.makeReadSource(fileDescriptor: master, queue: queue)
-        exitWatch = DispatchSource.makeProcessSource(identifier: pid, eventMask: .exit, queue: queue)
+        let reader = DispatchSource.makeReadSource(fileDescriptor: master, queue: queue)
+        let exitWatch = DispatchSource.makeProcessSource(identifier: pid, eventMask: .exit, queue: queue)
+        (self.reader, self.exitWatch) = (reader, exitWatch)
         let fd = master
         reader.setEventHandler { [weak self] in
             let arrived = Date()  // not when the main queue gets to it: a command's time comes from its marks'
@@ -73,11 +79,39 @@ public final class TerminalSession {
                 self.running = false
                 self.onExit(code)
             }
-            self?.exitWatch.cancel()
+            self?.exitWatch?.cancel()
         }
         screen.respond = { [weak self] data in self?.send(data) }
         reader.resume()
         exitWatch.resume()
+    }
+
+    /// `command` on a terminal of the screen's size on the server, over `transport` (`RemoteTransport.shell`), as
+    /// `ssh -t host command` would run it here: AirSCP's own terminal (`OpenSSH.terminalShell`) on iPhone and iPad.
+    /// Throws when it can't start.
+    @MainActor public init(transport: RemoteTransport, command: String, screen: TerminalScreen) async throws {
+        self.screen = screen
+        pid = 0
+        master = -1
+        reader = nil
+        exitWatch = nil
+        // On the main actor: what the server sends (main queue too) comes after `shell` is set.
+        shell = try await transport.shell(command, columns: screen.columns, rows: screen.rows, output: { [weak self] data in
+            let arrived = Date()
+            DispatchQueue.main.async {
+                guard let self else { return }
+                self.screen.feed(data, arrived: arrived)
+                self.onChange()
+            }
+        }, ended: { [weak self] status in
+            DispatchQueue.main.async {
+                guard let self, self.running else { return }
+                self.running = false
+                self.onExit(status)
+            }
+        })
+        running = true
+        screen.respond = { [weak self] data in self?.send(data) }
     }
 
     deinit { close() }
@@ -85,6 +119,7 @@ public final class TerminalSession {
     /// Writes keys, a paste or an answer to the program.
     public func send(_ data: Data) {
         guard running, !data.isEmpty else { return }
+        if let shell { return shell.write(data) }
         let fd = master
         queue.async {
             var offset = 0
@@ -119,12 +154,14 @@ public final class TerminalSession {
     public func resize(columns: Int, rows: Int) {
         screen.resize(columns: columns, rows: rows)
         guard running else { return }
+        if let shell { return shell.resize(columns: screen.columns, rows: screen.rows) }
         _ = cpty_resize(master, UInt16(clamping: screen.columns), UInt16(clamping: screen.rows))
     }
 
     /// Ends the program (a hangup, as closing a terminal window does) and lets the terminal go.
     public func close() {
-        guard !reader.isCancelled else { return }
+        if let shell { return shell.close() }
+        guard let reader, !reader.isCancelled else { return }
         if running { kill(pid, SIGHUP) }
         reader.cancel()
         Darwin.close(master)

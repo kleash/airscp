@@ -61,11 +61,11 @@ release, self-hosted runner) and `CONTRIBUTING.md`. User docs: `docs/` (publishe
 | `…/Askpass.swift`, `ProxyConnect.swift` | The app binary as `SSH_ASKPASS` and as `ProxyCommand` (private socket + token) |
 | `…/Certificates.swift` (+ `CRDP/airscp_pki.c`) | The Certificate Manager's model: PEM/DER/PKCS#7/PKCS#12/JKS reading, details, exports (OpenSSL in process) |
 | `…/Keychain.swift`, `Keys.swift`, `PuTTYKey.swift`, `WinSCP.swift` | Saved passwords (one Keychain item), key pairs, PuTTY .ppk, Import from WinSCP (WinSCP.ini) |
-| `…/Monitor.swift`, `RDP.swift`, `Models.swift`, `ErrorMapping.swift` | Linux monitor parser, the RDP session, `airscp.json` models (append-only fields), plain-language errors |
+| `…/Monitor.swift`, `RDP.swift`, `Models.swift`, `ErrorMapping.swift` | Linux and macOS monitor parser, the RDP session, `airscp.json` models (append-only fields), plain-language errors |
 | `…/AgentBridge.swift` | `AirSCP --mcp` (MCP over stdio) and `--agent` (one tool from a shell); the tool list and the guide |
 | `Sources/AirSCP/main.swift` | Helper modes first (`--proxy-connect`, `--mcp`, `--agent`, askpass when `AIRSCP_ASKPASS_SOCK` is set), then the app |
 | `…/AppDelegate.swift`, `MainWindow.swift`, `HostsSidebar.swift`, `HostWorkspace.swift` | Menu bar, the one main window, sidebar, per-host workspace |
-| `…/BrowserContent.swift`, `FilePane.swift`, `FileActions.swift`, `FileSheets.swift`, `Synchronize.swift`, `DiskUsageSheet.swift` | The Files tab (Disk Usage's scan and tree: Core's `DiskUsage.swift`) |
+| `…/BrowserContent.swift`, `FilePane.swift`, `FileActions.swift`, `FileSheets.swift`, `Synchronize.swift`, `DiskUsageWindow.swift` | The Files tab (Disk Usage's scan and tree: Core's `DiskUsage.swift`) |
 | `…/TransfersPanel.swift`, `MonitorTab.swift`, `Tunnels.swift`, `TerminalTab.swift`, `RDPWorkspace.swift`, `RDPDesktopView.swift` | Panels and tabs (TerminalTab: the shell inside AirSCP over Core's `TerminalScreen` + `TerminalSession`) |
 | `…/AgentServer.swift`, `AgentSnapshot.swift` | Agent control inside the app: socket, tools, in-process accessibility tree, screenshots |
 | `…/Help.swift` | Tooltips of menu commands, Help menu, the docs URL table (`HelpPage`) |

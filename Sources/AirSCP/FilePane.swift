@@ -33,8 +33,8 @@ final class FilePane: NSViewController, NSTableViewDataSource, NSTableViewDelega
     }
 
     static let columns: [(id: String, title: String, width: CGFloat)] = [
-        ("name", "Name", 200), ("size", "Size", 72), ("modified", "Date Modified", 166), ("permissions", "Permissions", 88),
-        ("owner", "Owner", 70), ("group", "Group", 70), ("kind", "Kind", 130),
+        ("name", "Name", 200), ("size", "Size", 72), ("modified", "Date Modified", 166), ("kind", "Kind", 130),
+        ("permissions", "Permissions", 88), ("owner", "Owner", 70), ("group", "Group", 70),
     ]
 
     private(set) var source: Source
@@ -91,9 +91,11 @@ final class FilePane: NSViewController, NSTableViewDataSource, NSTableViewDelega
     /// The folder shown instead of a start folder that couldn't be opened, and why, for the status line.
     private var startNote: (dir: String, text: String)?
     private var menuTargets: [FileItem]?
+    /// The path bar's folder whose menu is open: its commands act on that folder.
+    private(set) var pathMenuFolder: FileItem?
 
     let table = FileTableView()
-    private let sourceButton = NSPopUpButton(frame: .zero, pullsDown: false)
+    let sourceButton = NSPopUpButton(frame: .zero, pullsDown: false)
     private let titleLabel = NSTextField(labelWithString: "")
     private let history = NSSegmentedControl()
     private let pathControl = NSPathControl()
@@ -159,8 +161,9 @@ final class FilePane: NSViewController, NSTableViewDataSource, NSTableViewDelega
         return items
     }
 
-    /// The rows an action is for: a context menu's rows, else the selection.
+    /// The rows an action is for: a context menu's rows (the path bar's: its folder), else the selection.
     func targets(_ sender: Any?) -> [FileItem] {
+        if let item = sender as? NSMenuItem, item.menu === pathControl.menu { return pathMenuFolder.map { [$0] } ?? [] }
         if let item = sender as? NSMenuItem, item.menu === table.menu, let menuTargets { return menuTargets }
         return selectedItems
     }
@@ -323,6 +326,7 @@ final class FilePane: NSViewController, NSTableViewDataSource, NSTableViewDelega
             }
             if choosesSource { browser?.localFolderChanged(path) }
         case .remote(let session):
+            if self === browser?.right { browser?.workspace?.terminal?.filesOpened(path) }
             Task {
                 guard let free = try? await session.diskFree(path), dir == path else { return }
                 freeSpace = FileList.size(free.available) + " available"
@@ -553,10 +557,13 @@ final class FilePane: NSViewController, NSTableViewDataSource, NSTableViewDelega
     }
 
     @objc private func pathClicked(_ sender: NSPathControl) {
+        // The folder shown, or the space beside the folders: the path bar becomes a field to type a path into.
         guard let item = sender.clickedPathItem, let index = sender.pathItems.firstIndex(of: item),
-              index < pathTargets.count, let dir else { return }
+              index < pathTargets.count, let dir, pathTargets[index] != dir else {
+            // After the click: the path bar's own mouse tracking would take the keyboard back from the field.
+            return DispatchQueue.main.async { self.goToFolder(sender) }
+        }
         let target = pathTargets[index]
-        if target == dir { return }
         // Going up selects the folder that was shown (or the one on the way to it).
         let below = dir.hasPrefix(target == "/" ? "/" : target + "/")
             ? String(dir.dropFirst(target == "/" ? 1 : target.count + 1)).split(separator: "/").first.map(String.init) : nil
@@ -657,6 +664,7 @@ final class FilePane: NSViewController, NSTableViewDataSource, NSTableViewDelega
     }
 
     @objc private func sourceChosen(_ sender: NSPopUpButton) {
+        guard !(sender.selectedItem?.representedObject is UUID) else { return }  // connectChosen
         let session = sender.selectedItem?.representedObject as? Session
         browser?.chooseSource(session.map(Source.remote) ?? .local, for: self)
     }
@@ -686,6 +694,13 @@ final class FilePane: NSViewController, NSTableViewDataSource, NSTableViewDelega
         table.autosaveName = layoutName(choosesSource ? "Porter.LeftPane" : "Porter.RightPane")
         // Only with a name: without one AppKit saves the columns under "(null)" in the user's defaults.
         table.autosaveTableColumns = table.autosaveName != nil
+        // 2.0.4 put Kind beside Date Modified: a layout saved before then gets it there once.
+        if let name = table.autosaveName.map({ "AirSCP Kind Beside Date " + $0 }), !UserDefaults.standard.bool(forKey: name),
+           let kind = table.tableColumns.firstIndex(where: { $0.identifier.rawValue == "kind" }),
+           let modified = table.tableColumns.firstIndex(where: { $0.identifier.rawValue == "modified" }) {
+            table.moveColumn(kind, toColumn: kind > modified ? modified + 1 : modified)
+            UserDefaults.standard.set(true, forKey: name)
+        }
         table.dataSource = self
         table.delegate = self
         table.target = self
@@ -761,7 +776,9 @@ final class FilePane: NSViewController, NSTableViewDataSource, NSTableViewDelega
         pathControl.action = #selector(pathClicked(_:))
         pathControl.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
         pathControl.setContentHuggingPriority(.init(1), for: .horizontal)
-        pathControl.toolTip = "Click a folder to go there; ⇧⌘G to type a path"
+        pathControl.toolTip = "Click a folder to go there, or the folder shown to type a path (⇧⌘G); right-click a folder for its commands"
+        pathControl.menu = NSMenu()
+        pathControl.menu?.delegate = self
         pathField.controlSize = .small
         pathField.font = .systemFont(ofSize: NSFont.smallSystemFontSize)
         pathField.delegate = self
@@ -910,19 +927,21 @@ final class FilePane: NSViewController, NSTableViewDataSource, NSTableViewDelega
         "kind": "What kind of item it is",
     ]
 
-    private func updateSourceButton() {
+    /// Its title: what the pane shows, or the saved server its source menu is connecting.
+    func updateSourceButton() {
         titleLabel.stringValue = session?.host.displayName ?? "This Mac"
         guard choosesSource else { return }
-        let title = session?.host.displayName ?? "This Mac"
+        let connecting = browser?.connectingSource.flatMap { id in browser?.workspace?.model.host(id) }
+        let title = connecting.map { "Connecting to \($0.displayName)…" } ?? session?.host.displayName ?? "This Mac"
         sourceButton.removeAllItems()
         sourceButton.addItem(withTitle: title)
         sourceButton.lastItem?.representedObject = session
-        sourceButton.lastItem?.image = NSImage(systemSymbolName: isRemote ? "server.rack" : "laptopcomputer",
+        sourceButton.lastItem?.image = NSImage(systemSymbolName: isRemote || connecting != nil ? "server.rack" : "laptopcomputer",
                                                accessibilityDescription: nil)
-        sourceButton.toolTip = "Show this Mac's files or another connected server's here"
+        sourceButton.toolTip = "Show this Mac or another server here"
     }
 
-    /// The source menu lists this Mac and the connected servers when it opens.
+    /// The source menu lists this Mac, the connected servers and the other saved ones when it opens.
     private func fillSourceMenu(_ menu: NSMenu) {
         menu.removeAllItems()
         let local = NSMenuItem(title: "This Mac", action: nil, keyEquivalent: "")
@@ -937,7 +956,29 @@ final class FilePane: NSViewController, NSTableViewDataSource, NSTableViewDelega
             menu.addItem(item)
         }
         let current = menu.items.first { ($0.representedObject as? Session) === session } ?? local
+        // Saved servers that aren't connected: choosing one connects it. (A long list scrolls, as menus do.)
+        let saved = browser?.unconnectedHosts ?? []
+        guard !saved.isEmpty else { return sourceButton.select(current) }
+        menu.addItem(.separator())
+        let header = NSMenuItem(title: "Connect To", action: nil, keyEquivalent: "")
+        header.isEnabled = false
+        header.toolTip = "Choose a saved server below to connect it and show its files in this pane"
+        menu.addItem(header)
+        for host in saved {
+            let item = NSMenuItem(title: host.displayName, action: #selector(connectChosen(_:)), keyEquivalent: "")
+            item.target = self
+            item.representedObject = host.id
+            item.image = NSImage(systemSymbolName: host.s3 == nil ? "server.rack" : "externaldrive.connected.to.line.below",
+                                 accessibilityDescription: nil)
+            item.toolTip = "Connect to this server and show its files in this pane: copies then go server to server"
+            menu.addItem(item)
+        }
         sourceButton.select(current)
+    }
+
+    @objc private func connectChosen(_ sender: NSMenuItem) {
+        guard let id = sender.representedObject as? UUID else { return }
+        browser?.connectSource(id, for: self)
     }
 
     func updatePath() {
@@ -1171,13 +1212,45 @@ final class FilePane: NSViewController, NSTableViewDataSource, NSTableViewDelega
             }
             return
         }
+        if menu === pathControl.menu {
+            pathMenuFolder = clickedPathFolder()
+            return add(pathMenuFolder.map(pathMenu) ?? [], to: menu)
+        }
         let clicked = table.clickedRow
         if clicked >= 0 && clicked < rows.count {
             menuTargets = table.selectedRowIndexes.contains(clicked) ? selectedItems : [rows[clicked]]
         } else {
             menuTargets = []
         }
-        for entry in contextMenu(for: menuTargets ?? []) {
+        add(contextMenu(for: menuTargets ?? []), to: menu)
+        if let open = menu.items.firstIndex(where: { $0.action == #selector(openItems(_:)) }),
+           menuTargets?.contains(where: { !$0.isFolder }) == true {
+            menu.insertItem(openWithMenu(for: menuTargets ?? []), at: open + 1)
+        }
+        if let snippets = runSnippetMenu() {
+            menu.addItem(.separator())
+            menu.addItem(snippets)
+        }
+        if menu.items.last?.isSeparatorItem == true { menu.removeItem(at: menu.numberOfItems - 1) }
+    }
+
+    /// The path bar's folder under the mouse (the right-click that opens its menu), else the folder shown.
+    private func clickedPathFolder() -> FileItem? {
+        guard var path = dir else { return nil }
+        if let event = NSApp.currentEvent, let cell = pathControl.cell as? NSPathCell,
+           let clicked = cell.pathComponentCell(at: pathControl.convert(event.locationInWindow, from: nil),
+                                                withFrame: pathControl.bounds, in: pathControl),
+           let index = cell.pathComponentCells.firstIndex(of: clicked), index < pathTargets.count {
+            path = pathTargets[index]
+        }
+        let name = path == "/" ? displayName(path) : RemotePath.name(path)
+        guard session == nil else { return FileItem(RemoteEntry(name: name, path: path, kind: .directory, size: 0, modified: nil)) }
+        return FileItem(local: name, path: path, kind: .directory, size: 0, modified: nil, mode: 0, owner: "", group: "")
+    }
+
+    /// Menu entries as items (nil: a separator), each with its tooltip.
+    private func add(_ entries: [(String, Selector)?], to menu: NSMenu) {
+        for entry in entries {
             guard let (title, action) = entry else {
                 if menu.items.last?.isSeparatorItem == false { menu.addItem(.separator()) }
                 continue
@@ -1187,11 +1260,6 @@ final class FilePane: NSViewController, NSTableViewDataSource, NSTableViewDelega
             item.toolTip = MenuHelp.tips[action]
             menu.addItem(item)
         }
-        if let snippets = runSnippetMenu() {
-            menu.addItem(.separator())
-            menu.addItem(snippets)
-        }
-        if menu.items.last?.isSeparatorItem == true { menu.removeItem(at: menu.numberOfItems - 1) }
     }
 
     @objc func toggleColumn(_ sender: NSMenuItem) {
@@ -1414,6 +1482,13 @@ private let filePromiseQueue: OperationQueue = {
 /// Trash with ⌘⌫, as in Finder), ⇧⌘. shows hidden files; the actions go up the responder chain to the pane (also while
 /// the Quick Look panel forwards its keys here).
 final class FileTableView: NSTableView {
+    /// Two empty rows' room below the last row: a full folder still has empty space to right-click for the folder's
+    /// own menu (New Folder, Paste…).
+    override func setFrameSize(_ newSize: NSSize) {
+        let rows = numberOfRows > 0 ? rect(ofRow: numberOfRows - 1).maxY : 0
+        super.setFrameSize(NSSize(width: newSize.width, height: max(newSize.height, rows + 2 * (rowHeight + intercellSpacing.height))))
+    }
+
     /// Hairlines between the rows there are, not down the empty space below them.
     override func drawGrid(inClipRect clipRect: NSRect) {
         guard numberOfRows > 0 else { return }

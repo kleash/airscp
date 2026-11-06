@@ -123,7 +123,7 @@ private func askpassHelper(_ prompt: String, environment: [String: String]) asyn
             #expect(session.state == .connected)
             saved.append(password)
         }
-        let environment = session.askpass.environment(for: host.id.uuidString)
+        let environment = session.askpass!.environment(for: host.id.uuidString)
         session.onPrompt = { prompt, reply in
             shown.append(prompt)
             switch prompt.kind {
@@ -149,7 +149,7 @@ private func askpassHelper(_ prompt: String, environment: [String: String]) asyn
         #expect(saved.all == ["typed password"])
 
         // Prompts for an id without a handler, or a cancelled one, make the helper fail (ssh then gives up).
-        #expect(await askpassHelper("Password:", environment: session.askpass.environment(for: "nobody")).status == 1)
+        #expect(await askpassHelper("Password:", environment: session.askpass!.environment(for: "nobody")).status == 1)
         session.onPrompt = { _, reply in reply(nil) }
         #expect(await askpassHelper("Verification code:", environment: environment).status == 1)
         var unreachable = environment

@@ -26,7 +26,9 @@ Yes: **View ▸ Show Command Log**. Every line can be copied and run in Terminal
 
 **Does it work with Windows servers?**
 Yes, in two ways. The built-in [Remote Desktop](remote-desktop/index.md) opens Windows desktops. And Windows' own
-OpenSSH server works for browsing and transfers. Commands, compress and the monitor need a Linux or Mac server.
+OpenSSH server works for browsing and transfers: the top of the path (the server's name) lists its drives, and the
+Terminal tab opens its own shell (cmd.exe or PowerShell) in the folder you are looking at. The Monitor tab shows its
+CPU, memory, drives, processes and ports, and tunnels work. Run commands and compress need a Linux or Mac server.
 
 **Does it support FTP or telnet?**
 No. AirSCP is for SSH (scp and sftp) and Remote Desktop. It can connect through HTTP and SOCKS5 proxies: see
@@ -40,7 +42,8 @@ Not automatically. Use **File ▸ Export Hosts…** and **Import Hosts…**. See
 No. [Synchronize](synchronize.md) runs when you ask it to.
 
 **Is there a built-in terminal?**
-Not yet. **Open Terminal** opens Terminal or iTerm on the host, without logging in again.
+Yes. Each host has a [Terminal tab](commands/terminal-tab.md) in AirSCP, which uses the connection that is open already.
+On iPhone and iPad, it's the [Terminal](iphone-ipad/terminal.md) tab.
 
 **My server is behind another server. Can AirSCP reach it?**
 Yes, through one jump host. See [Connect through a jump host](connecting/jump-hosts.md).

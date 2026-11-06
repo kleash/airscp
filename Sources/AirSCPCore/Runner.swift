@@ -83,14 +83,15 @@ public enum Runner {
 
     /// Runs `argv` to its end. `input` is written to its standard input (an sftp batch), else /dev/null.
     /// `log` is called on the main queue when it has finished. `standardOutput` and `errorOutput` get each part of the
-    /// output and the error output as it comes (on a background thread), which the result also has.
-    public static func run(_ argv: [String], input: String? = nil, environment: [String: String] = [:],
+    /// output and the error output as it comes (on a background thread), which the result also has. `secretInput`: the
+    /// input (a password) is left out of the command log and the debug log.
+    public static func run(_ argv: [String], input: String? = nil, secretInput: Bool = false, environment: [String: String] = [:],
                            cancellation: Cancellation? = nil, hostID: UUID? = nil, log: ((LogEntry) -> Void)? = nil,
                            standardOutput: ((Data) -> Void)? = nil, errorOutput: ((Data) -> Void)? = nil) async -> CommandResult {
         await withCheckedContinuation { continuation in
-            run(argv, input: input.map(Input.text) ?? .none, output: .collect(standardOutput), environment: environment,
-                hostID: hostID, cancellation: cancellation, errorOutput: errorOutput) { result in
-                report(argv, input: input, hostID: hostID, result: result, to: log)
+            run(argv, input: input.map(Input.text) ?? .none, secretInput: secretInput, output: .collect(standardOutput),
+                environment: environment, hostID: hostID, cancellation: cancellation, errorOutput: errorOutput) { result in
+                report(argv, input: secretInput ? nil : input, hostID: hostID, result: result, to: log)
                 continuation.resume(returning: result)
             }
         }
@@ -326,7 +327,7 @@ public enum Runner {
     /// Spawns, collects output, reaps; `completion` runs on a background thread. While the debug log is on, a host's
     /// commands run with the tools' debug output on, and their error output goes into the log (`DebugLog.ErrorOutput`:
     /// the result's stays as it would be without).
-    private static func run(_ argv: [String], input: Input, output: Output, environment: [String: String], hostID: UUID?,
+    private static func run(_ argv: [String], input: Input, secretInput: Bool = false, output: Output, environment: [String: String], hostID: UUID?,
                             cancellation: Cancellation?, errorOutput: ((Data) -> Void)? = nil,
                             completion: @escaping (CommandResult) -> Void) {
         var streamEnd: (() -> Void)?
@@ -384,7 +385,7 @@ public enum Runner {
             return
         }
         cancellation?.attach(pid)
-        let lines = logged ? DebugLog.ErrorOutput(argv, input: text, pid: pid, hostID: hostID) : nil
+        let lines = logged ? DebugLog.ErrorOutput(argv, input: secretInput ? nil : text, pid: pid, hostID: hostID) : nil
         if let text {
             let data = Array(text.utf8)
             let writer = inPipe[1]

@@ -1,5 +1,16 @@
 import Foundation
 
+/// How messages name this device and its controls: the Mac's words, or the iPhone and iPad app's.
+public enum Device {
+    #if os(macOS)
+    public static let this = "this Mac", refresh = "Refresh the list (⌘R)", getInfo = " (Get Info)", settings = "System Settings"
+    public static let click = "click", reconnect = "click Reconnect", connectFirst = "Click Connect in the banner first."
+    #else
+    public static let this = "this device", refresh = "Pull the list down", getInfo = "", settings = "Settings"
+    public static let click = "tap", reconnect = "tap the server in Servers", connectFirst = "Tap the server in Servers first."
+    #endif
+}
+
 /// An error with a message for people and the raw tool output under "Details".
 public struct AirSCPError: Error, LocalizedError, Equatable {
     public enum Kind: Equatable {
@@ -27,8 +38,8 @@ public struct AirSCPError: Error, LocalizedError, Equatable {
 
     public var errorDescription: String? { message }
 
-    static let cancelled = AirSCPError(.cancelled, "Cancelled.")
-    static let disconnected = AirSCPError(.disconnected, "The connection to the server was lost.")
+    public static let cancelled = AirSCPError(.cancelled, "Cancelled.")
+    public static let disconnected = AirSCPError(.disconnected, "The connection to the server was lost.")
 }
 
 /// Friendly messages for ssh, scp and sftp error output. The first matching rule wins.
@@ -63,7 +74,7 @@ public enum ErrorMapping {
         }
         if has("Host key verification failed") {
             return error(.hostKeyRejected, "The server's host key was not accepted, so AirSCP didn't connect. Connect again and "
-                + "click Trust if the fingerprint is the one you expect.")
+                + "\(Device.click) Trust if the fingerprint is the one you expect.")
         }
         // An option ssh doesn't know, from the host's Other options ("command-line: line 0: Bad configuration option: x").
         if let range = text.range(of: #"Bad configuration option: \S+"#, options: .regularExpression) {
@@ -126,10 +137,10 @@ public enum ErrorMapping {
         // scp's and tar's words for a failure on this Mac: not the server's.
         if has("write local") || has("open local") || has("local lstat") || has("stat local") || has("Write failed") {
             if has("No space left on device") || has("Disk quota exceeded") {
-                return error(.diskFull, "There isn't enough space on this Mac for the download.")
+                return error(.diskFull, "There isn't enough space on \(Device.this) for the download.")
             }
             if has("Permission denied") || has("Operation not permitted") || has("Read-only file system") {
-                return error(.permissionDenied, "AirSCP may not write or read that file on this Mac.")
+                return error(.permissionDenied, "AirSCP may not write or read that file on \(Device.this).")
             }
         }
         if has("No space left on device") || has("Disk quota exceeded") || (has("write remote") && has("Failure")) {
@@ -150,7 +161,7 @@ public enum ErrorMapping {
         }
         if has("Permission denied") || has("Operation not permitted") {
             return error(.permissionDenied, "The server didn't allow it: your account may not read or change this item. Check "
-                + "its owner and permissions (Get Info), or ask the server's administrator.")
+                + "its owner and permissions\(Device.getInfo), or ask the server's administrator.")
         }
         // scp's and sftp's words for a pipe, a socket or a device: there is nothing to copy.
         if has("not a regular file") {
@@ -162,7 +173,7 @@ public enum ErrorMapping {
         }
         // sftp says only "No such file" for a folder it can't go into ("realpath /a/b: No such file").
         if has("No such file") || has("\" not found") || has(": not found") {
-            return error(.noSuchFile, "The file or folder doesn't exist (any more). Refresh the list (⌘R) to see what is "
+            return error(.noSuchFile, "The file or folder doesn't exist (any more). \(Device.refresh) to see what is "
                 + "there now.")
         }
         if has(": Failure") || text.hasSuffix("Failure") {
@@ -190,15 +201,15 @@ public enum ErrorMapping {
             return error(.authFailed(methods: ""), "The session token has expired or isn't valid. Edit the connection: paste a "
                 + "new one, or leave it empty for a permanent key.")
         case "RequestTimeTooSkewed":
-            return error(.other, "This Mac's clock is too far off for the storage to accept the request. Turn on “Set time and "
-                + "date automatically” in System Settings ▸ General ▸ Date & Time.")
+            return error(.other, "The clock of \(Device.this) is too far off for the storage to accept the request. Turn on “Set time and "
+                + "date automatically” in \(Device.settings) ▸ General ▸ Date & Time.")
         case "AccessDenied", "AllAccessDisabled", "AccountProblem":
             return error(.permissionDenied, "The storage didn't allow it: this access key may not do that here. Ask whoever "
                 + "manages the keys to allow it (its policy).")
         case "NoSuchBucket":
             return error(.noSuchFile, "The bucket doesn't exist (any more), or it belongs to another account.")
         case "NoSuchKey", "NoSuchUpload":
-            return error(.noSuchFile, "The file or folder doesn't exist (any more). Refresh the list (⌘R) to see what is there now.")
+            return error(.noSuchFile, "The file or folder doesn't exist (any more). \(Device.refresh) to see what is there now.")
         case "PermanentRedirect", "AuthorizationHeaderMalformed", "IllegalLocationConstraintException":
             return error(.other, "The bucket is in another region than the connection's. Check Region in the connection's "
                 + "settings (Amazon S3 needs no endpoint and finds the region by itself).")
@@ -240,7 +251,7 @@ public enum ErrorMapping {
             return AirSCPError(.noRoute, "The storage can't be reached from this network. Check Wi-Fi or VPN.", details: details)
         case .secureConnectionFailed, .serverCertificateUntrusted, .serverCertificateHasBadDate, .serverCertificateHasUnknownRoot,
              .serverCertificateNotYetValid, .clientCertificateRejected:
-            return AirSCPError(.other, "The storage's certificate isn't trusted by this Mac, so AirSCP didn't connect.", details: details)
+            return AirSCPError(.other, "The storage's certificate isn't trusted by \(Device.this), so AirSCP didn't connect.", details: details)
         case .appTransportSecurityRequiresSecureConnection:
             // macOS's App Transport Security: plain http only to an IP address or a local name (nas, nas.local).
             return AirSCPError(.other, "macOS allows a plain http:// endpoint only at an IP address or a local name. Edit the "
@@ -256,8 +267,8 @@ public enum ErrorMapping {
     static func mapLocal(_ stderr: String, status: Int32) -> AirSCPError {
         let error = map(stderr, status: status)
         switch error.kind {
-        case .diskFull: return AirSCPError(.diskFull, "There isn't enough space on this Mac for the download.", details: error.details)
-        case .permissionDenied: return AirSCPError(.permissionDenied, "AirSCP may not write there on this Mac.", details: error.details)
+        case .diskFull: return AirSCPError(.diskFull, "There isn't enough space on \(Device.this) for the download.", details: error.details)
+        case .permissionDenied: return AirSCPError(.permissionDenied, "AirSCP may not write there on \(Device.this).", details: error.details)
         default: return error
         }
     }

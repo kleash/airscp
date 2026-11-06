@@ -6,7 +6,7 @@ nav_order: 2
 
 # Copy files
 
-Upload files from your Mac to a server, or download them from a server to your Mac.
+Upload files from your Mac to a server, download them from a server to your Mac, or copy them between two servers.
 
 ## Steps
 
@@ -30,15 +30,23 @@ The copies run in the **Transfers** list. See [Transfers and the queue](../trans
 
 - **File ▸ Copy to Other Pane** copies the selection into the folder the other pane shows. Its name says where:
   “Upload to …”, “Download to …”.
-- **Edit ▸ Copy** and **Edit ▸ Paste**. Files copied in Finder can be pasted into a server pane: they are uploaded.
+- **Edit ▸ Copy** and **Edit ▸ Paste** (or right-click ▸ **Copy**, then right-click ▸ **Paste**). Paste puts the items
+  into the folder the pane shows. Files copied in Finder can be pasted into a server pane: they are uploaded.
 - **File ▸ Upload…** chooses Mac files to upload.
 - **File ▸ Upload Compressed** packs the selected Mac items into one stream and unpacks them on the server.
 - **File ▸ Download as .tar.gz…**: see [Download as one archive](../transfers/download-as-archive.md).
 
+## Between two servers
+
+1. Show the other server in the left pane: the menu above it ▸ the server (see
+   [Two servers side by side](browse.md#two-servers-side-by-side)).
+2. Drag files from one pane to the other, or select them and click **Copy**.
+
 ## Within one server
 
 - Dragging inside one server **moves** the items. Hold <kbd>⌥</kbd> to copy instead.
-- **Edit ▸ Cut** and **Edit ▸ Paste** move too.
+- **Edit ▸ Copy** and **Edit ▸ Paste** copy (pasted into the same folder, the copy gets a new name, like “notes 2.txt”).
+- **Edit ▸ Cut** and **Edit ▸ Paste** move.
 
 ## Tips
 

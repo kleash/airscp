@@ -1,6 +1,8 @@
 // Draws AirSCP's app icon (a terminal prompt with an up and a down arrow on a teal rounded square) and writes
-// Resources/AppIcon.icns.
+// Resources/AppIcon.icns, or, given a .png, the iPhone and iPad app's: the square without its corners and shadow
+// (iOS rounds it), 1024 pixels, opaque.
 // Usage: swift scripts/make-icon.swift [output.icns]
+//        swift scripts/make-icon.swift ios/AirSCP/Assets.xcassets/AppIcon.appiconset/AppIcon.png
 import CoreGraphics
 import Foundation
 import ImageIO
@@ -29,9 +31,9 @@ func arrow(_ cg: CGContext, x: CGFloat, from y1: CGFloat, to y2: CGFloat, up: Bo
 }
 
 /// Draws the icon on a 1024×1024 canvas (y up).
-func draw(_ cg: CGContext) {
+func draw(_ cg: CGContext, corner: CGFloat = 185) {
     // Background: Apple's macOS icon grid, an 824-point rounded square with a soft drop shadow.
-    let body = CGPath(roundedRect: CGRect(x: 100, y: 100, width: 824, height: 824), cornerWidth: 185, cornerHeight: 185, transform: nil)
+    let body = CGPath(roundedRect: CGRect(x: 100, y: 100, width: 824, height: 824), cornerWidth: corner, cornerHeight: corner, transform: nil)
     cg.saveGState()
     cg.setShadow(offset: CGSize(width: 0, height: -10), blur: 24, color: color(0, 0, 0, 0.35))
     cg.addPath(body)
@@ -75,6 +77,24 @@ func draw(_ cg: CGContext) {
     arrow(cg, x: 740, from: 330, to: 640, up: false, fill: color(255, 196, 92))
 }
 
+func writePNG(_ cg: CGContext, to url: URL) {
+    let destination = CGImageDestinationCreateWithURL(url as CFURL, UTType.png.identifier as CFString, 1, nil)!
+    CGImageDestinationAddImage(destination, cg.makeImage()!, nil)
+    guard CGImageDestinationFinalize(destination) else { fatalError("can't write \(url.path)") }
+}
+
+if output.hasSuffix(".png") {
+    // The rounded square's inside fills the canvas; no alpha channel, which App Store Connect refuses in an iOS icon.
+    let cg = CGContext(data: nil, width: 1024, height: 1024, bitsPerComponent: 8, bytesPerRow: 0,
+                       space: CGColorSpace(name: CGColorSpace.sRGB)!, bitmapInfo: CGImageAlphaInfo.noneSkipLast.rawValue)!
+    cg.scaleBy(x: 1024 / 824, y: 1024 / 824)
+    cg.translateBy(x: -100, y: -100)
+    draw(cg, corner: 0)
+    writePNG(cg, to: URL(fileURLWithPath: output))
+    print("Wrote \(output)")
+    exit(0)
+}
+
 let fileManager = FileManager.default
 let iconset = fileManager.temporaryDirectory.appendingPathComponent("AppIcon-\(UUID().uuidString).iconset")
 try fileManager.createDirectory(at: iconset, withIntermediateDirectories: true)
@@ -86,10 +106,7 @@ for points in [16, 32, 128, 256, 512] {
                            space: CGColorSpace(name: CGColorSpace.sRGB)!, bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)!
         cg.scaleBy(x: CGFloat(pixels) / 1024, y: CGFloat(pixels) / 1024)
         draw(cg)
-        let name = "icon_\(points)x\(points)\(scale == 2 ? "@2x" : "").png"
-        let destination = CGImageDestinationCreateWithURL(iconset.appendingPathComponent(name) as CFURL, UTType.png.identifier as CFString, 1, nil)!
-        CGImageDestinationAddImage(destination, cg.makeImage()!, nil)
-        guard CGImageDestinationFinalize(destination) else { fatalError("can't write \(name)") }
+        writePNG(cg, to: iconset.appendingPathComponent("icon_\(points)x\(points)\(scale == 2 ? "@2x" : "").png"))
     }
 }
 let iconutil = Process()

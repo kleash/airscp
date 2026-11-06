@@ -33,6 +33,8 @@ final class AgentServer {
     /// change things without asking (Allow for 15 Minutes).
     private(set) var question: AgentQuestion?
     private(set) var allowedUntil: Date?
+    /// A `set` chooses in a SwiftUI pop-up's menu now (macOS 27).
+    private static var choosingInMenu = false
     /// The time, how long a question waits for its answer, and how it is put on the screen: tests change them.
     var now: () -> Date = Date.init
     var questionTimeout = AgentBridge.approvalWait
@@ -836,17 +838,33 @@ final class AgentServer {
                 if ((node.value as? NSNumber)?.boolValue ?? false) != on { _ = node.press() }
             } else if node.role == "popupbutton" || node.role == "menubutton" {
                 // macOS 27's SwiftUI draws its pop-ups itself (no NSPopUpButton): pressed, one opens its menu a moment later.
-                var menu: NSMenu?
-                let opening = NotificationCenter.default.publisher(for: NSMenu.didBeginTrackingNotification)
-                    .sink { menu = $0.object as? NSMenu }
-                defer { opening.cancel() }
+                // One at a time (other requests, other windows): the next menu to open is this pop-up's.
+                while Self.choosingInMenu { try? await Task.sleep(nanoseconds: 50_000_000) }
+                Self.choosingInMenu = true
+                defer { Self.choosingInMenu = false }
+                var menu: NSMenu?, chosen: Result<Void, Error>?, closed = false
+                let center = NotificationCenter.default
+                let opening = center.publisher(for: NSMenu.didBeginTrackingNotification).first().sink { note in
+                    guard let opened = note.object as? NSMenu else { return }
+                    menu = opened
+                    chosen = Result { opened.performActionForItem(at: opened.index(of: try self.choice(text, in: opened))) }
+                    // Closed by a timer in its own run loop once it tracks (closed here, it went on tracking and none
+                    // opened again), not by this request: a menu that opens in a run loop a main-queue block runs
+                    // (Process.waitUntilExit) holds up the main queue, and so this request, until it closes.
+                    opened.perform(#selector(NSMenu.cancelTrackingWithoutAnimation), with: nil, afterDelay: 0, inModes: [.common])
+                }
+                let closing = center.publisher(for: NSMenu.didEndTrackingNotification).sink { note in
+                    if let menu, note.object as? NSMenu === menu { closed = true }
+                }
+                defer {
+                    opening.cancel()
+                    closing.cancel()
+                }
                 _ = node.press()
                 let deadline = Date().addingTimeInterval(5)
-                while menu == nil && Date() < deadline { try? await Task.sleep(nanoseconds: 50_000_000) }
-                guard let menu else { throw Failure("“\(node.title.isEmpty ? node.id : node.title)” didn't open its menu.") }
-                // Closed from here, once it tracks: closed in the notification, it went on tracking and none opened again.
-                defer { menu.cancelTrackingWithoutAnimation() }
-                menu.performActionForItem(at: menu.index(of: try choice(text, in: menu)))
+                while !closed && (menu != nil || Date() < deadline) { try? await Task.sleep(nanoseconds: 50_000_000) }
+                guard let chosen else { throw Failure("“\(node.title.isEmpty ? node.id : node.title)” didn't open its menu.") }
+                try chosen.get()
             } else if node.object.responds(to: NSSelectorFromString("setAccessibilityValue:")) {
                 node.object.setValue(text, forKey: "accessibilityValue")
             } else {

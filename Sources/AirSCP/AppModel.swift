@@ -194,12 +194,14 @@ final class AppModel: ObservableObject {
         hostsJumping(through: id).map(\.displayName) + data.rdpEntries.filter { $0.viaHostID == id }.map(\.displayName)
     }
 
-    /// Deletes the host, its saved password and its Terminal tab's history. (Check `dependents(of:)` first.)
+    /// Deletes the host, its saved password, its Terminal tab's history and its Disk Usage records. (Check
+    /// `dependents(of:)` first.)
     func delete(_ id: UUID) {
         data.hosts.removeAll { $0.id == id }
         forgetPassword(id.uuidString)
         forgetPassword(S3Settings.tokenKey(id))
         CommandHistory(host: id).clear()
+        DiskUsageRecord.forget(host: id)
     }
 
     /// The hosts `host` may go through (one hop only): the others that have no jump host of their own, plus the

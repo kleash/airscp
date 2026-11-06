@@ -173,13 +173,13 @@ public final class S3Client {
         var dictionary: [AnyHashable: Any]?
         var login: URLCredential?
         if let proxy {
+            // The values of kCFNetworkProxiesSOCKSEnable and the others, which iOS's SDK doesn't name (CFNetwork reads them).
             if proxy.isSOCKS {
-                dictionary = [kCFNetworkProxiesSOCKSEnable as String: 1, kCFNetworkProxiesSOCKSProxy as String: proxy.host,
-                              kCFNetworkProxiesSOCKSPort as String: proxy.port]
+                dictionary = ["SOCKSEnable": 1, "SOCKSProxy": proxy.host, "SOCKSPort": proxy.port]
             } else {
                 dictionary = [kCFNetworkProxiesHTTPEnable as String: 1, kCFNetworkProxiesHTTPProxy as String: proxy.host,
-                              kCFNetworkProxiesHTTPPort as String: proxy.port, kCFNetworkProxiesHTTPSEnable as String: 1,
-                              kCFNetworkProxiesHTTPSProxy as String: proxy.host, kCFNetworkProxiesHTTPSPort as String: proxy.port]
+                              kCFNetworkProxiesHTTPPort as String: proxy.port, "HTTPSEnable": 1,
+                              "HTTPSProxy": proxy.host, "HTTPSPort": proxy.port]
             }
             if !proxy.username.isEmpty {
                 dictionary?[kCFProxyUsernameKey as String] = proxy.username
@@ -319,9 +319,10 @@ public final class S3Client {
     }
 
     /// Everything under `prefix` (every page): with `delimiter` the objects at its level and the common prefixes (the
-    /// folders); without it every object below. `maxKeys`: stop after that many.
+    /// folders); without it every object below. `maxKeys`: stop after that many. `page` gets each page's objects as they come.
     public func list(_ bucket: String, prefix: String, delimiter: String? = "/", maxKeys: Int? = nil,
-                     cancellation: Cancellation? = nil) async throws -> (objects: [S3Object], prefixes: [String]) {
+                     cancellation: Cancellation? = nil,
+                     page: (([S3Object]) -> Void)? = nil) async throws -> (objects: [S3Object], prefixes: [String]) {
         var objects: [S3Object] = [], prefixes: [String] = []
         var token: String?
         repeat {
@@ -335,12 +336,14 @@ public final class S3Client {
             guard let tree = XMLTree.parse(response.body) else {
                 throw AirSCPError(.other, "The storage's listing couldn't be read.", details: String(decoding: response.body, as: UTF8.self))
             }
+            let pageStart = objects.count
             for item in tree.all("Contents") {
                 guard let key = item.value("Key") else { continue }
                 objects.append(S3Object(key: key, size: Int64(item.value("Size") ?? "") ?? 0,
                                         modified: item.value("LastModified").flatMap(S3Dates.iso),
                                         etag: item.value("ETag") ?? "", storageClass: item.value("StorageClass") ?? ""))
             }
+            page?(Array(objects[pageStart...]))
             prefixes += tree.all("CommonPrefixes").compactMap { $0.value("Prefix") }
             token = tree.value("IsTruncated") == "true" ? tree.value("NextContinuationToken") : nil
             if let maxKeys, objects.count + prefixes.count >= maxKeys { break }
@@ -393,7 +396,7 @@ public final class S3Client {
         }
         do {
             guard let handle = FileHandle(forReadingAtPath: file.path) else {
-                throw AirSCPError(.permissionDenied, "AirSCP can't read \(file.lastPathComponent) on this Mac.")
+                throw AirSCPError(.permissionDenied, "AirSCP can't read \(file.lastPathComponent) on \(Device.this).")
             }
             defer { try? handle.close() }
             var parts: [(number: Int, etag: String, checksum: String?)] = []
@@ -411,7 +414,7 @@ public final class S3Client {
                 // if such files become common.
                 try handle.seek(toOffset: UInt64(offset))
                 guard let data = try handle.read(upToCount: Int(length)), data.count == length else {
-                    throw AirSCPError(.other, "\(file.lastPathComponent) changed on this Mac while it was uploaded.")
+                    throw AirSCPError(.other, "\(file.lastPathComponent) changed on \(Device.this) while it was uploaded.")
                 }
                 let base = sent
                 let (etag, checksum) = try await uploadPart(bucket, key, id: id, number: number, data: data,
@@ -595,7 +598,7 @@ public final class S3Client {
     /// The SHA-256 of a file, a megabyte at a time.
     static func sha256(_ file: URL, cancellation: Cancellation? = nil) throws -> Data {
         guard let handle = FileHandle(forReadingAtPath: file.path) else {
-            throw AirSCPError(.permissionDenied, "AirSCP can't read \(file.lastPathComponent) on this Mac.")
+            throw AirSCPError(.permissionDenied, "AirSCP can't read \(file.lastPathComponent) on \(Device.this).")
         }
         defer { try? handle.close() }
         var hash = SHA256()
@@ -609,7 +612,7 @@ public final class S3Client {
     /// The SHA-256 a storage keeps for a file uploaded in parts of `partSize`: of the parts' own SHA-256s, then "-N".
     static func compositeSHA256(_ file: URL, partSize: Int64) throws -> String {
         guard let handle = FileHandle(forReadingAtPath: file.path) else {
-            throw AirSCPError(.permissionDenied, "AirSCP can't read \(file.lastPathComponent) on this Mac.")
+            throw AirSCPError(.permissionDenied, "AirSCP can't read \(file.lastPathComponent) on \(Device.this).")
         }
         defer { try? handle.close() }
         var digests = Data(), count = 0
@@ -803,7 +806,7 @@ final class S3Transport: NSObject, URLSessionDataDelegate {
             do {
                 try file.write(contentsOf: data)
             } catch {
-                exchange.failure = AirSCPError(.diskFull, "AirSCP couldn't write the download on this Mac: \(error.localizedDescription)")
+                exchange.failure = AirSCPError(.diskFull, "AirSCP couldn't write the download on \(Device.this): \(error.localizedDescription)")
                 return dataTask.cancel()
             }
             exchange.bytes += Int64(data.count)

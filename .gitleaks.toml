@@ -27,3 +27,11 @@ description = "The docs pictures' demo S3 key"
 targetRules = ["curl-auth-user"]
 regexTarget = "secret"
 regexes = ['''^shop-uploader:docs-demo-secret$''']
+
+# A made-up ed25519 public host key in the iPhone and iPad UI tests (ShellTests.swift), written to a throwaway
+# known_hosts to show a trusted server: public, and no server's.
+[[allowlists]]
+description = "The iOS UI tests' made-up public host key"
+targetRules = ["generic-api-key"]
+regexTarget = "secret"
+regexes = ['''^AAAAC3NzaC1lZDI1NTE5AAAAIEw1Ql0V1J5Qm3nJXnqH9V9l2kqYQf1kYVbq1o2bq0Yd$''']

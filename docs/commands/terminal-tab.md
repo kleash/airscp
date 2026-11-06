@@ -18,10 +18,14 @@ search.
 2. Click **Terminal** above the files, or choose **Host ▸ Terminal Tab** (<kbd>⌃⌘T</kbd>).
 3. Type as in any terminal. Programs such as `less`, `vim`, `top` and `nano` work full screen.
 
+The shell starts in the folder the Files tab's server pane shows. On a Windows server it is the server's own shell
+(cmd.exe or PowerShell), also in that folder.
+
 ## Open more shells in tabs
 
 Click **+** above the terminal, or choose **Host ▸ New Terminal Tab** (<kbd>⇧⌘T</kbd>). The new shell starts in the
-folder of the one you were looking at, on the same connection: no second login.
+folder of the one you were looking at (when AirSCP can't tell, in the Files tab's folder), on the same connection: no
+second login.
 
 - Click a tab to show its shell. **Host ▸ Show Previous Terminal Tab** (<kbd>⇧⌘[</kbd>) and **Show Next Terminal Tab**
   (<kbd>⇧⌘]</kbd>) go through them.
@@ -60,10 +64,13 @@ the one below. **Done** (or <kbd>Esc</kbd>) closes the find bar.
 
 ## Keep the Files tab in the same folder
 
-Tick **Follow in Files** at the top of the tab. Each time you `cd` to another folder, the Files tab's server pane goes
-there too. It goes only where the shell itself says it is: a folder that a program prints can't move it.
+Tick **Follow in Files** at the top of the tab. The shell goes to the folder the Files tab's server pane shows (AirSCP
+types `cd` at its empty prompt); the server pane stays where it is. After that, each time you `cd` to another folder,
+the server pane goes there too. It goes only where the shell itself says it is: a folder that a program prints can't move it. And each time
+you open a folder in the server pane, AirSCP types `cd` with that folder at the shell's empty prompt, so the shell goes
+there too. While a command runs, AirSCP types nothing.
 
-To go the other way, turn on **Open Terminal Here and Run in Terminal in the Terminal tab** in **AirSCP ▸ Settings…**.
+Without Follow in Files, turn on **Open Terminal Here and Run in Terminal in the Terminal tab** in **AirSCP ▸ Settings…**.
 Then a server folder's **Open Terminal Here** (<kbd>⌥⌘T</kbd>) goes to this tab. If the shell is at an empty prompt,
 AirSCP types `cd` with the folder for you. If it is busy, or isn't bash or zsh (AirSCP can't tell when such a shell
 waits), AirSCP opens a new tab in that folder instead, and never types into the busy one.
@@ -143,7 +150,7 @@ own shell, as in any terminal. **Insert Path…** and **History…** are AirSCP'
 
 ## Tips
 
-- Select text by dragging; <kbd>⌘C</kbd> copies it and <kbd>⌘V</kbd> pastes. A double-click selects a word.
+- Select text by dragging (only the text you drag over is highlighted); <kbd>⌘C</kbd> copies it and <kbd>⌘V</kbd> pastes. A double-click selects a word.
 - Scroll up to see earlier output. **Clear Scrollback** (right-click) forgets it.
 - <kbd>⌃C</kbd>, <kbd>⌃D</kbd> and the other Ctrl keys go to the shell. <kbd>⌘</kbd> shortcuts stay AirSCP's.
 - When the shell ends (you typed `exit`, or the connection dropped), press <kbd>Return</kbd> in its tab for a new one.

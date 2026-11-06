@@ -2,10 +2,13 @@
 # published since the last run shows then). Any finding fails the run.
 # - OSV-Scanner checks sbom.spdx.json (FreeRDP and OpenSSL, as scripts/build-freerdp.sh pins them) against the OSV
 #   database (osv.dev), after showing that it sees these two at all: the same SBOM with older releases must fail.
+# - libssh2 (the iPhone and iPad app's), pinned to a commit in scripts/build-libssh2.sh, which OSV-Scanner can't look
+#   up: OSV's API checks the commit, after showing that it flags 1.11.1's.
 # - FreeRDP's own GitHub security advisories: OSV's FreeRDP records list no release after 3.5.1, so each advisory must
 #   be fixed at or before the pinned release.
 # - gitleaks looks for secrets in every commit (.gitleaks.toml lists its verified false positives).
-# A CVE in FreeRDP or OpenSSL is fixed by a newer pin in scripts/build-freerdp.sh, then scripts/sbom.sh.
+# A CVE in FreeRDP or OpenSSL is fixed by a newer pin in scripts/build-freerdp.sh (libssh2: build-libssh2.sh), then
+# scripts/sbom.sh.
 name: Vulnerability scan
 
 # Pull requests, merges into main, by hand, and as a gate in release.yml, so no release ships with a known
@@ -64,6 +67,26 @@ jobs:
       - name: OSV-Scanner on the SBOM
         run: |
           "$RUNNER_TEMP/osv-scanner" scan source -L sbom.spdx.json
+
+      # OSV-Scanner finds nothing for a commit (the SBOM's pkg:git/…@<commit>); OSV's API knows which commits each
+      # vulnerability affects.
+      - name: libssh2's commit in OSV (1.11.1's commit must be flagged)
+        run: |
+          pin=$(sed -n 's/^libssh2_commit=//p' scripts/build-libssh2.sh)
+          vulns() {
+            curl -fsS --retry 3 -X POST https://api.osv.dev/v1/query -d "{\"commit\": \"$1\"}" | jq -r '[.vulns[]?.id] | join(" ")'
+          }
+          old=$(vulns a312b43325e3383c865a87bb1d26cb52e3292641)
+          if [ -z "$old" ]; then
+            echo "::error::OSV lists nothing for libssh2 1.11.1's commit: it can't see libssh2's commits, so checking the pin would prove nothing"
+            exit 1
+          fi
+          found=$(vulns "$pin")
+          if [ -n "$found" ]; then
+            echo "::error::libssh2 $pin (scripts/build-libssh2.sh) has known vulnerabilities: $found"
+            exit 1
+          fi
+          echo "libssh2 $pin: nothing known in OSV, which flags 1.11.1's commit ($old)."
 
       # Advisories that name no fixed release are read by hand and listed here with why they don't apply:
       #   GHSA-rqgv-grx4-xm6x  RDSTLS server authentication: fixed in FreeRDP 3.30.0 (its release notes), and AirSCP is

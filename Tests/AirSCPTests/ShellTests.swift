@@ -395,6 +395,59 @@ private func report(_ state: Session.State, _ workspace: HostWorkspace?) {
     }
 }
 
+/// The left pane's source menu lists the saved servers that aren't connected: choosing one connects it (the window
+/// keeps showing its host) and shows it there, ready for copies between the two servers. A failed connect leaves the
+/// pane as it was.
+@MainActor @Test func theLeftPaneConnectsASavedServer() async throws {
+    _ = NSApplication.shared
+    try await withServer { @MainActor server in
+        var a = server.host(), b = server.host()  // the same sshd saved twice
+        a.label = "web"
+        b.label = "db"
+        var refused = SSHHost(label: "refused", hostname: "127.0.0.1", port: 1)
+        refused.extraOptions = ["ConnectTimeout=5"]
+        let model = testModel([a, b, refused])
+        let askpass = try AskpassServer(helperPath: TestEnvironment.airscpBinary)
+        defer { askpass.close() }
+        let main = testWindow(model, askpass)
+        defer { main.window?.orderOut(nil) }
+        main.sidebar.selection = .host(a.id)
+        let workspace = try #require(main.selectedWorkspace)
+        _ = try await workspace.connectedSession()
+        let browser = workspace.browser!
+        _ = browser.view
+        let left = try #require(browser.left), menu = try #require(left.sourceButton.menu)
+        @MainActor func items() -> [NSMenuItem] {
+            left.menuNeedsUpdate(menu)
+            return menu.items
+        }
+        #expect(await eventually { items().map(\.title) == ["This Mac", "web", "", "Connect To", "db", "refused"] })
+        #expect(items().allSatisfy { $0.isSeparatorItem || $0.toolTip?.isEmpty == false })
+
+        // A refused connect: its error on the main window, the pane still on this Mac.
+        let refusedItem = try #require(items().first { $0.title == "refused" })
+        NSApp.sendAction(refusedItem.action!, to: refusedItem.target, from: refusedItem)
+        #expect(left.sourceButton.titleOfSelectedItem == "Connecting to refused…")
+        #expect(await eventually { main.window?.attachedSheet != nil && left.sourceButton.titleOfSelectedItem == "This Mac" })
+        if let sheet = main.window?.attachedSheet { main.window?.endSheet(sheet) }
+        #expect(left.session == nil && main.sidebar.selection == .host(a.id))
+
+        // db: connected without being selected, shown on the left; copies go server to server.
+        let db = try #require(items().first { $0.title == "db" })
+        NSApp.sendAction(db.action!, to: db.target, from: db)
+        #expect(await eventually { left.session?.host.id == b.id && left.dir == server.home })
+        #expect(main.sidebar.selection == .host(a.id) && model.connected.contains(b.id))
+        #expect(left.sourceButton.titleOfSelectedItem == "db")
+        #expect(items().map(\.title) == ["This Mac", "web", "db", "", "Connect To", "refused"])
+        #expect(browser.transferTitle(for: browser.right).menu == "Copy to db “\(RemotePath.name(server.home))”")
+
+        main.workspaces[b.id]?.disconnect()
+        #expect(await eventually { left.session == nil })  // back to this Mac
+        workspace.disconnect()
+        #expect(await eventually { model.connected.isEmpty })
+    }
+}
+
 // MARK: Window sizes
 
 /// A frame AppKit saved is used only when it lies on a screen: Porter's main window, saved taller than the screen,

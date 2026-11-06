@@ -1,14 +1,15 @@
 ---
 title: Home
 nav_order: 1
-description: Step-by-step help for AirSCP, the Mac app for SSH servers, file transfers and Windows desktops.
+description: Step-by-step help for AirSCP, the Mac, iPhone and iPad app for SSH servers, file transfers and Windows desktops.
 ---
 
 # AirSCP Help
 
 AirSCP is a Mac app for your servers. You save your servers once. Then you click to connect, and you drag files between
 your Mac and the server. AirSCP also opens Windows desktops (Remote Desktop), shows what a Linux server is doing, and
-opens tunnels. You don't need to type commands.
+opens tunnels. You don't need to type commands. AirSCP is on iPhone and iPad too: see
+[iPhone and iPad](iphone-ipad/index.md).
 
 {% include shot.html name="main-window" alt="The AirSCP window: saved servers on the left, files on this Mac and on a server side by side, and transfers at the bottom" %}
 
@@ -33,7 +34,7 @@ opens tunnels. You don't need to type commands.
 | Free up disk space | [See what takes the room on a disk](disk-usage.md) |
 | Work on a Windows computer | [Remote Desktop (Windows)](remote-desktop/index.md) |
 | Open Amazon S3 or similar storage | [S3 storage](s3/index.md) |
-| See CPU, memory and processes | [Watch a Linux server](monitor.md) |
+| See CPU, memory and processes | [Watch a Linux or Mac server](monitor.md) |
 | Reach a database behind a server | [Open a tunnel](tunnels.md) |
 | Log in without a password | [Make a new key pair](keys/new-key-pair.md) |
 | Let an AI agent use AirSCP | [AI agents (MCP)](ai-agents.md) |

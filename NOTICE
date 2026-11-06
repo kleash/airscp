@@ -3,7 +3,7 @@ Copyright 2026 kleash
 
 Licensed under the Apache License, Version 2.0 (see LICENSE).
 
-The app includes, statically linked, two libraries that are also licensed under the Apache License, Version 2.0:
+The Mac app includes, statically linked, two libraries that are also licensed under the Apache License, Version 2.0:
 
 - FreeRDP (https://github.com/FreeRDP/FreeRDP), the Remote Desktop client.
   Copyright the FreeRDP contributors.
@@ -14,5 +14,9 @@ Their versions are pinned in scripts/build-freerdp.sh. Their licence texts ship 
 (AirSCP.app/Contents/Resources/Licenses) and are in this repository under Resources/Licenses, with the notices of the
 few parts of FreeRDP that are under other permissive terms (FreeRDP-third-party.txt: a public-domain MD4, Unicode
 data tables, and three headers under a permission notice).
+
+The iPhone and iPad app includes, statically linked, the same OpenSSL and libssh2 (https://libssh2.org), its SSH
+client, under the BSD 3-Clause licence: Copyright the libssh2 contributors. libssh2 is pinned in
+scripts/build-libssh2.sh. Both licence texts ship in that app (ios/AirSCP/Licenses in this repository).
 
 The tests, not the app, build PuTTY's puttygen from its source (MIT licence) to check .ppk files: testenv/putty.
