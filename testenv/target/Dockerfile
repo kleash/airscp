@@ -1,7 +1,7 @@
 # Porter lab "target": a Debian server with PAM passwords, a shell and the usual tools.
 #   dev       password porter-dev or the lab key; bash with a noisy .bashrc; sudo (asks for the password)
 #   sftponly  password porter-sftp or the lab key; sftp only, locked into /srv/sftp (it sees /upload)
-FROM debian:stable-slim@sha256:5bc3287b25407c965a30f38e32603dc253a3869e1b12a21ac09bfc27fd8b13ce
+FROM debian:stable-slim@sha256:13e0a2e78aa0554ad5ff66e4e260c6dbcdff807eb1f39d43b9fb0288aae88b04
 
 RUN apt-get update \
  && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
