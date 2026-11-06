@@ -143,6 +143,10 @@ struct RootView: View {
         .onChange(of: showsWorkspaces, initial: true) { _, shown in
             if shown { listsWorkspaces = true } else { Task { listsWorkspaces = false } }
         }
+        // Each server's terminal as it connects, not as the Terminal tab or a workspace first shows: made then, the
+        // window redrew while the tab bar moved, which went back to the tab before for a moment (and an iPhone Duo's
+        // rail lost the Files side's New Folder and More, iOS 27).
+        .onChange(of: app.states, initial: true) { terminals.sync(with: app) }
         // Opened for a server: its workspace, or on a narrow window its files in the Files tab.
         .onAppear {
             guard let id = server else { return }

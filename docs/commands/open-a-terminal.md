@@ -10,7 +10,8 @@ Open an ssh session to a host in Terminal or iTerm. It rides on AirSCP's open co
 
 ## Steps
 
-- **Host ▸ Open Terminal** (<kbd>⌘T</kbd>), or the **Open Terminal** button in the toolbar.
+- **Host ▸ Open Terminal** (<kbd>⌘T</kbd>), or the **Open Terminal** button in the toolbar. The shell starts in the
+  folder the Files tab's server pane shows.
 - To start in the folder you are looking at: right-click in the server pane and choose **Open Terminal Here**
   (<kbd>⌥⌘T</kbd>).
 - To use iTerm instead of Terminal: **AirSCP ▸ Settings… ▸ Open terminals in**.

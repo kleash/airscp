@@ -43,7 +43,7 @@ opens tunnels. You don't need to type commands. AirSCP is on iPhone and iPad too
 | Free up disk space | [See what takes the room on a disk](https://kleash.github.io/airscp/disk-usage.html) |
 | Work on a Windows computer | [Remote Desktop (Windows)](https://kleash.github.io/airscp/remote-desktop/) |
 | Open Amazon S3 or similar storage | [S3 storage](https://kleash.github.io/airscp/s3/) |
-| See CPU, memory and processes | [Watch a Linux server](https://kleash.github.io/airscp/monitor.html) |
+| See CPU, memory and processes | [Watch a Linux or Mac server](https://kleash.github.io/airscp/monitor.html) |
 | Reach a database behind a server | [Open a tunnel](https://kleash.github.io/airscp/tunnels.html) |
 | Log in without a password | [Make a new key pair](https://kleash.github.io/airscp/keys/new-key-pair.html) |
 | Let an AI agent use AirSCP | [AI agents (MCP)](https://kleash.github.io/airscp/ai-agents.html) |
@@ -263,7 +263,7 @@ hosts and proxies, and its keep-alive. For a connected Linux server, three small
 ## The tabs
 
 - **Files**: two panes. The left pane is this Mac (or another server), the right pane is the selected server.
-- **Monitor**: CPU, memory, disks, processes and ports of a Linux server. See [Monitor](https://kleash.github.io/airscp/monitor.html).
+- **Monitor**: CPU, memory, disks, processes and ports of a Linux or Mac server. See [Monitor](https://kleash.github.io/airscp/monitor.html).
 - **Tunnels**: port forwards through the connection. See [Tunnels](https://kleash.github.io/airscp/tunnels.html).
 
 ## The Transfers list (bottom)
@@ -611,6 +611,7 @@ When a command prints a file's name with a line number (an error from a compiler
 - Tap **+** (New Terminal) and choose an open server: another shell there.
 - With more than one terminal, the menu at the top left shows another one. **Close Terminal** (**×**) ends the shell
   you see; a server's last terminal stays.
+- To end the last one, tap **Disconnect** (**ⓧ**) at the top left: it closes the connection to the server too.
 - When the shell ends, for example after `exit`, tap **Return** for a new one.
 
 ## Tips
@@ -641,6 +642,7 @@ the copy that runs also shows just above the tabs: tap it to open **Transfers**.
 - **Done**: the copies that finished.
 
 Each row shows the name, the way it goes (for example **web-01 → iPhone**), how far it is, the speed and the time left.
+A folder also shows the file being copied, and how many files are done and how many are to go.
 **Checksums match** means AirSCP compared the copied file with the original (SHA-256): they are the same.
 
 ## Steps
@@ -723,7 +725,7 @@ Source: https://kleash.github.io/airscp/iphone-ipad/monitor.html
 
 # Monitor on iPhone and iPad
 
-See what a Linux server is doing: its CPU, memory, disks and busiest processes. You can also stop a process.
+See what a Linux or Mac server is doing: its CPU, memory, disks and busiest processes. You can also stop a process.
 
 ## Steps
 
@@ -753,7 +755,7 @@ See what a Linux server is doing: its CPU, memory, disks and busiest processes. 
   read servers in the background.
 - Your account may stop only its own processes. For another user's, AirSCP gives you the `sudo kill` command to type in
   the [terminal](https://kleash.github.io/airscp/iphone-ipad/terminal.html).
-- The monitor works on Linux servers. Other servers, accounts that allow file transfers (sftp) only, and S3 storage have
+- The monitor works on Linux and Mac servers. Other servers, accounts that allow file transfers (sftp) only, and S3 storage have
   none.
 
 
@@ -1503,8 +1505,11 @@ Move around a server's folders like in Finder.
 - **Go up**: the **↑** button, or <kbd>⌘↑</kbd> (**Go ▸ Enclosing Folder**).
 - **Back and forward**: the arrow buttons, or <kbd>⌘[</kbd> and <kbd>⌘]</kbd>.
 - **Home folder**: the house button, or <kbd>⇧⌘H</kbd>.
-- **Type a path**: <kbd>⇧⌘G</kbd> (**Go ▸ Go to Folder…**). `~` means your home folder.
+- **Type a path**: click the folder shown at the end of the path bar, or press <kbd>⇧⌘G</kbd> (**Go ▸ Go to
+  Folder…**). Type the path and press <kbd>Return</kbd>. `~` means your home folder.
 - **Click a folder in the path bar** under the buttons to jump there.
+- **Right-click a folder in the path bar** for its commands: **Open**, **Get Info**, **Download To…**, **Rename…**,
+  **Copy Path** and more.
 - **Filter**: type in **Filter by name** (or press <kbd>⌘F</kbd>) to show only matching names.
 - **Hidden files**: the eye button, or <kbd>⇧⌘.</kbd>, shows names that start with a dot.
 - **Refresh**: the circle arrow, or <kbd>⌘R</kbd>.
@@ -1514,12 +1519,23 @@ Move around a server's folders like in Finder.
 ## Columns and sorting
 
 - Click a column heading to sort by it. Click again to reverse.
-- Right-click the headings (or **View ▸ Columns**) to show or hide columns: size, date modified, permissions, owner,
-  group and kind.
+- Right-click the headings (or **View ▸ Columns**) to show or hide columns: size, date modified, kind, permissions,
+  owner and group. Drag a heading to move its column.
 - **Owner** and **Group** show names, as **Get Info** does. Point at one to see its number (user ID or group ID).
   Servers that allow only file transfers (sftp) show the names without numbers.
 - Folders show “—” as their size. **View ▸ Calculate Folder Sizes** (the **Σ** button) works them out. **Settings** can
   do it always.
+
+## Two servers side by side
+
+The right pane shows the server you selected. The left pane shows this Mac, or another server.
+
+1. Click the menu above the left pane (it says **This Mac**).
+2. Choose a server. Servers that are not connected are under **Connect To**: choosing one connects it first.
+3. The left pane shows that server. Copy files between the two panes as usual: they go from server to server.
+
+Choose **This Mac** in the same menu to go back. When the server on the left disconnects, the left pane shows this
+Mac again.
 
 ## Favourites
 
@@ -1531,6 +1547,8 @@ Move around a server's folders like in Finder.
 
 ## Tips
 
+- There is always some empty space below the last item. Right-click it for the folder's own menu (**New Folder…**,
+  **Paste**, **Show in Finder**…), even when the folder is full.
 - The status line under each pane shows the number of items, your selection and its size, and the free space.
 - A folder your account can't read shows an error, not an empty list.
 - Large folders list fast: 50,000 items in about a second on most Linux servers.
@@ -1542,7 +1560,7 @@ Source: https://kleash.github.io/airscp/files/copy-files.html
 
 # Copy files
 
-Upload files from your Mac to a server, or download them from a server to your Mac.
+Upload files from your Mac to a server, download them from a server to your Mac, or copy them between two servers.
 
 ## Steps
 
@@ -1566,15 +1584,23 @@ The copies run in the **Transfers** list. See [Transfers and the queue](https://
 
 - **File ▸ Copy to Other Pane** copies the selection into the folder the other pane shows. Its name says where:
   “Upload to …”, “Download to …”.
-- **Edit ▸ Copy** and **Edit ▸ Paste**. Files copied in Finder can be pasted into a server pane: they are uploaded.
+- **Edit ▸ Copy** and **Edit ▸ Paste** (or right-click ▸ **Copy**, then right-click ▸ **Paste**). Paste puts the items
+  into the folder the pane shows. Files copied in Finder can be pasted into a server pane: they are uploaded.
 - **File ▸ Upload…** chooses Mac files to upload.
 - **File ▸ Upload Compressed** packs the selected Mac items into one stream and unpacks them on the server.
 - **File ▸ Download as .tar.gz…**: see [Download as one archive](https://kleash.github.io/airscp/transfers/download-as-archive.html).
 
+## Between two servers
+
+1. Show the other server in the left pane: the menu above it ▸ the server (see
+   [Two servers side by side](https://kleash.github.io/airscp/files/browse.html#two-servers-side-by-side)).
+2. Drag files from one pane to the other, or select them and click **Copy**.
+
 ## Within one server
 
 - Dragging inside one server **moves** the items. Hold <kbd>⌥</kbd> to copy instead.
-- **Edit ▸ Cut** and **Edit ▸ Paste** move too.
+- **Edit ▸ Copy** and **Edit ▸ Paste** copy (pasted into the same folder, the copy gets a new name, like “notes 2.txt”).
+- **Edit ▸ Cut** and **Edit ▸ Paste** move.
 
 ## Tips
 
@@ -1696,6 +1722,7 @@ Open a server file in its Mac app, preview it, or edit a text file right in AirS
   and press <kbd>⌘S</kbd> to save it back to the server.
 - **Open in its app**: double-click the file, or choose **File ▸ Open** (<kbd>⌘O</kbd>). AirSCP downloads it and opens
   it. When you save it in that app, AirSCP offers to upload it again.
+- **Open in another app**: right-click the file ▸ **Open With**, and choose the app (or **Other…** to pick one).
 - **Preview**: press <kbd>Space</kbd> (Quick Look), for files up to 100 MB.
 
 (Picture: AirSCP's editor with notes.txt from the server, and Revert and Save buttons)
@@ -1750,6 +1777,7 @@ Everyday file commands work on servers like in Finder. Right-click a file, or us
 
 ## Tips
 
+- In the Delete question, <kbd>Return</kbd> deletes and <kbd>Esc</kbd> cancels.
 - Delete on a server can't be undone. Turn the question off only if you are sure: **Settings ▸ Ask before deleting on
   a server**.
 - Deleting folders works on file-transfer-only (sftp) accounts too.
@@ -1820,7 +1848,7 @@ Make a `.zip` or `.tar.gz` archive on the server, or unpack one there. Nothing g
 
 Source: https://kleash.github.io/airscp/files/select-and-compare.html
 
-# Select by pattern, compare folders, move, link
+# Select by pattern, compare files and folders, move, link
 
 Commands for many files at once, and for arranging files on a server.
 
@@ -1831,7 +1859,36 @@ Commands for many files at once, and for arranging files on a server.
 - **Edit ▸ Deselect by Pattern…** (<kbd>⌘-</kbd>): takes the matching items out of the selection.
 - **Edit ▸ Select Same Kind**: selects every item with the selected item's extension (all `.jpg` files, say).
 - **Edit ▸ Invert Selection** (<kbd>⇧⌘I</kbd>): selects what wasn't selected.
-- **File ▸ Copy Names**: copies the names of the selection, one per line (**Copy Path** copies full paths).
+- **File ▸ Copy Names**: copies the names of the selection, one per line (**Copy Path**, <kbd>⌥⌘C</kbd>, copies full
+  paths). To copy the path of a folder, right-click it in the path above the list and choose **Copy Path**.
+
+## Compare two files
+
+1. Select two files in one pane (click one, then <kbd>⌘</kbd>-click the other). Or select one file in each pane: a
+   file on this Mac and one on a server, say.
+2. Right-click one of them and choose **Compare** (with one file in each pane: **Compare with “name”**).
+3. A window shows the two files side by side, line by line:
+   - Red lines are only in the left file, green lines only in the right file. A grey gap stands opposite them.
+   - A line that changed is tinted on both sides, and the letters that changed are darker.
+   - The bar at the far right marks where the differences are. Click a mark to go there.
+
+What you can do in the window:
+
+- **Previous** and **Next** (<kbd>⌥⌘↑</kbd> and <kbd>⌥⌘↓</kbd>) go from one difference to the next. "3 of 12" says
+  where you are.
+- **Sync Scrolling** keeps both sides scrolling together. Turn it off to scroll one side alone.
+- **Ignore** leaves out **Whitespace**, **Case** or **Blank Lines**. The window's title bar then says, for example,
+  "The files are the same apart from whitespace".
+- **Prettify** lays out JSON or XML files neatly on both sides, then compares again. **Original** (or <kbd>⌘Z</kbd>)
+  puts the text back.
+- **Copy →** and **← Copy** copy the difference shown to the other side. **Save Left** or **Save Right** then writes
+  that side back to its file (on this Mac or on the server). <kbd>⌘Z</kbd> undoes a copy.
+- **Swap** puts the files the other way round. **Reload** reads both files again. **Find** (<kbd>⌘F</kbd>) looks for
+  text in the side you clicked last.
+
+Compare shows plain text files (UTF-8) up to 4 MB side by side. Other files (pictures, programs, archives, or larger
+files) are compared by their SHA-256 checksum instead: the window shows each file's size and checksum, and says **The
+files are the same** or **The files are different**. Click **Stop** to stop a long check.
 
 ## Compare two folders
 
@@ -2131,41 +2188,88 @@ what it would copy. Nothing is copied until you click **Synchronize**.
 
 Source: https://kleash.github.io/airscp/disk-usage.html
 
-# See what takes the room on a disk
+# Find what fills a disk
 
-Find the big folders and files below a folder, on a server or on this Mac, and delete what you don't need.
+Disk Usage shows what takes the room below a folder: on a server, on S3 storage or on this Mac. It shows how full the
+disk is, the biggest folders and files, totals by file type, and what grew since the last time you looked.
 
 ## Steps
 
 1. In a pane, open the folder to look into (or select one folder in it).
 2. Choose **File ▸ Disk Usage…**, or right-click an empty part of the pane.
-3. AirSCP scans everything below the folder. While it runs, the bar shows how far it is, the files it finds show
-   with their sizes, and the rings and the list grow as the sizes add up.
-4. The rings: the folder is in the middle, its items around it, and what is in them further out. The wider an arc,
+3. A window opens and AirSCP measures everything below the folder. You can keep working in the panes while it runs.
+4. At the top: the folder, its server, and the disk's bar: this folder, the rest that is used, and what is free
+   ("This folder: 12 GB of 98 GB used, 31 GB free").
+5. The rings: the folder is in the middle, its items around it, and what is in them further out. The wider an arc,
    the more room it takes. Point at an arc to see its name and size. Click a folder's arc to go into it; click the
    middle to go up.
-5. The list: the folder's items, largest first, with their share of the folder. Double-click a folder to go into it,
-   or click **↑** to go up. Choose **Largest Files** to see the 200 biggest files at any depth below.
-6. Select what you don't need and click **Delete…**. AirSCP asks first. On a server it deletes the items (folders with
-   everything in them); on this Mac it moves them to the Trash: empty the Trash to free the space.
-7. Or select an item and click **Show** (or right-click ▸ **Show in Pane**): the pane goes to its folder and selects
-   it. **Copy Paths** copies the full paths, one per line. On this Mac, **Show in Finder** selects them in a Finder
-   window.
+6. The list: the folder's items, largest first, with their share of the folder. Double-click a folder to go into it.
+   Use **‹** (back), **↑** (up) or the folder names at the top of the list to go back. Click a column title to sort.
+   Type in **Filter** to show only some names.
+
+Opening Disk Usage again for the same folder brings its window to the front. Closing the window stops a scan.
+
+## Choose a view
+
+- **Contents**: the folder's items by size.
+- **Largest Files**: the 200 biggest files at any depth below.
+- **By Type**: the room each kind of file takes (.log, .mp4…), with how many there are. Double-click a type (or
+  select it and click **Show Largest Files**) to see its largest files.
+- **Changes**: what grew or shrank since the last scan of this folder, the biggest growth first.
+- **Open but Deleted**: files that were deleted while a program still has them open (see below).
+
+## Free space
+
+Select what you don't need, then:
+
+- **Delete…**: AirSCP asks first. On a server it deletes the items (folders with everything in them); on this Mac it
+  moves them to the Trash: empty the Trash to free the space.
+- **Empty File…**: makes a file 0 bytes. The file stays, but its room is free at once, even while a program writes
+  to it. This is the way to shrink a big log. AirSCP asks first and says how much it frees.
+- **Download as .tar.gz…** (from S3 storage, **Download as .zip…**): keep a copy on this Mac before you delete. The
+  download runs in the Transfers queue.
+
+Other buttons: **Open** goes into a folder. **Show in Pane** goes to the item in the Files tab. **Copy Paths** copies
+the full paths, one per line. On this Mac, **Show in Finder** selects the items in a Finder window.
+
+## Deleted files that still take room
+
+When a program has a file open and the file is deleted, its room is freed only when the program closes it. A folder
+scan can't see such files, so the disk can look fuller than the folders add up to.
+
+1. Choose **Open but Deleted**. It lists each file with its program, process number (PID), user and size.
+2. Restart or stop that program to free the room. On a server, the **Monitor** tab can stop a process.
+3. Click **Look Again** to check. On a server, **Look as Root…** also shows other users' programs.
+
+## Compare with the last scan
+
+Each finished scan is saved (on this Mac, one per folder). The next scan of the same folder shows, beside each size,
+how much it grew ("+1.2 GB") or shrank ("−300 MB"). The top of the window says how much the whole folder changed.
+Choose **Changes** to see what grew the most.
+
+AirSCP keeps the sizes of folders and of files of 1 MB or more. Deleting a server from AirSCP deletes its saved scans.
+
+## Export the list
+
+Click **Export as CSV…** and choose where to save. The file has the view shown: path, size in bytes, number of files
+and share of the folder. It opens in Numbers, Excel or any spreadsheet.
 
 ## Tips
 
 - **Stop** ends a long scan; the sizes then count what it scanned so far. **Scan Again** measures everything again.
 - The scan stays on the folder's own disk: other disks mounted inside it are left out.
 - Sizes are the files' own sizes, as the panes show them.
-- On a server, AirSCP runs one `du` command. It needs a server with a shell (not file-transfer-only accounts).
 - To see the size of each folder in the pane itself, use **View ▸ Calculate Folder Sizes**.
 
 ## If something goes wrong
 
-- **Delete… is greyed out**: wait for the scan to end, or click **Stop**.
-- **A folder you can't read** counts as empty: open it as root (see [Browse as root](https://kleash.github.io/airscp/connecting/browse-as-root.html))
-  and scan again.
-- Disk Usage doesn't work on S3 storage.
+- **"N folders couldn't be read"**: your account may not open them, so they count as empty. Click the line to see
+  which ones. If your account can use sudo, click **Scan as Root…**. AirSCP asks for your password only if sudo needs
+  it, and doesn't keep it.
+- **Delete… or Empty File… is greyed out**: wait for the scan to end, or click **Stop**. Empty File works on files
+  only, not folders. Point at a greyed-out button to see why.
+- **Open but Deleted says it can't tell**: some servers don't let AirSCP see this (Windows, accounts without a
+  shell, S3 storage).
 
 
 ---
@@ -2610,9 +2714,9 @@ downloads, zips or unpacks, and uploads.
 
 Source: https://kleash.github.io/airscp/monitor.html
 
-# Watch a Linux server
+# Watch a Linux, Mac or Windows server
 
-The **Monitor** tab shows what a Linux server is doing: CPU, memory, disks, processes and the ports it listens on. You can
+The **Monitor** tab shows what a Linux, Mac or Windows server is doing: CPU, memory, disks, processes and the ports it listens on. You can
 also stop a process.
 
 ## Steps
@@ -2622,7 +2726,7 @@ also stop a process.
 3. Read the figures. They refresh every 3 seconds while the tab is on screen.
 
 The top of the window shows the server's CPU, memory and main disk on every tab, refreshed every 10 seconds. It isn't
-there for servers that aren't Linux.
+there for other servers (BSD).
 
 (Picture: The Monitor tab: CPU, memory, swap, load, uptime, disks and the list of processes)
 
@@ -2630,7 +2734,7 @@ there for servers that aren't Linux.
 |---|---|
 | **CPU** | How busy the processors are, since the last refresh. |
 | **Memory** and **Swap** | Used and total. |
-| **Load** | The load averages for 1, 5 and 15 minutes. |
+| **Load** | The load averages for 1, 5 and 15 minutes (not on Windows, which has none). |
 | **Up** | How long the server has run since it started. |
 | **System** | The server's operating system. |
 | **Disks** | Free space on each file system, with a bar. |
@@ -2645,6 +2749,8 @@ there for servers that aren't Linux.
 (Picture: The question: Kill python3? The process is asked to quit)
 
 ## See which ports a server listens on
+
+Ports are listed on Linux and Windows servers.
 
 1. In the **Monitor** tab, click **Ports** above the list of processes.
 2. Read the list: each port the server listens on, with the program that listens and how many connections it has.
@@ -2668,6 +2774,10 @@ program in the list of processes.
 - Click a column heading to sort the processes, for example by CPU.
 - Kill uses your account's rights. When your account may not stop a process, AirSCP offers **Kill with sudo in
   Terminal**, where sudo can ask for your password (on servers that have sudo).
+- On Windows, **Kill** and **Force Kill** both stop the process at once. **Kill** stops only your own processes;
+  **Force Kill** also stops other users' processes when your account is an administrator.
+- On Windows, AirSCP reads the figures with PowerShell, which takes about a second each time (about three with
+  **Ports**). The **User** column is empty unless your account is an administrator.
 - The list of processes isn't read while the tab isn't shown. The figures at the top of the window still refresh
   every 10 seconds.
 - Reading the ports takes some work on the server, so AirSCP reads them only while **Ports** is shown: at once, then
@@ -2677,8 +2787,9 @@ program in the list of processes.
 
 ## If something goes wrong
 
-- **“The system monitor works only on Linux servers”**: macOS and BSD servers aren't supported. The Files and Tunnels
-  tabs work as usual.
+- **“The system monitor works only on Linux, macOS and Windows servers”**: BSD servers aren't supported. The Files
+  and Tunnels tabs work as usual.
+- On a Mac, the disks are the Data volume (where your files are) and the disks under /Volumes.
 - **“This account allows file transfers (sftp) only”**: AirSCP can't read the system there. The Files tab works.
 - On BusyBox systems (Alpine), processes show no CPU figure.
 
@@ -2735,6 +2846,7 @@ With the first example on, open `http://localhost:8080` in your browser.
 - All tunnels go off when the connection ends. When AirSCP reconnects by itself, it switches on again the ones that
   were on; after you reconnect, switch them on yourself.
 - A tunnel can be edited only while it is off.
+- Tunnels work with Windows' own OpenSSH server too: all three types.
 
 ## If something goes wrong
 
@@ -2850,7 +2962,8 @@ Open an ssh session to a host in Terminal or iTerm. It rides on AirSCP's open co
 
 ## Steps
 
-- **Host ▸ Open Terminal** (<kbd>⌘T</kbd>), or the **Open Terminal** button in the toolbar.
+- **Host ▸ Open Terminal** (<kbd>⌘T</kbd>), or the **Open Terminal** button in the toolbar. The shell starts in the
+  folder the Files tab's server pane shows.
 - To start in the folder you are looking at: right-click in the server pane and choose **Open Terminal Here**
   (<kbd>⌥⌘T</kbd>).
 - To use iTerm instead of Terminal: **AirSCP ▸ Settings… ▸ Open terminals in**.
@@ -2908,10 +3021,14 @@ search.
 2. Click **Terminal** above the files, or choose **Host ▸ Terminal Tab** (<kbd>⌃⌘T</kbd>).
 3. Type as in any terminal. Programs such as `less`, `vim`, `top` and `nano` work full screen.
 
+The shell starts in the folder the Files tab's server pane shows. On a Windows server it is the server's own shell
+(cmd.exe or PowerShell), also in that folder.
+
 ## Open more shells in tabs
 
 Click **+** above the terminal, or choose **Host ▸ New Terminal Tab** (<kbd>⇧⌘T</kbd>). The new shell starts in the
-folder of the one you were looking at, on the same connection: no second login.
+folder of the one you were looking at (when AirSCP can't tell, in the Files tab's folder), on the same connection: no
+second login.
 
 - Click a tab to show its shell. **Host ▸ Show Previous Terminal Tab** (<kbd>⇧⌘[</kbd>) and **Show Next Terminal Tab**
   (<kbd>⇧⌘]</kbd>) go through them.
@@ -2950,10 +3067,13 @@ the one below. **Done** (or <kbd>Esc</kbd>) closes the find bar.
 
 ## Keep the Files tab in the same folder
 
-Tick **Follow in Files** at the top of the tab. Each time you `cd` to another folder, the Files tab's server pane goes
-there too. It goes only where the shell itself says it is: a folder that a program prints can't move it.
+Tick **Follow in Files** at the top of the tab. The shell goes to the folder the Files tab's server pane shows (AirSCP
+types `cd` at its empty prompt); the server pane stays where it is. After that, each time you `cd` to another folder,
+the server pane goes there too. It goes only where the shell itself says it is: a folder that a program prints can't move it. And each time
+you open a folder in the server pane, AirSCP types `cd` with that folder at the shell's empty prompt, so the shell goes
+there too. While a command runs, AirSCP types nothing.
 
-To go the other way, turn on **Open Terminal Here and Run in Terminal in the Terminal tab** in **AirSCP ▸ Settings…**.
+Without Follow in Files, turn on **Open Terminal Here and Run in Terminal in the Terminal tab** in **AirSCP ▸ Settings…**.
 Then a server folder's **Open Terminal Here** (<kbd>⌥⌘T</kbd>) goes to this tab. If the shell is at an empty prompt,
 AirSCP types `cd` with the folder for you. If it is busy, or isn't bash or zsh (AirSCP can't tell when such a shell
 waits), AirSCP opens a new tab in that folder instead, and never types into the busy one.
@@ -3033,7 +3153,7 @@ own shell, as in any terminal. **Insert Path…** and **History…** are AirSCP'
 
 ## Tips
 
-- Select text by dragging; <kbd>⌘C</kbd> copies it and <kbd>⌘V</kbd> pastes. A double-click selects a word.
+- Select text by dragging (only the text you drag over is highlighted); <kbd>⌘C</kbd> copies it and <kbd>⌘V</kbd> pastes. A double-click selects a word.
 - Scroll up to see earlier output. **Clear Scrollback** (right-click) forgets it.
 - <kbd>⌃C</kbd>, <kbd>⌃D</kbd> and the other Ctrl keys go to the shell. <kbd>⌘</kbd> shortcuts stay AirSCP's.
 - When the shell ends (you typed `exit`, or the connection dropped), press <kbd>Return</kbd> in its tab for a new one.
@@ -3781,7 +3901,9 @@ Yes: **View ▸ Show Command Log**. Every line can be copied and run in Terminal
 
 **Does it work with Windows servers?**
 Yes, in two ways. The built-in [Remote Desktop](https://kleash.github.io/airscp/remote-desktop/) opens Windows desktops. And Windows' own
-OpenSSH server works for browsing and transfers. Commands, compress and the monitor need a Linux or Mac server.
+OpenSSH server works for browsing and transfers: the top of the path (the server's name) lists its drives, and the
+Terminal tab opens its own shell (cmd.exe or PowerShell) in the folder you are looking at. The Monitor tab shows its
+CPU, memory, drives, processes and ports, and tunnels work. Run commands and compress need a Linux or Mac server.
 
 **Does it support FTP or telnet?**
 No. AirSCP is for SSH (scp and sftp) and Remote Desktop. It can connect through HTTP and SOCKS5 proxies: see
@@ -3865,6 +3987,70 @@ Please don't open a public issue: follow the security policy (`SECURITY.md`) in
 Source: https://kleash.github.io/airscp/whats-new.html
 
 # What's new
+
+## AirSCP 2.0.6
+
+- **Disk Usage opens in its own window**: keep browsing while it scans, and open several. It works on every server:
+  Windows, servers that only allow file transfers (sftp), and S3 storage too.
+- See how full the disk is, totals **By Type** (.log, .gz, …), and in **Changes** what grew since your last scan.
+- **Open but Deleted** finds deleted files that a program still holds open: their room comes back only when the
+  program closes them.
+- **Empty File…** frees a big log's room at once, even while a program writes to it. **Download as .tar.gz…** keeps a
+  copy before you delete, and **Export as CSV…** saves any list.
+- Disk Usage says which folders it couldn't read and, where your account can use sudo, offers **Scan as Root…**.
+
+## AirSCP 2.0.5
+
+- **Compare, side by side**: the two files in two columns, lines kept in line, with line numbers and the changed
+  letters marked. Scrolling moves both sides together (untick **Sync Scrolling** to move one). Go from one difference
+  to the next with <kbd>⌥⌘↓</kbd> and <kbd>⌥⌘↑</kbd>, or click the bar at the right.
+- In Compare, **Prettify** lays out JSON and XML before comparing (**Original** or <kbd>⌘Z</kbd> puts them back), and
+  **Ignore** leaves out whitespace, case or blank lines. Copy a difference to the other side, then save either file, on
+  this Mac or on the server. **Swap**, **Reload** and find (<kbd>⌘F</kbd>) are there too.
+- **Compare a file on this Mac with one on a server**: select one file in each pane, right-click ▸ **Compare with**.
+  Files that aren't text are compared by their SHA-256 checksums.
+- **Two servers side by side**: the menu above the left pane lists every saved server. Choose one and AirSCP connects
+  it and shows it there, so you can copy between the two servers.
+- **Open Terminal** and the **Terminal** tab start in the folder the Files tab shows, on every server.
+- **Windows servers**: the **Monitor** tab shows CPU, memory, drives, processes and ports, and **Kill** stops a
+  process. The Terminal tab and **Open Terminal Here** open cmd.exe or PowerShell in the folder you are looking at.
+
+## AirSCP 2.0.4
+
+- **Compare two files**: select two text files, right-click ▸ **Compare**. Lines only in one of them are marked red or
+  green.
+- **Open With**: right-click a file ▸ **Open With** to open it in an app you choose.
+- **The path bar**: click the folder shown to type a path. Right-click any folder in it for **Get Info**, **Download
+  To…**, **Rename…**, **Copy Path** and more.
+- **Paste** is in a file's right-click menu too, and a full folder keeps empty space below its last item to right-click
+  for the folder's menu (**New Folder…**, **Show in Finder**…).
+- The **Kind** column now comes after **Date Modified**.
+- **Follow in Files**: ticking it sends the shell to the folder the Files tab shows, and the Files tab stays there.
+- **Fixed**: <kbd>Return</kbd> didn't answer the Delete question. In the Terminal tab, a selection highlighted the whole
+  line instead of only the text selected.
+
+## AirSCP 2.0.3
+
+- **The monitor works on Mac servers**: CPU, memory, swap, load, disks and processes, with Kill, in the Monitor tab
+  and on iPhone and iPad (ports stay Linux only).
+- **iPhone and iPad**: the Terminal tab has **Disconnect** for a server's last terminal. A folder you copy shows how
+  many files are done and how many are to go, and how far the whole folder is.
+- **Fixed** on iPhone and iPad: tapping the Terminal tab sent the tab bar back to the tab before for a moment.
+
+## AirSCP 2.0.2
+
+- **Fixed: Windows SSH servers** (Windows' own OpenSSH). A folder showed empty, because AirSCP didn't read how newer
+  versions list permissions. Now folders list, and the top of the path (the server's name) shows the drives (C:, D:…)
+  to go to. The Terminal tab opens the server's own shell (cmd.exe or PowerShell) instead of ending at once.
+
+## AirSCP 2.0.1
+
+- **Copy Path from the path bar**: right-click the path above a Files pane's list ▸ **Copy Path** copies the full path
+  of the folder shown.
+- **Follow in Files goes both ways**: with it ticked in the Terminal tab, a folder you open in the server pane has `cd`
+  typed at the shell's empty prompt, so the shell goes there too. AirSCP never types into a running command.
+- **Fixed** in the Terminal tab: a double-click just before a word (on the space in front of a PID in `ps -ef`, say)
+  selected the space with the word.
 
 ## AirSCP 2.0.0
 
@@ -4070,7 +4256,7 @@ Source: https://github.com/kleash/airscp/blob/main/Resources/AgentGuide.md
 # AirSCP agent guide
 
 AirSCP is a Mac app for SSH servers (saved hosts, a two-pane file browser with Find Files and Synchronize, transfers,
-remote file operations, a Linux monitor, tunnels, HTTP proxies and jump hosts), S3 storage and Windows desktops (a
+remote file operations, a Linux and macOS monitor, tunnels, HTTP proxies and jump hosts), S3 storage and Windows desktops (a
 built-in Remote Desktop client). These tools drive the running AirSCP the way its user does. `guide topic=<name>` gives
 the details: tools, hosts, proxies, transfers, files, monitor, tunnels, keys, settings, rdp, troubleshooting.
 
@@ -4264,7 +4450,8 @@ AirSCP was installed with `./install.sh`).
   `menu path="File > Import Hosts…" file=/tmp/hosts.json` (the reply's sheet says how many were imported).
   WinSCP's sites: `menu path="File > Import from WinSCP…" file=/path/WinSCP.ini` (its .ppk keys beside it; the
   reply's sheet says how many hosts were made and what was left out).
-- Terminal tab (a shell inside AirSCP, riding the connection): `menu path="Host > Terminal Tab"`, then
+- Terminal tab (a shell inside AirSCP, riding the connection; it starts in the server pane's folder, as Host ▸ Open
+  Terminal does; on Windows it is the server's cmd.exe or PowerShell): `menu path="Host > Terminal Tab"`, then
   `type target=terminal text="ls -la\n"` (a line break is Return) and `key target=terminal combo=ctrl+c`; `snapshot` →
   terminal: running, lines (the last `rows`, scrollback included), cursor, fullScreen, directory/title when the shell
   says them. `wait until=text text=…` waits for output while the tab is shown. After `exit`, `key
@@ -4273,16 +4460,16 @@ AirSCP was installed with `./install.sh`).
   empty prompt, so a command typed now runs in it) and `commands`, the last 20: each one's `command` line, `status`
   (exit status), `seconds`, `output` (its last 50 lines) and `running`. Read a command's result there, not from
   `lines`: type it, then snapshot until its entry has a status. Other shells (BusyBox sh, fish) have neither. The tab's
-  bar: `set id=terminal.follow value=true` (Follow in Files: the server pane follows the shell's folder), `set
-  id=terminal.snippets value=<snippet name>` (typed at the prompt, not run; as any text for the terminal, it waits for
-  the person at the Mac), `press id=terminal.find` then `set id=terminal.findText value=<text>` (find;
+  bar: `set id=terminal.follow value=true` (Follow in Files: ticked, the shell goes to the server pane's folder and the pane
+  stays; then the server pane follows the shell's folder, and the shell the pane's, `cd` typed at its empty prompt), `set id=terminal.snippets value=<snippet name>` (typed at the prompt,
+  not run; as any text for the terminal, it waits for the person at the Mac), `press id=terminal.find` then `set id=terminal.findText value=<text>` (find;
   `terminal.findCount` reads "2 of 5" in `snapshot include=["elements"]`), `press id=terminal.findDone`. Settings'
   `settings.openTerminalHereInTab` sends Open Terminal Here and Run in Terminal to this tab: the `cd` or the command typed
   at an empty prompt, else a new tab (nothing is typed into a busy shell).
   Tabs: each tab is its own shell on the same connection. `snapshot` → terminal: `tabs` lists them (`index` from 1,
   `title`, `directory`, `running`, `atPrompt` with bash and zsh, `shown`), `tab` is the index of the one shown, and the
   rest of the section (lines, commands) is that tab's; `type` and `key` with target terminal go to it. `press
-  id=terminal.newTab` (or `menu path="Host > New Terminal Tab"`) opens one in the shown tab's folder; `set
+  id=terminal.newTab` (or `menu path="Host > New Terminal Tab"`) opens one in the shown tab's folder (else the server pane's); `set
   id=terminal.tabs value=2` shows tab 2 (by its index, or its title on the strip);
   `menu path="Host > Show Next Terminal Tab"` and `menu path="Host > Show Previous Terminal Tab"` go through them; `press
   id=terminal.closeTab` closes the tab shown (a sheet "Close this terminal tab?" first while a command runs; the last tab
@@ -4367,7 +4554,8 @@ AirSCP was installed with `./install.sh`).
   Folders download with the same sheet (Leave out, Compress).
 - Speed limit for every host's transfers that start from then on: `set id=transfers.speedLimit value="5 MB/s"`
   (Unlimited, 1, 5, 10 or 50 MB/s); `snapshot` → transfers.speedLimit.
-- Between two servers: show the other server in the left pane (its source menu: `set id=left.source value=<host>`),
+- Between two servers: show the other server in the left pane (its source menu: `set id=left.source value=<host>`;
+  a saved host that isn't connected connects first, its sheets on the main window: wait until panes.left shows it),
   then `drop from=left to=right`.
 - `wait until=transfers_done` (optionally host), then `snapshot include=["transfers"]`: each job's id, host, name,
   direction, size, percent, speed (or "stalled"), eta, status, problem, note. Cancel or retry: `select pane=transfers
@@ -4398,9 +4586,10 @@ AirSCP was installed with `./install.sh`).
 - Quitting while transfers run asks first ("Quit and cancel the transfers?"): the Quit reply carries that question.
 
 ## files
-- The Files tab (`press title=Files`) has two panes: left = this Mac (or another connected server), right = the host.
-  `snapshot` → panes.left/right: dir, rows, selected, status ("12 items, 2 selected — 30 GB available"). A row's owner
-  and group are names, as Get Info shows them; ownerID and groupID are their numbers where the server tells them.
+- The Files tab (`press title=Files`) has two panes: left = this Mac (or another server: its source menu
+  `left.source`), right = the host. `snapshot` → panes.left/right: dir, rows, selected, status ("12 items, 2 selected
+  — 30 GB available"). A row's owner and group are names, as Get Info shows them; ownerID and groupID are their
+  numbers where the server tells them.
 - Through folders without a click: connect (`select pane=sidebar names=["web"]` → `menu path="Host > Connect"` → `wait
   until=connected`) → `go path=/var/www` (the reply lists the folder; `open name=site` opens a row, `open name=..` goes
   up) → `select pane=right names=["index.html"]` → its command: `menu path="File > Download To…" file=/Users/me/Downloads`,
@@ -4418,6 +4607,30 @@ AirSCP was installed with `./install.sh`).
   ask for a server folder (`set id=transfer.folder`, then Move or Copy); `menu path="File > New Symbolic Link…"` asks its
   name (`link.name`, Next) then its target (`link.target`, Create). `menu path="File > Compare Folders"` marks the rows
   that differ (snapshot rows carry `mark`, e.g. "Newer here").
+- Compare two files: `select pane=right names=["a.txt", "b.txt"]` → `menu path="context > Compare" pane=right` (one file
+  selected in each pane: `context > Compare with “<other file>”`) → a window titled "a.txt ↔ b.txt" (the left pane's
+  file on the left). Its subtitle sums up ("2 differences: 1 line changed, 1 line only on the right", "The files are the
+  same"); read the sides with `snapshot include=["elements"] in="window:a.txt ↔ b.txt"` (`compare.left`,
+  `compare.right`). `press id=compare.next` / `compare.previous` (`compare.position` says "1 of 2"), `compare.copyRight` /
+  `compare.copyLeft` (the difference shown, to the other side), `compare.saveLeft` / `compare.saveRight`,
+  `compare.prettify` (JSON or XML; again: Original), `compare.swap`, `compare.reload`; `set id=compare.ignore
+  value=Whitespace` (Case, Blank Lines) turns one on or off; `set id=compare.sync value=false`. Files that aren't text
+  (or are over 4 MB) are compared by SHA-256: `compare.hash` says "The files are the same" or "…different" (`press
+  id=compare.stop` stops it). Closing with changes not saved asks first.
+- Disk Usage: `menu path="File > Disk Usage…"` (the folder a pane shows, or the one folder selected; any server, S3
+  too, or this Mac) → a window titled "Disk Usage — <folder> on <server>" (This Mac), one per folder: the same command
+  again brings it forward, and closing it stops its scan. The scan has ended when `wait until=text text=Scanned` finds
+  it (`diskUsage.status`: "Scanned 1,234 files in 12 s."). Read it with `snapshot include=["elements"] in="window:Disk
+  Usage"` (`diskUsage.space`: the disk's figures; `diskUsage.list`: name, size, share, files, change since the last
+  scan). `set id=diskUsage.show value="Largest Files"` (Contents, By Type, Changes, Open but Deleted),
+  `set id=diskUsage.filter value=log`; `select in="window:Disk Usage" names=["logs"]`, then `press id=diskUsage.open`
+  (`diskUsage.back`, `diskUsage.up`), `diskUsage.showInPane`, `diskUsage.copyPaths`, `diskUsage.download` (the
+  Download as .tar.gz question), `diskUsage.empty` (Empty File…: asks, then makes the files 0 bytes),
+  `diskUsage.delete` (asks), `diskUsage.scan` (Stop / Scan Again), `press id=diskUsage.export file=/tmp/usage.csv`
+  (the view shown, as CSV). By Type: select a type, `press id=diskUsage.showType` (its largest files). Folders the scan
+  couldn't read: `diskUsage.skipped`; `press id=diskUsage.asRoot` scans through sudo (a password sheet when sudo asks:
+  `set id=diskUsage.sudoPassword value=-` with the password on standard input, then `press title="Scan as Root"`).
+  Open but Deleted: `diskUsage.openDeleted` lists them (`diskUsage.lookAgain`, `diskUsage.openAsRoot`).
 - Favourites (a server's folders, kept per host): `focus pane=right` → `menu path="Go > Add to Favourites"` keeps the
   folder shown; `menu path='Go > Favourites > /var/log'` goes back to it, `menu path='Go > Favourites > Remove >
   /var/log'` drops it. `snapshot` → the pane's favourites (and `include=["menus"]` lists them).
@@ -4484,8 +4697,9 @@ AirSCP was installed with `./install.sh`).
 - `press title=Monitor` (the host's tab) → `wait until=monitor` (or `wait until=monitor text=<a process name>`) →
   `snapshot include=["monitor"]`: connected, cpu, load, memory, swap, uptime, system, disks, and the processes as the
   table lists them (pid, user, cpu, memory as % of RAM, name, command, state; its search, sort and selection);
-  `failure` says why there are no figures (an sftp-only account, a server that isn't Linux), `processNote` why there
-  are no processes (no ps). It refreshes every 3 s while it is shown, also behind other windows while you are at work;
+  `failure` says why there are no figures (an sftp-only account, a BSD server), `processNote` why there are no processes
+  (no ps). Windows servers (read with PowerShell, about 1 s a refresh): `load` empty, `state` empty, `user` only for an
+  administrator account; Kill and Force Kill both stop the process at once (Kill only the account's own), never sudo. It refreshes every 3 s while it is shown, also behind other windows while you are at work;
   disconnected, it shows nothing.
 - Sort: `sort pane=processes column=pid` (user, cpu, mem: % of RAM, memory: RSS, time, state, command;
   `ascending=false`).
@@ -4667,7 +4881,7 @@ AirSCP was installed with `./install.sh`).
   `key combo=escape` cancels a question with Cancel; `press title=OK` closes a message with only OK.
 - Menus are never in screenshots (they open only for a person): read `snapshot include=["menus"]`.
 - File > Find Files… searches a server's folders (focus the server's pane); File > Disk Usage… measures the folder a
-  pane shows (a server with a shell, or this Mac) below it; File > Synchronize… needs this Mac in one
+  pane shows (a server, S3 storage or this Mac) below it, in its own window; File > Synchronize… needs this Mac in one
   pane and a connected server in the other. `wait until=found` / `compared` needs its sheet open.
 - Synchronize compares times as the server lists them: to the minute (the day for files over six months old, or dated
   after the server's clock: those count as newer), so two versions with the same size saved within one minute count as

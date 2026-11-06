@@ -99,6 +99,8 @@ private final class Copy {
         }
         switch info.st_mode & S_IFMT {
         case S_IFDIR:
+            (progress.filesTotal, progress.total) = Copy.count(local)
+            report(progress)
             try await uploadFolder(local, to: remote, info)
             return 0
         case S_IFREG:
@@ -106,6 +108,17 @@ private final class Copy {
         default:
             throw SFTPFailure("\(local) is not a regular file")  // (opening a pipe would wait for a writer)
         }
+    }
+
+    /// The regular files in a local folder and their bytes, links not followed (as `uploadFolder` copies them).
+    private static func count(_ local: String) -> (files: Int, bytes: Int64) {
+        var files = 0, bytes: Int64 = 0
+        let keys: Set<URLResourceKey> = [.isRegularFileKey, .fileSizeKey]
+        for case let url as URL in FileManager.default.enumerator(at: URL(fileURLWithPath: local), includingPropertiesForKeys: Array(keys)) ?? .init() {
+            guard let values = try? url.resourceValues(forKeys: keys), values.isRegularFile == true else { continue }
+            (files, bytes) = (files + 1, bytes + Int64(values.fileSize ?? 0))
+        }
+        return (files, bytes)
     }
 
     private func uploadFolder(_ local: String, to remote: String, _ info: stat) async throws {
@@ -212,6 +225,8 @@ private final class Copy {
         }
         switch attributes.permissions & UInt(LIBSSH2_SFTP_S_IFMT) {
         case UInt(LIBSSH2_SFTP_S_IFDIR):
+            (progress.filesTotal, progress.total) = try await count(remote)
+            report(progress)
             try await downloadFolder(remote, to: local, attributes)
             return 0
         case UInt(LIBSSH2_SFTP_S_IFREG):
@@ -220,6 +235,28 @@ private final class Copy {
         default:
             throw SFTPFailure("Cannot download non-regular file: \(remote)")
         }
+    }
+
+    /// The regular files in a folder on the server and their bytes, listed once before the download and again by it
+    /// (keeping every listing would hold a big tree's names in memory). A subfolder that can't be listed counts none:
+    /// the download names it.
+    private func count(_ remote: String) async throws -> (files: Int, bytes: Int64) {
+        var files = 0, bytes: Int64 = 0
+        do {
+            for (name, child) in try await step({ try $0.children(of: remote) }) {
+                try checkCancelled()
+                switch child.permissions & UInt(LIBSSH2_SFTP_S_IFMT) {
+                case UInt(LIBSSH2_SFTP_S_IFDIR):
+                    let inside = try await count(RemotePath.join(remote, name))
+                    (files, bytes) = (files + inside.files, bytes + inside.bytes)
+                case UInt(LIBSSH2_SFTP_S_IFREG):
+                    (files, bytes) = (files + 1, bytes + Int64(clamping: child.filesize))
+                default:
+                    break
+                }
+            }
+        } catch is SFTPFailure {}
+        return (files, bytes)
     }
 
     private func downloadFolder(_ remote: String, to local: String, _ attributes: LIBSSH2_SFTP_ATTRIBUTES) async throws {

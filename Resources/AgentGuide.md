@@ -1,7 +1,7 @@
 # AirSCP agent guide
 
 AirSCP is a Mac app for SSH servers (saved hosts, a two-pane file browser with Find Files and Synchronize, transfers,
-remote file operations, a Linux monitor, tunnels, HTTP proxies and jump hosts), S3 storage and Windows desktops (a
+remote file operations, a Linux and macOS monitor, tunnels, HTTP proxies and jump hosts), S3 storage and Windows desktops (a
 built-in Remote Desktop client). These tools drive the running AirSCP the way its user does. `guide topic=<name>` gives
 the details: tools, hosts, proxies, transfers, files, monitor, tunnels, keys, settings, rdp, troubleshooting.
 
@@ -195,7 +195,8 @@ AirSCP was installed with `./install.sh`).
   `menu path="File > Import Hosts…" file=/tmp/hosts.json` (the reply's sheet says how many were imported).
   WinSCP's sites: `menu path="File > Import from WinSCP…" file=/path/WinSCP.ini` (its .ppk keys beside it; the
   reply's sheet says how many hosts were made and what was left out).
-- Terminal tab (a shell inside AirSCP, riding the connection): `menu path="Host > Terminal Tab"`, then
+- Terminal tab (a shell inside AirSCP, riding the connection; it starts in the server pane's folder, as Host ▸ Open
+  Terminal does; on Windows it is the server's cmd.exe or PowerShell): `menu path="Host > Terminal Tab"`, then
   `type target=terminal text="ls -la\n"` (a line break is Return) and `key target=terminal combo=ctrl+c`; `snapshot` →
   terminal: running, lines (the last `rows`, scrollback included), cursor, fullScreen, directory/title when the shell
   says them. `wait until=text text=…` waits for output while the tab is shown. After `exit`, `key
@@ -204,16 +205,16 @@ AirSCP was installed with `./install.sh`).
   empty prompt, so a command typed now runs in it) and `commands`, the last 20: each one's `command` line, `status`
   (exit status), `seconds`, `output` (its last 50 lines) and `running`. Read a command's result there, not from
   `lines`: type it, then snapshot until its entry has a status. Other shells (BusyBox sh, fish) have neither. The tab's
-  bar: `set id=terminal.follow value=true` (Follow in Files: the server pane follows the shell's folder), `set
-  id=terminal.snippets value=<snippet name>` (typed at the prompt, not run; as any text for the terminal, it waits for
-  the person at the Mac), `press id=terminal.find` then `set id=terminal.findText value=<text>` (find;
+  bar: `set id=terminal.follow value=true` (Follow in Files: ticked, the shell goes to the server pane's folder and the pane
+  stays; then the server pane follows the shell's folder, and the shell the pane's, `cd` typed at its empty prompt), `set id=terminal.snippets value=<snippet name>` (typed at the prompt,
+  not run; as any text for the terminal, it waits for the person at the Mac), `press id=terminal.find` then `set id=terminal.findText value=<text>` (find;
   `terminal.findCount` reads "2 of 5" in `snapshot include=["elements"]`), `press id=terminal.findDone`. Settings'
   `settings.openTerminalHereInTab` sends Open Terminal Here and Run in Terminal to this tab: the `cd` or the command typed
   at an empty prompt, else a new tab (nothing is typed into a busy shell).
   Tabs: each tab is its own shell on the same connection. `snapshot` → terminal: `tabs` lists them (`index` from 1,
   `title`, `directory`, `running`, `atPrompt` with bash and zsh, `shown`), `tab` is the index of the one shown, and the
   rest of the section (lines, commands) is that tab's; `type` and `key` with target terminal go to it. `press
-  id=terminal.newTab` (or `menu path="Host > New Terminal Tab"`) opens one in the shown tab's folder; `set
+  id=terminal.newTab` (or `menu path="Host > New Terminal Tab"`) opens one in the shown tab's folder (else the server pane's); `set
   id=terminal.tabs value=2` shows tab 2 (by its index, or its title on the strip);
   `menu path="Host > Show Next Terminal Tab"` and `menu path="Host > Show Previous Terminal Tab"` go through them; `press
   id=terminal.closeTab` closes the tab shown (a sheet "Close this terminal tab?" first while a command runs; the last tab
@@ -298,7 +299,8 @@ AirSCP was installed with `./install.sh`).
   Folders download with the same sheet (Leave out, Compress).
 - Speed limit for every host's transfers that start from then on: `set id=transfers.speedLimit value="5 MB/s"`
   (Unlimited, 1, 5, 10 or 50 MB/s); `snapshot` → transfers.speedLimit.
-- Between two servers: show the other server in the left pane (its source menu: `set id=left.source value=<host>`),
+- Between two servers: show the other server in the left pane (its source menu: `set id=left.source value=<host>`;
+  a saved host that isn't connected connects first, its sheets on the main window: wait until panes.left shows it),
   then `drop from=left to=right`.
 - `wait until=transfers_done` (optionally host), then `snapshot include=["transfers"]`: each job's id, host, name,
   direction, size, percent, speed (or "stalled"), eta, status, problem, note. Cancel or retry: `select pane=transfers
@@ -329,9 +331,10 @@ AirSCP was installed with `./install.sh`).
 - Quitting while transfers run asks first ("Quit and cancel the transfers?"): the Quit reply carries that question.
 
 ## files
-- The Files tab (`press title=Files`) has two panes: left = this Mac (or another connected server), right = the host.
-  `snapshot` → panes.left/right: dir, rows, selected, status ("12 items, 2 selected — 30 GB available"). A row's owner
-  and group are names, as Get Info shows them; ownerID and groupID are their numbers where the server tells them.
+- The Files tab (`press title=Files`) has two panes: left = this Mac (or another server: its source menu
+  `left.source`), right = the host. `snapshot` → panes.left/right: dir, rows, selected, status ("12 items, 2 selected
+  — 30 GB available"). A row's owner and group are names, as Get Info shows them; ownerID and groupID are their
+  numbers where the server tells them.
 - Through folders without a click: connect (`select pane=sidebar names=["web"]` → `menu path="Host > Connect"` → `wait
   until=connected`) → `go path=/var/www` (the reply lists the folder; `open name=site` opens a row, `open name=..` goes
   up) → `select pane=right names=["index.html"]` → its command: `menu path="File > Download To…" file=/Users/me/Downloads`,
@@ -349,6 +352,30 @@ AirSCP was installed with `./install.sh`).
   ask for a server folder (`set id=transfer.folder`, then Move or Copy); `menu path="File > New Symbolic Link…"` asks its
   name (`link.name`, Next) then its target (`link.target`, Create). `menu path="File > Compare Folders"` marks the rows
   that differ (snapshot rows carry `mark`, e.g. "Newer here").
+- Compare two files: `select pane=right names=["a.txt", "b.txt"]` → `menu path="context > Compare" pane=right` (one file
+  selected in each pane: `context > Compare with “<other file>”`) → a window titled "a.txt ↔ b.txt" (the left pane's
+  file on the left). Its subtitle sums up ("2 differences: 1 line changed, 1 line only on the right", "The files are the
+  same"); read the sides with `snapshot include=["elements"] in="window:a.txt ↔ b.txt"` (`compare.left`,
+  `compare.right`). `press id=compare.next` / `compare.previous` (`compare.position` says "1 of 2"), `compare.copyRight` /
+  `compare.copyLeft` (the difference shown, to the other side), `compare.saveLeft` / `compare.saveRight`,
+  `compare.prettify` (JSON or XML; again: Original), `compare.swap`, `compare.reload`; `set id=compare.ignore
+  value=Whitespace` (Case, Blank Lines) turns one on or off; `set id=compare.sync value=false`. Files that aren't text
+  (or are over 4 MB) are compared by SHA-256: `compare.hash` says "The files are the same" or "…different" (`press
+  id=compare.stop` stops it). Closing with changes not saved asks first.
+- Disk Usage: `menu path="File > Disk Usage…"` (the folder a pane shows, or the one folder selected; any server, S3
+  too, or this Mac) → a window titled "Disk Usage — <folder> on <server>" (This Mac), one per folder: the same command
+  again brings it forward, and closing it stops its scan. The scan has ended when `wait until=text text=Scanned` finds
+  it (`diskUsage.status`: "Scanned 1,234 files in 12 s."). Read it with `snapshot include=["elements"] in="window:Disk
+  Usage"` (`diskUsage.space`: the disk's figures; `diskUsage.list`: name, size, share, files, change since the last
+  scan). `set id=diskUsage.show value="Largest Files"` (Contents, By Type, Changes, Open but Deleted),
+  `set id=diskUsage.filter value=log`; `select in="window:Disk Usage" names=["logs"]`, then `press id=diskUsage.open`
+  (`diskUsage.back`, `diskUsage.up`), `diskUsage.showInPane`, `diskUsage.copyPaths`, `diskUsage.download` (the
+  Download as .tar.gz question), `diskUsage.empty` (Empty File…: asks, then makes the files 0 bytes),
+  `diskUsage.delete` (asks), `diskUsage.scan` (Stop / Scan Again), `press id=diskUsage.export file=/tmp/usage.csv`
+  (the view shown, as CSV). By Type: select a type, `press id=diskUsage.showType` (its largest files). Folders the scan
+  couldn't read: `diskUsage.skipped`; `press id=diskUsage.asRoot` scans through sudo (a password sheet when sudo asks:
+  `set id=diskUsage.sudoPassword value=-` with the password on standard input, then `press title="Scan as Root"`).
+  Open but Deleted: `diskUsage.openDeleted` lists them (`diskUsage.lookAgain`, `diskUsage.openAsRoot`).
 - Favourites (a server's folders, kept per host): `focus pane=right` → `menu path="Go > Add to Favourites"` keeps the
   folder shown; `menu path='Go > Favourites > /var/log'` goes back to it, `menu path='Go > Favourites > Remove >
   /var/log'` drops it. `snapshot` → the pane's favourites (and `include=["menus"]` lists them).
@@ -415,8 +442,9 @@ AirSCP was installed with `./install.sh`).
 - `press title=Monitor` (the host's tab) → `wait until=monitor` (or `wait until=monitor text=<a process name>`) →
   `snapshot include=["monitor"]`: connected, cpu, load, memory, swap, uptime, system, disks, and the processes as the
   table lists them (pid, user, cpu, memory as % of RAM, name, command, state; its search, sort and selection);
-  `failure` says why there are no figures (an sftp-only account, a server that isn't Linux), `processNote` why there
-  are no processes (no ps). It refreshes every 3 s while it is shown, also behind other windows while you are at work;
+  `failure` says why there are no figures (an sftp-only account, a BSD server), `processNote` why there are no processes
+  (no ps). Windows servers (read with PowerShell, about 1 s a refresh): `load` empty, `state` empty, `user` only for an
+  administrator account; Kill and Force Kill both stop the process at once (Kill only the account's own), never sudo. It refreshes every 3 s while it is shown, also behind other windows while you are at work;
   disconnected, it shows nothing.
 - Sort: `sort pane=processes column=pid` (user, cpu, mem: % of RAM, memory: RSS, time, state, command;
   `ascending=false`).
@@ -598,7 +626,7 @@ AirSCP was installed with `./install.sh`).
   `key combo=escape` cancels a question with Cancel; `press title=OK` closes a message with only OK.
 - Menus are never in screenshots (they open only for a person): read `snapshot include=["menus"]`.
 - File > Find Files… searches a server's folders (focus the server's pane); File > Disk Usage… measures the folder a
-  pane shows (a server with a shell, or this Mac) below it; File > Synchronize… needs this Mac in one
+  pane shows (a server, S3 storage or this Mac) below it, in its own window; File > Synchronize… needs this Mac in one
   pane and a connected server in the other. `wait until=found` / `compared` needs its sheet open.
 - Synchronize compares times as the server lists them: to the minute (the day for files over six months old, or dated
   after the server's clock: those count as newer), so two versions with the same size saved within one minute count as

@@ -18,6 +18,7 @@ the copy that runs also shows just above the tabs: tap it to open **Transfers**.
 - **Done**: the copies that finished.
 
 Each row shows the name, the way it goes (for example **web-01 → iPhone**), how far it is, the speed and the time left.
+A folder also shows the file being copied, and how many files are done and how many are to go.
 **Checksums match** means AirSCP compared the copied file with the original (SHA-256): they are the same.
 
 ## Steps

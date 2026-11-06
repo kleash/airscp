@@ -1,6 +1,6 @@
 import Foundation
 
-/// A Linux server at one moment, for the Monitor tab.
+/// A Linux or macOS server at one moment, for the Monitor tab.
 public struct MonitorSnapshot: Equatable {
     /// CPU busy %, over the time since the previous refresh (/proc/stat); nil on the first one.
     public var cpu: Double?
@@ -100,7 +100,7 @@ public struct MonitorProcess: Equatable, Identifiable {
     public var command: String
 }
 
-/// A host's system monitor: Linux only, over the host's connection. One per Monitor tab; it
+/// A host's system monitor: Linux, macOS and Windows, over the host's connection. One per Monitor tab; it
 /// keeps the previous CPU sample and which ps the server has (GNU, else BusyBox), decided on the first refresh.
 public final class Monitor {
     public let session: Session
@@ -109,8 +109,11 @@ public final class Monitor {
     /// The previous refresh's CPU times: the CPU % is the busy share of the time between two refreshes.
     private var previousCPU: CPUTimes?
     private(set) var ps = PSKind.unknown
-    /// Set once the server turned out not to be Linux; later refreshes throw it without asking the server again.
+    /// Set once the server turned out to be neither Linux nor macOS; later refreshes throw it without asking again.
     private var unsupported: AirSCPError?
+    /// Windows: the previous refresh's CPU time of each process and the time since boot (100 ns units), for each
+    /// process's CPU % between two refreshes.
+    private var previousProcessCPU: (times: [Int: UInt64], clock: UInt64)?
 
     public init(session: Session) {
         self.session = session
@@ -119,17 +122,22 @@ public final class Monitor {
     /// A snapshot from one sentinel-wrapped shell command: /proc/stat, meminfo, loadavg and uptime, /etc/os-release
     /// (else uname), `df -kP` and ps (GNU `ps -eo pid,ppid,user,pcpu,pmem,rss,etime,stat,comm,args`, else BusyBox
     /// `ps -o pid,ppid,user,rss,etime,stat,comm,args`). `processes` false leaves ps out (the workspace header's pulse
-    /// strip). `ports` adds what the server listens on (`portsScript`), and the connections to `connectionsOf`.
-    /// Throws `.sftpOnly` without a shell, and an error saying so on a server that isn't Linux. Cancelling the calling
-    /// task stops the command (`.cancelled`).
+    /// strip). `ports` adds what the server listens on (`portsScript`), and the connections to `connectionsOf`. On macOS
+    /// the sources are `darwinScript`'s. Throws `.sftpOnly` without a shell, and an error saying so on a server that is
+    /// neither. Cancelling the calling task stops the command (`.cancelled`).
     public func refresh(processes: Bool = true, ports: Bool = false, connectionsOf port: MonitorPort? = nil)
         async throws -> MonitorSnapshot {
         let (ps, unsupported) = lock.locked { (self.ps, self.unsupported) }
         if let unsupported { throw unsupported }
         let cancellation = Cancellation()
+        let windows = session.capabilities.windows
         let output = try await withTaskCancellationHandler {
-            try await session.shell(Monitor.script(processes ? ps : .none, ports: ports, connectionsOf: port),
-                                    cancellation: cancellation)
+            if windows {
+                return try await session.powershell(Monitor.windowsScript(processes: processes, ports: ports, connectionsOf: port),
+                                                    cancellation: cancellation)
+            }
+            return try await session.shell(Monitor.script(processes ? ps : .none, ports: ports, connectionsOf: port),
+                                           cancellation: cancellation)
         } onCancel: {
             cancellation.cancel()
         }
@@ -139,11 +147,11 @@ public final class Monitor {
     }
 
     /// Takes in a refresh's output: the CPU % against the previous refresh, and (when it listed `processes`) which ps
-    /// to run from now on. A server that isn't Linux throws, now and on every later refresh.
+    /// to run from now on. A server that is neither Linux nor macOS throws, now and on every later refresh.
     func record(_ reading: Reading, processes: Bool = true) throws -> MonitorSnapshot {
         try lock.locked {
-            guard reading.linux else {
-                let error = AirSCPError(.other, "The system monitor works only on Linux servers"
+            guard reading.linux || reading.darwin || reading.windows else {
+                let error = AirSCPError(.other, "The system monitor works only on Linux, macOS and Windows servers"
                     + (reading.uname.isEmpty ? "." : " (this one runs \(reading.uname)).") + " The Files and Tunnels tabs work as usual.")
                 unsupported = error
                 throw error
@@ -154,6 +162,17 @@ public final class Monitor {
                 previousCPU = now
             }
             if processes && ps == .unknown { ps = reading.ps }
+            if reading.windows && processes {
+                // A process's CPU % since the previous refresh (on the first, over its lifetime, as ps prints it).
+                if let previous = previousProcessCPU, reading.clock > previous.clock {
+                    for index in snapshot.processes.indices {
+                        let pid = snapshot.processes[index].pid
+                        guard let now = reading.processCPU[pid], let before = previous.times[pid], now >= before else { continue }
+                        snapshot.processes[index].cpu = Double(now - before) / Double(reading.clock - previous.clock) * 100
+                    }
+                }
+                previousProcessCPU = (reading.processCPU, reading.clock)
+            }
             return snapshot
         }
     }
@@ -163,6 +182,19 @@ public final class Monitor {
     /// when the process has already ended.
     public func kill(_ pid: Int, force: Bool) async throws {
         guard pid > 0 else { throw AirSCPError(.other, "There is no process \(pid).") }
+        if session.capabilities.windows {
+            // Windows has no signals: both stop the process at once (-Force: also another user's, for an administrator).
+            do {
+                try await session.powershell("try{Stop-Process -Id \(pid)\(force ? " -Force" : "") -ErrorAction Stop}"
+                                             + "catch{$_.Exception.Message;exit 1}")
+            } catch let error as AirSCPError where error.details.contains("Cannot find a process") {
+                throw AirSCPError(.other, "Process \(pid) has already ended.", details: error.details)
+            } catch let error as AirSCPError where error.details.contains("denied") || error.details.contains("NonInteractive") {
+                // Without -Force, Stop-Process would ask before stopping another user's process.
+                throw AirSCPError(.permissionDenied, "This account may not stop process \(pid).", details: error.details)
+            }
+            return
+        }
         do {
             try await session.shell("kill -\(Monitor.signal(force)) \(pid)")
         } catch let error as AirSCPError where error.kind == .permissionDenied {
@@ -174,7 +206,8 @@ public final class Monitor {
 
     /// Whether the server has sudo, before "Kill with sudo in Terminal" is offered (minimal servers often have none).
     public func hasSudo() async -> Bool {
-        (try? await session.shell("command -v sudo")) != nil
+        if session.capabilities.windows { return false }
+        return (try? await session.shell("command -v sudo")) != nil
     }
 
     /// "Kill with sudo in Terminal": `sudo kill -TERM <pids>` (-KILL for `force`), run with a terminal so that sudo
@@ -207,6 +240,12 @@ public final class Monitor {
         /// `uname -sr`, e.g. "Linux 6.12.48-1-amd64".
         var uname = ""
         var linux = false
+        /// macOS ("Darwin 25.1.0").
+        var darwin = false
+        /// Windows (`windowsScript`), with each process's CPU time and the time since boot, in 100 ns units.
+        var windows = false
+        var processCPU: [Int: UInt64] = [:]
+        var clock: UInt64 = 0
         /// Everything but the CPU %, which needs the previous refresh.
         var snapshot = MonitorSnapshot()
         var cpu: CPUTimes?
@@ -235,7 +274,21 @@ public final class Monitor {
         return "LC_ALL=C; export LC_ALL; s=$(uname -sr); echo \"$s\"; case $s in Linux*) echo @@sh; echo $$; "
             + "echo @@stat; head -n 1 /proc/stat; echo @@loadavg; cat /proc/loadavg; echo @@uptime; cat /proc/uptime; "
             + "echo @@meminfo; cat /proc/meminfo; echo @@os; cat /etc/os-release; " + list
-            + (ports ? portsScript(connectionsOf: port) : "") + "echo @@df; df -kP;; esac 2>/dev/null; true"
+            + (ports ? portsScript(connectionsOf: port) : "") + "echo @@df; df -kP;; "
+            + darwinScript(ps != .none, ports: ports) + " esac 2>/dev/null; true"
+    }
+
+    /// `script`'s macOS case, which has no /proc: iostat's CPU over one second (its second line; the first is since boot)
+    /// and load averages, the seconds since kern.boottime, hw.memsize, vm_stat's pages and vm.swapusage, sw_vers, BSD ps
+    /// (ucomm: the name, unshortened by a path) and df. No port tables ("none"), as on a Linux without /proc/net.
+    static func darwinScript(_ processes: Bool, ports: Bool) -> String {
+        "Darwin*) echo @@sh; echo $$; echo @@iostat; iostat -n 0 -c 2 -w 1 | tail -n 1; echo @@uptime; "
+            + "sysctl -n kern.boottime | awk -v n=$(date +%s) '{gsub(\",\", \"\"); print n - $4}'; echo @@memsize; "
+            + "sysctl -n hw.memsize; echo @@vmstat; vm_stat; echo @@swap; sysctl -n vm.swapusage; echo @@os; "
+            + "sw_vers -productName; sw_vers -productVersion; "
+            + (processes ? "echo @@ps; LC_ALL=C.UTF-8 ps -ww -Ao pid,ppid,user,pcpu,pmem,rss,etime,stat,"
+                + "ucomm=COMMAND,args=COMMAND 2>&1; " : "")
+            + (ports ? "echo @@ports; echo none; " : "") + "echo @@df; df -kP;;"
     }
 
     /// The most connections to one port that are read (a busy server has tens of thousands).
@@ -270,7 +323,8 @@ public final class Monitor {
     }
 
     private static let sections: Set<String> = ["sh", "stat", "loadavg", "uptime", "meminfo", "os", "ps", "uid", "ports",
-                                                "owners", "users", "connections", "df"]
+                                                "owners", "users", "connections", "df", "iostat", "memsize", "vmstat",
+                                                "swap", "sys", "drives", "procs"]
 
     static func parse(_ output: String) -> Reading {
         // Bytes, not Characters: ps's columns are byte positions, and it is the bulk of the output.
@@ -307,17 +361,57 @@ public final class Monitor {
         var reading = Reading()
         reading.uname = text("uname").first { !$0.isEmpty } ?? ""
         reading.linux = reading.uname.hasPrefix("Linux")
-        guard reading.linux else { return reading }
+        reading.darwin = reading.uname.hasPrefix("Darwin")
+        reading.windows = reading.uname == "Windows"
+        guard reading.linux || reading.darwin || reading.windows else { return reading }
 
+        var snapshot = MonitorSnapshot()
+        if reading.windows {
+            windows(text, ports: section("ports") != nil, into: &reading, &snapshot)
+            reading.snapshot = snapshot
+            return reading
+        }
+        snapshot.uptime = text("uptime").first.flatMap { words($0).first }.flatMap(number) ?? 0
+        if reading.darwin {
+            darwin(text, into: &snapshot)
+        } else {
+            linux(text, into: &reading, &snapshot)
+        }
+        // A device or share mounted at several places (bind mounts) once; never one called tmpfs, overlay or none: distinct
+        // file systems share such names, and empty ones of one size have the same figures too.
+        var disks = text("df").compactMap(disk)
+        if reading.darwin {
+            // APFS: / is the sealed system and the files are on the Data volume (macOS 10.15 on); the rest of
+            // /System/Volumes, and the simulators' and cryptexes' volumes, are the system's own.
+            let data = disks.contains { $0.mountPoint == "/System/Volumes/Data" }
+            disks.removeAll { $0.mountPoint != (data ? "/System/Volumes/Data" : "/")
+                && !($0.mountPoint.hasPrefix("/Volumes/") && $0.mountPoint != "/Volumes/Recovery") }
+        }
+        for disk in disks where !(disk.filesystem.contains("/") && snapshot.disks.contains(where: {
+            ($0.filesystem, $0.size, $0.used, $0.available) == (disk.filesystem, disk.size, disk.used, disk.available)
+        })) {
+            snapshot.disks.append(disk)
+        }
+        if let ps = section("ps") {
+            (snapshot.processes, reading.ps, snapshot.processNote)
+                = processes(bytes, ps, memoryTotal: snapshot.memoryTotal, probe: text("sh").first.flatMap { Int($0) })
+        } else {
+            (reading.ps, snapshot.processNote) = (.none, noPS)
+        }
+        if section("ports") != nil { snapshot.ports = ports(text, processes: snapshot.processes) }
+        reading.snapshot = snapshot
+        return reading
+    }
+
+    /// /proc's CPU times, load, memory and swap, and /etc/os-release's name.
+    private static func linux(_ text: (String) -> [String], into reading: inout Reading, _ snapshot: inout MonitorSnapshot) {
         let cpu = text("stat").first.map(words) ?? []
         if cpu.first == "cpu" {
             // user nice system idle iowait irq softirq steal (guest and guest_nice are already in user and nice)
             let ticks = cpu.dropFirst().prefix(8).map { UInt64($0) ?? 0 }
             reading.cpu = CPUTimes(total: ticks.reduce(0, &+), idle: ticks.dropFirst(3).prefix(2).reduce(0, &+))
         }
-        var snapshot = MonitorSnapshot()
         snapshot.load = text("loadavg").first.map { words($0).prefix(3).compactMap(number) } ?? []
-        snapshot.uptime = text("uptime").first.flatMap { words($0).first }.flatMap(number) ?? 0
 
         var memory: [String: Int64] = [:]
         for line in text("meminfo") {
@@ -335,22 +429,165 @@ public final class Monitor {
         snapshot.swapUsed = max(0, snapshot.swapTotal - (memory["SwapFree"] ?? 0))
 
         snapshot.system = text("os").lazy.compactMap(prettyName).first ?? reading.uname
-        // A device or share mounted at several places (bind mounts) once; never one called tmpfs, overlay or none: distinct
-        // file systems share such names, and empty ones of one size have the same figures too.
-        for disk in text("df").compactMap(disk) where !(disk.filesystem.contains("/") && snapshot.disks.contains(where: {
-            ($0.filesystem, $0.size, $0.used, $0.available) == (disk.filesystem, disk.size, disk.used, disk.available)
-        })) {
-            snapshot.disks.append(disk)
+    }
+
+    /// `darwinScript`'s CPU (iostat's "us sy id 1m 5m 15m": busy is 100 − idle), load, memory as Activity Monitor counts
+    /// it (app memory, wired and compressed: vm_stat's anonymous pages less the purgeable ones, wired down and occupied
+    /// by the compressor), swap and "macOS 26.1".
+    private static func darwin(_ text: (String) -> [String], into snapshot: inout MonitorSnapshot) {
+        let cpu = text("iostat").first.map(words) ?? []
+        if cpu.count >= 6, let idle = number(cpu[2]) { snapshot.cpu = max(0, 100 - min(idle, 100)) }
+        snapshot.load = cpu.dropFirst(3).prefix(3).compactMap(number)
+
+        snapshot.memoryTotal = text("memsize").first.flatMap { Int64($0) } ?? 0
+        var pageSize: Int64 = 4096, pages: [String: Int64] = [:]
+        for line in text("vmstat") {
+            // "Mach Virtual Memory Statistics: (page size of 16384 bytes)", then "Pages wired down:  188049."
+            if let range = line.range(of: "page size of ") {
+                pageSize = Int64(line[range.upperBound...].prefix { $0.isNumber }) ?? pageSize
+            } else if let colon = line.firstIndex(of: ":"),
+                      let count = Int64(line[line.index(after: colon)...].trimmingCharacters(in: .whitespaces).dropLast()) {
+                pages[String(line[..<colon])] = count
+            }
         }
-        if let ps = section("ps") {
-            (snapshot.processes, reading.ps, snapshot.processNote)
-                = processes(bytes, ps, memoryTotal: snapshot.memoryTotal, probe: text("sh").first.flatMap { Int($0) })
-        } else {
-            (reading.ps, snapshot.processNote) = (.none, noPS)
+        let app = pages["Anonymous pages"].map { $0 - (pages["Pages purgeable"] ?? 0) } ?? pages["Pages active"] ?? 0
+        let used = (max(0, app) + (pages["Pages wired down"] ?? 0) + (pages["Pages occupied by compressor"] ?? 0))
+        snapshot.memoryUsed = min(snapshot.memoryTotal, used.multipliedReportingOverflow(by: pageSize).partialValue)
+
+        // "total = 6144.00M  used = 5301.38M  free = 842.62M  (encrypted)"
+        let swap = text("swap").first.map(words) ?? []
+        func swapSize(_ name: Substring) -> Int64 {
+            guard let index = swap.firstIndex(of: name), index + 2 < swap.count, let unit = swap[index + 2].last,
+                  let power = ["K", "M", "G", "T"].firstIndex(of: unit),
+                  let value = number(swap[index + 2].dropLast()), value < 0x1p50 else { return 0 }
+            return Int64(value * pow(1024, Double(power + 1)))
         }
-        if section("ports") != nil { snapshot.ports = ports(text, processes: snapshot.processes) }
-        reading.snapshot = snapshot
-        return reading
+        (snapshot.swapTotal, snapshot.swapUsed) = (swapSize("total"), swapSize("used"))
+        let system = text("os").filter { !$0.isEmpty }.joined(separator: " ")
+        snapshot.system = system.isEmpty ? "macOS" : system
+    }
+
+    /// A Windows server's script, for Windows PowerShell 5.1 (on every Windows with OpenSSH): "Windows", then "@@os" (the
+    /// system's name), "@@sys" (100 ns units since boot, logical processors, the idle process's CPU time, then the memory
+    /// and the paging files in KiB, total and free), "@@drives" (the local drives: size and free bytes, file system, letter;
+    /// never a network drive, which can hang), and with `processes` "@@sh" (this PowerShell's pid) and "@@procs", a line a
+    /// process with tabs between: pid, parent, user (without a domain; none unless the account is an administrator), CPU
+    /// time (100 ns), working set (bytes), seconds running, name, command line (its line breaks and tabs as spaces).
+    /// `ports` adds "@@ports": "tcp <address> <port> <pid> <connections>" for each listening TCP socket (connections: not
+    /// those in TIME-WAIT, which are closed already) and "udp <address> <port> <pid>" for each UDP one; and "@@connections"
+    /// of `connectionsOf` (a TCP port): "<local address> <remote address> <remote port> <state>", at most `connectionLimit`.
+    /// One refresh took about 1 s on a 4-processor Windows 11 VM (0.4 s of it PowerShell's start), about 3 s with the ports:
+    /// under the Monitor tab's 3 s and 5 s, and `MonitorModel` runs one refresh at a time anyway.
+    static func windowsScript(processes: Bool, ports: Bool = false, connectionsOf port: MonitorPort? = nil) -> String {
+        var script = "$ErrorActionPreference='SilentlyContinue';$n=Get-Date;$o=Get-CimInstance Win32_OperatingSystem;"
+            + "$p=Get-CimInstance Win32_Process" + (processes ? ";" : " -Filter ProcessId=0;")
+            + "'Windows';'@@os';$o.Caption;'@@sys';\"$(($n-$o.LastBootUpTime).Ticks) $([Environment]::ProcessorCount) "
+            + "$(($p|?{$_.ProcessId -eq 0}).KernelModeTime) $($o.TotalVisibleMemorySize) $($o.FreePhysicalMemory) "
+            + "$($o.SizeStoredInPagingFiles) $($o.FreeSpaceInPagingFiles)\";'@@drives';"
+            + "Get-CimInstance Win32_LogicalDisk -Filter DriveType=3|%{\"$($_.Size) $($_.FreeSpace) $($_.FileSystem) $($_.DeviceID)\"};"
+        if processes {
+            script += "'@@sh';$PID;'@@procs';$u=@{};Get-Process -IncludeUserName|%{$u[$_.Id]=($_.UserName -split '\\\\')[-1]};"
+                + "$p|%{\"$($_.ProcessId)`t$($_.ParentProcessId)`t$($u[[int]$_.ProcessId])`t$($_.KernelModeTime+$_.UserModeTime)"
+                + "`t$($_.WorkingSetSize)`t$(if($_.CreationDate){[int]($n-$_.CreationDate).TotalSeconds})`t$($_.Name)"
+                + "`t$($_.CommandLine -replace '\\s',' ')\"};"
+        }
+        if ports {
+            let open = "$_.State -notin 'Listen','TimeWait','Bound'"
+            script += "'@@ports';$c=@{};$t=Get-NetTCPConnection;$t|?{\(open)}|%{$c[$_.LocalPort]++};"
+                + "$t|?{$_.State -eq 'Listen'}|%{\"tcp $($_.LocalAddress) $($_.LocalPort) $($_.OwningProcess) $([int]$c[$_.LocalPort])\"};"
+                + "Get-NetUDPEndpoint|%{\"udp $($_.LocalAddress) $($_.LocalPort) $($_.OwningProcess)\"};"
+            if let port, port.isTCP {
+                script += "'@@connections';$t|?{$_.LocalPort -eq \(port.port) -and \(open)}|select -First \(connectionLimit)|"
+                    + "%{\"$($_.LocalAddress) $($_.RemoteAddress) $($_.RemotePort) $($_.State)\"};"
+            }
+        }
+        return script
+    }
+
+    /// `windowsScript`'s output: the CPU times (busy is the share of all processors' time the idle process didn't have),
+    /// memory, paging files as swap, drives, and the processes with their CPU % over their lifetime (`record` makes it
+    /// the share since the previous refresh) and without this refresh's own PowerShell, its parent shell and their children.
+    private static func windows(_ text: (String) -> [String], ports: Bool, into reading: inout Reading,
+                                _ snapshot: inout MonitorSnapshot) {
+        // Whole numbers below 2^50, so that nothing later can overflow.
+        func whole(_ text: Substring) -> UInt64? { UInt64(text).map { min($0, 1 << 50) } }
+        let figures = (text("sys").first.map(words) ?? []).map(whole)
+        func figure(_ index: Int) -> UInt64? { index < figures.count ? figures[index] : nil }
+        if let clock = figure(0), let cores = figure(1), clock > 0, cores > 0 {
+            reading.clock = clock
+            snapshot.uptime = Double(clock) / 1e7
+            if let idle = figure(2) { reading.cpu = CPUTimes(total: clock * min(cores, 4096), idle: idle) }
+        }
+        func kibibytes(_ index: Int) -> Int64 { Int64(figure(index) ?? 0) * 1024 }
+        snapshot.memoryTotal = kibibytes(3)
+        snapshot.memoryUsed = max(0, snapshot.memoryTotal - kibibytes(4))
+        snapshot.swapTotal = kibibytes(5)
+        snapshot.swapUsed = max(0, snapshot.swapTotal - kibibytes(6))
+        snapshot.system = text("os").first?.trimmingCharacters(in: .whitespaces) ?? ""
+        if snapshot.system.isEmpty { snapshot.system = "Windows" }
+
+        for line in text("drives") {
+            let parts = words(line)
+            guard parts.count >= 3, let size = whole(parts[0]), size > 0, let free = whole(parts[1]) else { continue }
+            snapshot.disks.append(MonitorDisk(filesystem: parts.count > 3 ? String(parts[2]) : "", mountPoint: String(parts.last!),
+                                              size: Int64(size), used: Int64(size - min(free, size)), available: Int64(free)))
+        }
+
+        for line in text("procs") {
+            let fields = line.split(separator: "\t", maxSplits: 7, omittingEmptySubsequences: false)
+            // Not the idle process: its "CPU" is the time nothing else ran.
+            guard fields.count == 8, let pid = Int(fields[0]), pid > 0 else { continue }
+            let time = whole(fields[3]) ?? 0, rss = Int64(whole(fields[4]) ?? 0), elapsed = number(fields[5])
+            reading.processCPU[pid] = time
+            snapshot.processes.append(MonitorProcess(
+                pid: pid, ppid: Int(fields[1]) ?? 0, user: String(fields[2]),
+                cpu: elapsed.flatMap { $0 > 0 ? Double(time) / 1e5 / $0 : nil },
+                memory: snapshot.memoryTotal > 0 ? Double(rss) / Double(snapshot.memoryTotal) * 100 : nil,
+                rss: rss, elapsed: elapsed, state: "", name: String(fields[6]), command: String(fields[7])))
+        }
+        if let probe = text("sh").first.flatMap({ Int($0) }) {
+            let own = [probe, snapshot.processes.first { $0.pid == probe }?.ppid ?? probe]
+            snapshot.processes.removeAll { own.contains($0.pid) || own.contains($0.ppid) }
+        }
+        if ports { snapshot.ports = windowsPorts(text, processes: snapshot.processes) }
+    }
+
+    /// `windowsScript`'s ports: their processes' names, command lines and users from the processes of the same refresh.
+    static func windowsPorts(_ text: (String) -> [String], processes: [MonitorProcess]) -> MonitorPorts {
+        var rows: [MonitorPort] = [], places: [MonitorPort.ID: Int] = [:]
+        for line in text("ports") {
+            let parts = words(line)
+            guard parts.count >= 4, parts[0] == "tcp" || parts[0] == "udp", let port = Int(parts[2]), let pid = Int(parts[3])
+            else { continue }
+            var row = MonitorPort(table: parts[0] + (parts[1].contains(":") ? "6" : ""), address: String(parts[1]), port: port,
+                                  user: "")
+            if row.isTCP { row.connections = parts.count > 4 ? Int(parts[4]) ?? 0 : 0 }
+            if let place = places[row.id] {
+                rows[place].pids.append(pid)
+            } else {
+                row.pids = [pid]
+                places[row.id] = rows.count
+                rows.append(row)
+            }
+        }
+        let names = Dictionary(processes.map { ($0.pid, $0) }) { first, _ in first }
+        for index in rows.indices {
+            rows[index].pids = Array(Set(rows[index].pids)).sorted()
+            if let process = rows[index].pids.lazy.compactMap({ names[$0] }).first {
+                (rows[index].process, rows[index].command, rows[index].user) = (process.name, process.command, process.user)
+            }
+        }
+        var ports = MonitorPorts()
+        ports.listening = rows.sorted { ($0.port, $0.table, $0.address) < ($1.port, $1.table, $1.address) }
+        let states = ["Established": "Established", "SynSent": "SYN sent", "SynReceived": "SYN received", "FinWait1": "FIN wait 1",
+                      "FinWait2": "FIN wait 2", "CloseWait": "Close wait", "Closing": "Closing", "LastAck": "Last ACK"]
+        for line in text("connections") {
+            let parts = words(line)
+            guard parts.count == 4, let port = Int(parts[2]) else { continue }
+            ports.connections.append(MonitorConnection(id: line, address: String(parts[1]), port: port,
+                                                       state: states[String(parts[3])] ?? String(parts[3])))
+        }
+        return ports
     }
 
     static let noPortTables = "This server has no /proc/net tables, so AirSCP can't list what it listens on."

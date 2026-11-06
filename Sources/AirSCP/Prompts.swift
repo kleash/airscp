@@ -194,6 +194,8 @@ func confirm(_ message: String, info: String, button: String, destructive: Bool 
     alert.addButton(withTitle: "Cancel").toolTip = "Don't do it"
     if let window {
         alert.beginSheetModal(for: window) { if $0 == .alertFirstButtonReturn { action() } }
+        // Return answers it, as the person expects: macOS (26 and later) takes Return off a destructive button.
+        chosen.keyEquivalent = "\r"
     } else if alert.runModal() == .alertFirstButtonReturn {
         action()
     }

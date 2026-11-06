@@ -24,6 +24,8 @@ final class BrowserContentController: NSViewController {
     private let split = SurfaceSplitView()
     private var placedDivider = false
     private var clipboard: Clipboard?
+    /// Compare's windows, while open.
+    private var comparisons: [CompareWindow] = []
     private var editors: [String: RemoteEditor] = [:]
     private var watched: [WatchedFile] = []
     /// Files for "Open" that download through the transfer queue, by job: opened once there.
@@ -59,6 +61,8 @@ final class BrowserContentController: NSViewController {
         let remotePath: String
         let local: URL
         var modified: Date
+        /// The app it opens in (Open With); nil: its default app.
+        var app: URL?
     }
 
     /// `workspace` nil (tests): no window to show errors in, and the settings' defaults.
@@ -143,9 +147,38 @@ final class BrowserContentController: NSViewController {
         workspace?.show(error, title: title)
     }
 
+    /// The saved server the left pane's source menu is connecting, shown there once connected.
+    private(set) var connectingSource: UUID?
+
+    /// The saved servers the left pane can show that aren't connected (S3 storage too; Remote Desktop entries aren't
+    /// hosts), in their saved order.
+    var unconnectedHosts: [SSHHost] {
+        guard let model = workspace?.model else { return [] }
+        let connected = Set(connectedSessions.map(\.host.id))
+        return model.data.hosts.filter { !connected.contains($0.id) }
+    }
+
+    /// The left pane's source menu, for a saved server that isn't connected: connects it (its sheets on the main window
+    /// as for any connect; the window keeps showing this host), then shows it there. A failed or cancelled connect
+    /// leaves the pane as it was.
+    func connectSource(_ hostID: UUID, for pane: FilePane) {
+        guard let other = workspace?.main?.workspace(for: hostID) else { return }
+        connectingSource = hostID
+        pane.updateSourceButton()
+        other.connect(then: { [weak self, weak pane, weak other] in
+            guard let self, let pane, let other, self.connectingSource == hostID else { return }
+            self.chooseSource(.remote(other.session), for: pane)
+        }, otherwise: { [weak self, weak pane] in
+            guard let self, self.connectingSource == hostID else { return }
+            self.connectingSource = nil
+            pane?.updateSourceButton()
+        })
+    }
+
     /// The left pane's source menu.
     func chooseSource(_ source: FilePane.Source, for pane: FilePane) {
-        guard !source.isSame(as: pane.source) else { return }
+        connectingSource = nil
+        guard !source.isSame(as: pane.source) else { return pane.updateSourceButton() }
         switch source {
         case .local: pane.setSource(.local, startIn: localStart)
         case .remote(let session): pane.setSource(source, startIn: remoteStart(session))
@@ -694,8 +727,8 @@ final class BrowserContentController: NSViewController {
     }
 
     /// Shows the alert as a sheet and returns the button chosen (Cancel without a window).
-    private func run(_ alert: NSAlert) async -> NSApplication.ModalResponse {
-        guard let window = view.window else { return .cancel }
+    private func run(_ alert: NSAlert, on other: NSWindow? = nil) async -> NSApplication.ModalResponse {
+        guard let window = other ?? view.window else { return .cancel }
         return await withCheckedContinuation { continuation in
             alert.beginSheetModal(for: window) { continuation.resume(returning: $0) }
         }
@@ -707,9 +740,15 @@ final class BrowserContentController: NSViewController {
     /// unpacks it here.
     func downloadArchive(_ items: [FileItem], from pane: FilePane) {
         guard let server = pane.session, let sourceDir = pane.dir else { return }
+        downloadArchive(items, in: sourceDir, from: server, near: pane)
+    }
+
+    /// `items`' names are their paths below `sourceDir` on `server`; the archive goes where `pane`'s would; the questions
+    /// on `window` (Disk Usage's), else the main window.
+    func downloadArchive(_ items: [FileItem], in sourceDir: String, from server: Session, near pane: FilePane, asking window: NSWindow? = nil) {
         let other = otherPane(of: pane)
         let dir = !other.isRemote ? other.dir ?? settings.downloadFolder : settings.downloadFolder
-        if server.s3 != nil { return downloadZip(items, from: server, in: sourceDir, into: dir) }
+        if server.s3 != nil { return downloadZip(items, from: server, in: sourceDir, into: dir, asking: window) }
         planning += 1
         Task {
             defer { planning -= 1 }
@@ -725,7 +764,7 @@ final class BrowserContentController: NSViewController {
             alert.suppressionButton?.toolTip = "Off by default: you get the .tar.gz. On, its items land in the folder instead"
             alert.suppressionButton?.state = .off
             alert.addHelp(.downloadArchive)
-            guard await run(alert) == .alertFirstButtonReturn else { return }
+            guard await run(alert, on: window) == .alertFirstButtonReturn else { return }
             let extract = alert.suppressionButton?.state == .on
             let existing = await Task.detached(priority: .userInitiated) { FileList.localNames(dir) }.value
             var names = items.map(\.name)
@@ -745,7 +784,7 @@ final class BrowserContentController: NSViewController {
 
     /// Download as .zip from S3 storage: the items are downloaded into a private folder on this Mac and zipped there (a
     /// queued job); the .zip is kept in `dir`.
-    private func downloadZip(_ items: [FileItem], from server: Session, in sourceDir: String, into dir: String) {
+    private func downloadZip(_ items: [FileItem], from server: Session, in sourceDir: String, into dir: String, asking window: NSWindow?) {
         planning += 1
         Task {
             defer { planning -= 1 }
@@ -755,7 +794,7 @@ final class BrowserContentController: NSViewController {
             alert.addButton(withTitle: "Download").toolTip = "Start the download; it runs in the Transfers queue"
             alert.addButton(withTitle: "Cancel").toolTip = "Don't download"
             alert.addHelp(.s3Zip)
-            guard await run(alert) == .alertFirstButtonReturn else { return }
+            guard await run(alert, on: window) == .alertFirstButtonReturn else { return }
             let existing = await Task.detached(priority: .userInitiated) { FileList.localNames(dir) }.value
             let archive = Names.unique((items.count == 1 ? items[0].name : "Archive") + ".zip", existing: existing, caseInsensitive: true)
             server.transfers.downloadArchive(items.map(\.name), in: sourceDir, to: RemotePath.join(dir, archive), extract: false)
@@ -920,6 +959,33 @@ final class BrowserContentController: NSViewController {
         }
     }
 
+    // MARK: Compare
+
+    /// Two files side by side (each with its pane: they may be in different panes), in a window of their own.
+    func compare(_ files: [(item: FileItem, pane: FilePane)]) {
+        guard files.count == 2 else { return }
+        let sides = files.map { file in
+            CompareWindow.Side(name: file.item.name, path: file.item.path, session: file.pane.session,
+                               size: file.pane.isRemote ? file.item.size : TransferQueue.localSize(file.item.path) ?? file.item.size)
+        }
+        Task { [weak self] in
+            var texts: [String?] = []
+            guard await files[1].pane.perform("Reading the files…", failure: "Can't compare the files", {
+                for side in sides { texts.append(try await CompareWindow.read(side)) }
+            }), let self else { return }
+            let window = CompareWindow(sides, texts: texts)
+            window.onSaved = { [weak self] side in
+                guard let self else { return }
+                for pane in [self.left!, self.right!] where pane.session?.host.id == side.session?.host.id && pane.dir == RemotePath.parent(side.path) {
+                    Task { await pane.reload() }
+                }
+            }
+            window.onClose = { [weak self, weak window] in self?.comparisons.removeAll { $0 === window } }
+            self.comparisons.append(window)
+            window.showWindow(nil)
+        }
+    }
+
     // MARK: Editor, Get Info, other apps
 
     /// The built-in editor (one window per file) for a text file up to a few MB.
@@ -992,18 +1058,21 @@ final class BrowserContentController: NSViewController {
     /// Files bigger than this download through the transfer queue for "Open" (progress and Cancel, and the browsing
     /// goes on meanwhile); smaller ones at once.
     static let openDirectlyLimit = Int64(RemoteEditor.limit)
-    /// Opens a downloaded file in its app (tests replace it).
-    var openFile: (URL) -> Void = { NSWorkspace.shared.open($0) }
+    /// Opens a downloaded file in an app, nil: its default app (tests replace it).
+    var openFile: (URL, URL?) -> Void = { file, app in
+        guard let app else { return _ = NSWorkspace.shared.open(file) }
+        NSWorkspace.shared.open([file], withApplicationAt: app, configuration: NSWorkspace.OpenConfiguration())
+    }
 
     /// Opens server files in their apps: each is downloaded to a temporary folder and watched; when it changes,
     /// AirSCP offers to upload it.
-    func openWithDefaultApp(_ files: [FileItem], on server: Session, from pane: FilePane) {
+    func openWithDefaultApp(_ files: [FileItem], on server: Session, from pane: FilePane, in app: URL? = nil) {
         Task {
             var failures: [(name: String, error: Error)] = []
             for item in files {
                 guard let folder = temporaryFolder() else { return }
                 let file = WatchedFile(session: server, remotePath: item.path, local: folder.appendingPathComponent(item.name),
-                                       modified: .distantPast)
+                                       modified: .distantPast, app: app)
                 if item.size > Self.openDirectlyLimit {
                     opening[server.transfers.download(item.path, to: file.local.path, isFolder: false)] = file
                     continue
@@ -1046,7 +1115,7 @@ final class BrowserContentController: NSViewController {
         file.modified = modified(file.local)
         watched.removeAll { $0.session === file.session && $0.remotePath == file.remotePath }
         watched.append(file)
-        openFile(file.local)
+        openFile(file.local, file.app)
         startWatching()
     }
 

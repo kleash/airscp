@@ -5,6 +5,70 @@ nav_order: 18
 
 # What's new
 
+## AirSCP 2.0.6
+
+- **Disk Usage opens in its own window**: keep browsing while it scans, and open several. It works on every server:
+  Windows, servers that only allow file transfers (sftp), and S3 storage too.
+- See how full the disk is, totals **By Type** (.log, .gz, …), and in **Changes** what grew since your last scan.
+- **Open but Deleted** finds deleted files that a program still holds open: their room comes back only when the
+  program closes them.
+- **Empty File…** frees a big log's room at once, even while a program writes to it. **Download as .tar.gz…** keeps a
+  copy before you delete, and **Export as CSV…** saves any list.
+- Disk Usage says which folders it couldn't read and, where your account can use sudo, offers **Scan as Root…**.
+
+## AirSCP 2.0.5
+
+- **Compare, side by side**: the two files in two columns, lines kept in line, with line numbers and the changed
+  letters marked. Scrolling moves both sides together (untick **Sync Scrolling** to move one). Go from one difference
+  to the next with <kbd>⌥⌘↓</kbd> and <kbd>⌥⌘↑</kbd>, or click the bar at the right.
+- In Compare, **Prettify** lays out JSON and XML before comparing (**Original** or <kbd>⌘Z</kbd> puts them back), and
+  **Ignore** leaves out whitespace, case or blank lines. Copy a difference to the other side, then save either file, on
+  this Mac or on the server. **Swap**, **Reload** and find (<kbd>⌘F</kbd>) are there too.
+- **Compare a file on this Mac with one on a server**: select one file in each pane, right-click ▸ **Compare with**.
+  Files that aren't text are compared by their SHA-256 checksums.
+- **Two servers side by side**: the menu above the left pane lists every saved server. Choose one and AirSCP connects
+  it and shows it there, so you can copy between the two servers.
+- **Open Terminal** and the **Terminal** tab start in the folder the Files tab shows, on every server.
+- **Windows servers**: the **Monitor** tab shows CPU, memory, drives, processes and ports, and **Kill** stops a
+  process. The Terminal tab and **Open Terminal Here** open cmd.exe or PowerShell in the folder you are looking at.
+
+## AirSCP 2.0.4
+
+- **Compare two files**: select two text files, right-click ▸ **Compare**. Lines only in one of them are marked red or
+  green.
+- **Open With**: right-click a file ▸ **Open With** to open it in an app you choose.
+- **The path bar**: click the folder shown to type a path. Right-click any folder in it for **Get Info**, **Download
+  To…**, **Rename…**, **Copy Path** and more.
+- **Paste** is in a file's right-click menu too, and a full folder keeps empty space below its last item to right-click
+  for the folder's menu (**New Folder…**, **Show in Finder**…).
+- The **Kind** column now comes after **Date Modified**.
+- **Follow in Files**: ticking it sends the shell to the folder the Files tab shows, and the Files tab stays there.
+- **Fixed**: <kbd>Return</kbd> didn't answer the Delete question. In the Terminal tab, a selection highlighted the whole
+  line instead of only the text selected.
+
+## AirSCP 2.0.3
+
+- **The monitor works on Mac servers**: CPU, memory, swap, load, disks and processes, with Kill, in the Monitor tab
+  and on iPhone and iPad (ports stay Linux only).
+- **iPhone and iPad**: the Terminal tab has **Disconnect** for a server's last terminal. A folder you copy shows how
+  many files are done and how many are to go, and how far the whole folder is.
+- **Fixed** on iPhone and iPad: tapping the Terminal tab sent the tab bar back to the tab before for a moment.
+
+## AirSCP 2.0.2
+
+- **Fixed: Windows SSH servers** (Windows' own OpenSSH). A folder showed empty, because AirSCP didn't read how newer
+  versions list permissions. Now folders list, and the top of the path (the server's name) shows the drives (C:, D:…)
+  to go to. The Terminal tab opens the server's own shell (cmd.exe or PowerShell) instead of ending at once.
+
+## AirSCP 2.0.1
+
+- **Copy Path from the path bar**: right-click the path above a Files pane's list ▸ **Copy Path** copies the full path
+  of the folder shown.
+- **Follow in Files goes both ways**: with it ticked in the Terminal tab, a folder you open in the server pane has `cd`
+  typed at the shell's empty prompt, so the shell goes there too. AirSCP never types into a running command.
+- **Fixed** in the Terminal tab: a double-click just before a word (on the space in front of a PID in `ps -ef`, say)
+  selected the space with the word.
+
 ## AirSCP 2.0.0
 
 - **AirSCP for iPhone and iPad** (iOS 26 or later): save your servers and S3 storage, or find them on your network with

@@ -135,9 +135,10 @@ final class MonitorController: NSViewController {
     private func kill(_ processes: [(pid: Int, name: String)], force: Bool) {
         guard !processes.isEmpty, let window = view.window else { return }
         let what = processes.count == 1 ? "“\(processes[0].name)” (\(processes[0].pid))" : "\(processes.count) processes"
+        let windows = session.capabilities.windows
         confirm("\(force ? "Force kill" : "Kill") \(what)?",
-                info: force ? "The process is stopped at once (SIGKILL), without a chance to save anything."
-                    : "The process is asked to quit (SIGTERM).",
+                info: force || windows ? "The process is stopped at once (\(windows ? "Stop-Process" : "SIGKILL")), without a chance "
+                    + "to save anything." : "The process is asked to quit (SIGTERM).",
                 button: force ? "Force Kill" : "Kill", destructive: true, on: window) { [self] in
             Task {
                 var denied: [(pid: Int, name: String)] = []
@@ -157,8 +158,11 @@ final class MonitorController: NSViewController {
                 guard !denied.isEmpty else { return }
                 let title = "You may not kill \(denied.count == 1 ? "“\(denied[0].name)”" : "\(denied.count) of them")"
                 guard await model.monitor.hasSudo() else {
-                    showError(AirSCPError(.permissionDenied, "The process belongs to another user, and the server has no "
-                                          + "sudo to kill it as an administrator."), title: title, on: view.window)
+                    showError(AirSCPError(.permissionDenied, windows
+                                          ? "The process belongs to another user or to Windows, and this account may not stop it"
+                                            + (force ? "." : ": Force Kill can, if the account is an administrator.")
+                                          : "The process belongs to another user, and the server has no sudo to kill it as an administrator."),
+                              title: title, on: view.window)
                     return
                 }
                 confirm(title,
@@ -332,10 +336,12 @@ struct MonitorView: View {
                     usage(fraction(snapshot.swapUsed, snapshot.swapTotal), text: snapshot.swapTotal == 0 ? "None"
                           : "\(FileList.size(snapshot.swapUsed)) of \(FileList.size(snapshot.swapTotal))")
                 }
-                GridRow {
-                    label("Load").help("Load average over 1, 5 and 15 minutes")
-                    Text(snapshot.load.map { String(format: "%.2f", $0) }.joined(separator: "  ")).monospacedDigit()
-                        .help("Load average over 1, 5 and 15 minutes")
+                if !snapshot.load.isEmpty {  // Windows has none
+                    GridRow {
+                        label("Load").help("Load average over 1, 5 and 15 minutes")
+                        Text(snapshot.load.map { String(format: "%.2f", $0) }.joined(separator: "  ")).monospacedDigit()
+                            .help("Load average over 1, 5 and 15 minutes")
+                    }
                 }
                 GridRow {
                     label("Up").help("Time since the server started")
@@ -372,6 +378,15 @@ struct MonitorView: View {
                     .accessibilityIdentifier("monitor.explain")
             }
         }
+    }
+
+    /// Kill's and Force Kill's tooltips: the signals, or on Windows Stop-Process, which stops a process at once either way.
+    private func killTip(_ what: String, force: Bool) -> String {
+        guard model.monitor.session.capabilities.windows else {
+            return force ? "Stop \(what) at once (SIGKILL); asks first" : "Ask \(what) to quit (SIGTERM); asks first"
+        }
+        return force ? "Stop \(what) at once, also another user's (Stop-Process -Force); asks first"
+            : "Stop \(what) at once (Stop-Process); asks first"
     }
 
     private func label(_ text: String) -> some View {
@@ -429,9 +444,9 @@ struct MonitorView: View {
             .frame(maxWidth: 240)
             .help("Show only processes matching this")
         Button("Kill") { kill(chosen.map { ($0.pid, $0.name) }, false) }.disabled(chosen.isEmpty)
-            .help(chosen.isEmpty ? "Select processes first" : "Ask the selected processes to quit (SIGTERM); asks first")
+            .help(chosen.isEmpty ? "Select processes first" : killTip("the selected processes", force: false))
         Button("Force Kill") { kill(chosen.map { ($0.pid, $0.name) }, true) }.disabled(chosen.isEmpty)
-            .help(chosen.isEmpty ? "Select processes first" : "Stop the selected processes at once (SIGKILL); asks first")
+            .help(chosen.isEmpty ? "Select processes first" : killTip("the selected processes", force: true))
     }
 
     private func processes(_ snapshot: MonitorSnapshot) -> some View {
@@ -471,8 +486,8 @@ struct MonitorView: View {
                 .accessibilityIdentifier("monitor.processes")
                 .contextMenu(forSelectionType: MonitorProcess.ID.self) { ids in
                     let picked = rows.filter { ids.contains($0.id) }.map { ($0.pid, $0.name) }
-                    Button("Kill") { kill(picked, false) }.help("Ask the selected processes to quit (SIGTERM); asks first")
-                    Button("Force Kill") { kill(picked, true) }.help("Stop the selected processes at once (SIGKILL); asks first")
+                    Button("Kill") { kill(picked, false) }.help(killTip("the selected processes", force: false))
+                    Button("Force Kill") { kill(picked, true) }.help(killTip("the selected processes", force: true))
                 }
             }
         }
@@ -503,9 +518,9 @@ struct MonitorView: View {
         Button("Show Process") { show(port) }.disabled(why != nil)
             .help(why ?? "Show the process that has this port in the list of processes")
         Button("Kill") { kill(targets(of: port), false) }.disabled(why != nil)
-            .help(why ?? "Ask the process that has this port to quit (SIGTERM); asks first")
+            .help(why ?? killTip("the process that has this port", force: false))
         Button("Force Kill") { kill(targets(of: port), true) }.disabled(why != nil)
-            .help(why ?? "Stop the process that has this port at once (SIGKILL); asks first")
+            .help(why ?? killTip("the process that has this port", force: true))
     }
 
     @ViewBuilder
@@ -577,9 +592,9 @@ struct MonitorView: View {
                         Button("Show Process") { show(port) }.disabled(why != nil)
                             .help(why ?? "Show the process that has this port in the list of processes")
                         Button("Kill") { kill(targets(of: port), false) }.disabled(why != nil)
-                            .help(why ?? "Ask the process that has this port to quit (SIGTERM); asks first")
+                            .help(why ?? killTip("the process that has this port", force: false))
                         Button("Force Kill") { kill(targets(of: port), true) }.disabled(why != nil)
-                            .help(why ?? "Stop the process that has this port at once (SIGKILL); asks first")
+                            .help(why ?? killTip("the process that has this port", force: true))
                         Divider()
                         Button("Copy Address") { MonitorText.copy(MonitorText.endpoint(port.address, port.port)) }
                             .help("Copy \(MonitorText.endpoint(port.address, port.port))")

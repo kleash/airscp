@@ -319,9 +319,10 @@ public final class S3Client {
     }
 
     /// Everything under `prefix` (every page): with `delimiter` the objects at its level and the common prefixes (the
-    /// folders); without it every object below. `maxKeys`: stop after that many.
+    /// folders); without it every object below. `maxKeys`: stop after that many. `page` gets each page's objects as they come.
     public func list(_ bucket: String, prefix: String, delimiter: String? = "/", maxKeys: Int? = nil,
-                     cancellation: Cancellation? = nil) async throws -> (objects: [S3Object], prefixes: [String]) {
+                     cancellation: Cancellation? = nil,
+                     page: (([S3Object]) -> Void)? = nil) async throws -> (objects: [S3Object], prefixes: [String]) {
         var objects: [S3Object] = [], prefixes: [String] = []
         var token: String?
         repeat {
@@ -335,12 +336,14 @@ public final class S3Client {
             guard let tree = XMLTree.parse(response.body) else {
                 throw AirSCPError(.other, "The storage's listing couldn't be read.", details: String(decoding: response.body, as: UTF8.self))
             }
+            let pageStart = objects.count
             for item in tree.all("Contents") {
                 guard let key = item.value("Key") else { continue }
                 objects.append(S3Object(key: key, size: Int64(item.value("Size") ?? "") ?? 0,
                                         modified: item.value("LastModified").flatMap(S3Dates.iso),
                                         etag: item.value("ETag") ?? "", storageClass: item.value("StorageClass") ?? ""))
             }
+            page?(Array(objects[pageStart...]))
             prefixes += tree.all("CommonPrefixes").compactMap { $0.value("Prefix") }
             token = tree.value("IsTruncated") == "true" ? tree.value("NextContinuationToken") : nil
             if let maxKeys, objects.count + prefixes.count >= maxKeys { break }

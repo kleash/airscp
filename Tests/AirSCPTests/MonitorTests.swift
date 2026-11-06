@@ -403,7 +403,7 @@ private func idleMonitor() throws -> (Monitor, AskpassServer) {
         _ = try monitor.record(Monitor.parse(""))
         Issue.record("a server without uname was taken for Linux")
     } catch let error as AirSCPError {
-        #expect(error.message == "The system monitor works only on Linux servers. The Files and Tunnels tabs work as usual.")
+        #expect(error.message == "The system monitor works only on Linux, macOS and Windows servers. The Files and Tunnels tabs work as usual.")
     }
     #expect(Monitor.prettyName("PRETTY_NAME='Ubuntu 24.04.3 LTS'") == "Ubuntu 24.04.3 LTS")
     #expect(Monitor.prettyName("PRETTY_NAME=Gentoo") == "Gentoo")
@@ -504,22 +504,28 @@ private func idleMonitor() throws -> (Monitor, AskpassServer) {
     #expect(elapsed < .milliseconds(2000), "parsing 5000 processes took \(elapsed)")
 }
 
-/// The throwaway sshd runs on this Mac: not Linux.
-@Test func monitorOnAServerThatIsNotLinux() async throws {
+/// The throwaway sshd runs on this Mac: macOS's sources (`darwinScript`), with the figures Activity Monitor shows.
+@Test func monitorOnThisMac() async throws {
     try await withServer { server in
         let session = try await server.connectedSession()
         let monitor = Monitor(session: session)
-        do {
-            _ = try await monitor.refresh()
-            Issue.record("this Mac was monitored as a Linux server")
-        } catch let error as AirSCPError {
-            #expect(error.message.hasPrefix("The system monitor works only on Linux servers (this one runs Darwin "))
-        }
-        #expect((await server.logEntries()).contains { $0.command.contains("@@stat") && $0.status == 0 })
-        // Known from now on: no more commands.
-        let count = await server.logEntries().count
-        await #expect(throws: AirSCPError.self) { try await monitor.refresh() }
-        #expect(await server.logEntries().count == count)
+        let snapshot = try await monitor.refresh(ports: true)
+        let version = ProcessInfo.processInfo.operatingSystemVersion
+        #expect(snapshot.system == "macOS \(version.majorVersion).\(version.minorVersion)"
+                + (version.patchVersion > 0 ? ".\(version.patchVersion)" : ""))
+        #expect(snapshot.cpu.map { (0...100).contains($0) } == true, "\(String(describing: snapshot.cpu))")  // at once
+        #expect(snapshot.load.count == 3)
+        var boot = timeval(), size = MemoryLayout<timeval>.size
+        sysctlbyname("kern.boottime", &boot, &size, nil, 0)
+        #expect(abs(snapshot.uptime - (Date().timeIntervalSince1970 - Double(boot.tv_sec))) < 60, "\(snapshot.uptime)")  // sleep too
+        #expect(snapshot.memoryTotal == Int64(ProcessInfo.processInfo.physicalMemory))
+        #expect(snapshot.memoryUsed > 0 && snapshot.memoryUsed <= snapshot.memoryTotal)
+        #expect(snapshot.disks.first?.mountPoint == "/System/Volumes/Data", "\(snapshot.disks)")
+        #expect(!snapshot.disks.contains { $0.mountPoint == "/" || $0.mountPoint.hasPrefix("/Library/") })
+        #expect(snapshot.processNote == nil)
+        let me = try #require(snapshot.processes.first { $0.pid == getpid() }, "this test isn't listed")
+        #expect(me.user == NSUserName() && me.rss > 0 && me.elapsed != nil && !me.name.contains("/"))
+        #expect(snapshot.ports?.note == Monitor.noPortTables && snapshot.ports?.listening == [])
 
         // Kill and Force Kill are plain POSIX kill, so they work here too.
         for (force, signal) in [(false, SIGTERM), (true, SIGKILL)] {
@@ -845,4 +851,95 @@ private func row(_ ports: MonitorPorts, _ table: String, _ port: Int) -> Monitor
     let elapsed = ContinuousClock().measure { ports = Monitor.parse(output).snapshot.ports }
     #expect(ports?.listening.count == 10_000 && ports?.connections.count == 2000 && ports?.listening.last?.pids == [1])
     #expect(elapsed < .seconds(5), "parsing 10 000 ports took \(elapsed)")
+}
+
+/// `Monitor.windowsScript`'s output on Windows 11 (Windows PowerShell 5.1, 4 processors), names changed: the idle process
+/// (left out), System, sshd, AirSCP's own probe (1964: its parent cmd.exe 5832 and its conhost 6304 are left out too), a
+/// process with a tab in its command line (printed as a space) and a non-ASCII one; its ports, and the connections to 22.
+private let windowsOutput = """
+Windows
+@@os
+Microsoft Windows 11 Pro
+@@sys
+7296761629 4 23356250000 6281984 4239684 393216 131072
+@@drives
+67483201536 39542992896 NTFS C:
+2000000000 1000000000  D:
+@@sh
+1964
+@@procs
+0\t0\t\t23356250000\t8192\t728\tSystem Idle Process\t
+4\t0\t\t410312500\t356352\t728\tSystem\t
+4064\t932\tSYSTEM\t1093750\t11243520\t718\tsshd.exe\tC:\\WINDOWS\\System32\\OpenSSH\\sshd.exe
+5832\t1896\tporter\t312500\t8916992\t1\tcmd.exe\t"c:\\windows\\system32\\cmd.exe" /c "powershell -NoProfile"
+6304\t5832\tporter\t625000\t12464128\t1\tconhost.exe\t\\??\\C:\\WINDOWS\\system32\\conhost.exe 0x4
+1964\t5832\tporter\t12500000\t91844608\t1\tpowershell.exe\tpowershell -NoProfile
+7000\t4064\tporter\t20000000\t104857600\t100\tnotepad.exe\tnotepad.exe C:\\Users\\porter\\a  b.txt
+7100\t4064\t\t0\t4096\t\tcafé.exe\t
+@@ports
+tcp :: 22 4064 0
+tcp 0.0.0.0 22 4064 2
+tcp 0.0.0.0 22 4065 2
+udp fe80::1%11 1900 5460
+udp 0.0.0.0 123 3712
+@@connections
+10.0.0.2 10.0.0.1 65062 Established
+10.0.0.2 10.0.0.9 50000 CloseWait
+"""
+
+@Test func monitorReadsAWindowsServer() throws {
+    let reading = Monitor.parse(windowsOutput)
+    #expect(reading.windows && !reading.linux)
+    let snapshot = reading.snapshot
+    #expect(snapshot.system == "Microsoft Windows 11 Pro" && snapshot.load.isEmpty)
+    #expect(abs(snapshot.uptime - 729.6761629) < 1e-6)
+    #expect(snapshot.memoryTotal == 6281984 * 1024 && snapshot.memoryUsed == (6281984 - 4239684) * 1024)
+    #expect(snapshot.swapTotal == 393216 * 1024 && snapshot.swapUsed == (393216 - 131072) * 1024)
+    #expect(reading.cpu == Monitor.CPUTimes(total: 7296761629 * 4, idle: 23356250000))
+    #expect(snapshot.disks == [
+        MonitorDisk(filesystem: "NTFS", mountPoint: "C:", size: 67483201536, used: 67483201536 - 39542992896, available: 39542992896),
+        MonitorDisk(filesystem: "", mountPoint: "D:", size: 2000000000, used: 1000000000, available: 1000000000)])
+    #expect(snapshot.processes.map(\.pid) == [4, 4064, 7000, 7100])
+    let notepad = try #require(snapshot.processes.first { $0.pid == 7000 })
+    #expect(notepad.ppid == 4064 && notepad.user == "porter" && notepad.name == "notepad.exe" && notepad.state.isEmpty
+            && notepad.command == "notepad.exe C:\\Users\\porter\\a  b.txt" && notepad.rss == 104857600 && notepad.elapsed == 100)
+    #expect(abs((notepad.cpu ?? 0) - 2) < 1e-9)  // 2 s of CPU in 100 s
+    #expect(abs((notepad.memory ?? 0) - 104857600 / Double(6281984 * 1024) * 100) < 1e-9)
+    let cafe = try #require(snapshot.processes.first { $0.pid == 7100 })
+    #expect(cafe.name == "café.exe" && cafe.cpu == nil && cafe.elapsed == nil && cafe.user.isEmpty)
+
+    let ports = try #require(snapshot.ports)
+    #expect(ports.listening.map(\.id) == ["tcp 0.0.0.0 22", "tcp6 :: 22", "udp 0.0.0.0 123", "udp6 fe80::1%11 1900"])
+    let ssh = try #require(ports.listening.first { $0.id == "tcp 0.0.0.0 22" })
+    #expect(ssh.pids == [4064, 4065] && ssh.process == "sshd.exe" && ssh.user == "SYSTEM" && ssh.connections == 2)
+    #expect(ports.listening.first { $0.port == 123 }?.connections == nil && ports.note == nil && !ports.othersHidden)
+    #expect(ports.connections.map(\.address) == ["10.0.0.1", "10.0.0.9"] && ports.connections.map(\.state) == ["Established", "Close wait"])
+    // Without the ports asked for, none.
+    #expect(Monitor.parse(windowsOutput.components(separatedBy: "@@ports")[0]).snapshot.ports == nil)
+}
+
+/// A Windows process's CPU % is its CPU time since the previous refresh, over the time between the two (as top counts it:
+/// 100 % is one processor); the first refresh shows it over the process's lifetime.
+@Test func windowsProcessCPUIsOverTheTimeBetweenTwoRefreshes() throws {
+    let (monitor, askpass) = try idleMonitor()
+    defer { askpass.close() }
+    let first = try monitor.record(Monitor.parse(windowsOutput))
+    #expect(first.cpu == nil && abs((first.processes.first { $0.pid == 7000 }?.cpu ?? 0) - 2) < 1e-9)
+    // 3 s later: notepad used 1.5 s of CPU, the idle process 9 of the 12 processor-seconds.
+    let later = windowsOutput
+        .replacingOccurrences(of: "7296761629 4 23356250000", with: "7326761629 4 23446250000")
+        .replacingOccurrences(of: "porter\t20000000\t", with: "porter\t35000000\t")
+    let next = try monitor.record(Monitor.parse(later))
+    #expect(abs((next.cpu ?? 0) - 25) < 1e-9)
+    #expect(abs((next.processes.first { $0.pid == 7000 }?.cpu ?? 0) - 50) < 1e-9)
+    #expect(next.processes.first { $0.pid == 4 }?.cpu == 0)
+    // The pulse strip's refresh (no processes) keeps the processes' previous times.
+    #expect(Monitor.windowsScript(processes: false).contains("Win32_Process -Filter ProcessId=0;")
+            && !Monitor.windowsScript(processes: false).contains("@@procs"))
+    #expect(Monitor.windowsScript(processes: true, ports: true).contains("'@@ports'")
+            && !Monitor.windowsScript(processes: true, ports: true).contains("@@connections"))
+    let port = MonitorPort(table: "tcp", address: "0.0.0.0", port: 8080, user: "")
+    #expect(Monitor.windowsScript(processes: true, ports: true, connectionsOf: port).contains("$_.LocalPort -eq 8080"))
+    // cmd.exe's limit is 8,191 characters: the longest script, encoded, stays well under it.
+    #expect(OpenSSH.powershell(Monitor.windowsScript(processes: true, ports: true, connectionsOf: port)).count < 6000)
 }

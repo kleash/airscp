@@ -6,7 +6,7 @@ nav_order: 6
 
 # Monitor on iPhone and iPad
 
-See what a Linux server is doing: its CPU, memory, disks and busiest processes. You can also stop a process.
+See what a Linux or Mac server is doing: its CPU, memory, disks and busiest processes. You can also stop a process.
 
 ## Steps
 
@@ -36,5 +36,5 @@ See what a Linux server is doing: its CPU, memory, disks and busiest processes. 
   read servers in the background.
 - Your account may stop only its own processes. For another user's, AirSCP gives you the `sudo kill` command to type in
   the [terminal](terminal.md).
-- The monitor works on Linux servers. Other servers, accounts that allow file transfers (sftp) only, and S3 storage have
+- The monitor works on Linux and Mac servers. Other servers, accounts that allow file transfers (sftp) only, and S3 storage have
   none.

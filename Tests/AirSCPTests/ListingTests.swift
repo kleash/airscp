@@ -32,6 +32,25 @@ import Testing
 }
 
 /// GNU ls as `Session.list` runs it on a shell host (C locale, dates in UTC, link targets after " -> ").
+/// Windows' OpenSSH (9.5) lists with "*" for the group's and others' permissions and "-" for owner and group; its root
+/// lists the drives. (Before, every such line was dropped: an empty folder.)
+@Test func windowsListingsAndDrivesAreRead() {
+    let home = Listing.parse("""
+        sftp> ls -la
+        drwx******    1 -        -               0 Oct  2 14:54 Application Data
+        dr-x******    1 -        -               0 Oct  2 14:54 Desktop
+        -rw-******    1 -        -         2883584 Oct  6 08:59 NTUSER.DAT
+        """, in: "/C:/Users/porter")
+    #expect(home.map(\.name) == ["Application Data", "Desktop", "NTUSER.DAT"])
+    #expect(home.map(\.kind) == [.directory, .directory, .file] && home[2].size == 2_883_584 && home[0].mode == 0o700)
+    #expect(home[1].path == "/C:/Users/porter/Desktop")
+    let drives = Listing.parse("""
+        drwx******    1 -        -            4096 Nov  4 11:23 C:
+        drwx******    1 -        -              96 Jan 28  2023 Z:
+        """, in: "/")
+    #expect(drives.map(\.path) == ["/C:", "/Z:"] && drives.allSatisfy { $0.kind == .directory })
+}
+
 @Test func shellListingWithLinkTargets() throws {
     let now = Listing.utc.date(from: DateComponents(year: 2026, month: 10, day: 2, hour: 12))!
     let output = """

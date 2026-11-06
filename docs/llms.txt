@@ -20,7 +20,7 @@
 - [Terminal on iPhone and iPad](https://kleash.github.io/airscp/iphone-ipad/terminal.html): The **Terminal** tab is a shell on an open server. It uses the server's connection, so there is no second login. Each open server has one.
 - [Transfers on iPhone and iPad](https://kleash.github.io/airscp/iphone-ipad/transfers.html): Every copy goes to the **Transfers** tab. There you see how far each one is, pause it, or try it again. On an iPhone, the copy that runs also shows just above the tabs: tap it to open **Transfers**.
 - [Search and run on several servers](https://kleash.github.io/airscp/iphone-ipad/search.html): **Search** (the magnifying glass next to the tabs) finds your servers, the commands you ran before, and files on an open server. From there you run a command again: on one server, or on several at once.
-- [Monitor on iPhone and iPad](https://kleash.github.io/airscp/iphone-ipad/monitor.html): See what a Linux server is doing: its CPU, memory, disks and busiest processes. You can also stop a process.
+- [Monitor on iPhone and iPad](https://kleash.github.io/airscp/iphone-ipad/monitor.html): See what a Linux or Mac server is doing: its CPU, memory, disks and busiest processes. You can also stop a process.
 - [iPad and iPhone Duo](https://kleash.github.io/airscp/iphone-ipad/ipad.html): On an iPad, AirSCP uses the room it has: a sidebar with your open servers, a workspace for each, several windows, the keyboard and the pointer. AirSCP follows the width of its window, not the device. A narrow window (next to another app, or an iPhone Duo folded) looks as on an iPhone.
 
 ## Connecting
@@ -44,7 +44,7 @@
 ## Files
 - [Files](https://kleash.github.io/airscp/files/): The **Files** tab has two panes. The left pane shows this Mac (or another connected server). The right pane shows the selected server. Drag between them to copy.
 - [Browse a server's folders](https://kleash.github.io/airscp/files/browse.html): Move around a server's folders like in Finder.
-- [Copy files](https://kleash.github.io/airscp/files/copy-files.html): Upload files from your Mac to a server, or download them from a server to your Mac.
+- [Copy files](https://kleash.github.io/airscp/files/copy-files.html): Upload files from your Mac to a server, download them from a server to your Mac, or copy them between two servers.
 - [Upload a folder](https://kleash.github.io/airscp/files/upload-a-folder.html): Copy a whole folder to a server. AirSCP sends each folder as one stream, which is much faster than file by file.
 - [When a file already exists](https://kleash.github.io/airscp/files/replace-or-keep-both.html): When you copy a file to a folder that already has one with the same name, AirSCP asks what to do. It shows the size and date of both, so you can decide.
 - [Copy between two servers](https://kleash.github.io/airscp/files/copy-between-servers.html): The left pane can show another connected server instead of this Mac. Then you copy straight from one server to the other.
@@ -52,7 +52,7 @@
 - [New folder, rename, duplicate, delete, Get Info](https://kleash.github.io/airscp/files/manage-files.html): Everyday file commands work on servers like in Finder. Right-click a file, or use the **File** menu.
 - [Change permissions](https://kleash.github.io/airscp/files/permissions.html): Permissions say who may read, change and run a file on a server (`chmod`).
 - [Compress and extract on the server](https://kleash.github.io/airscp/files/compress-and-extract.html): Make a `.zip` or `.tar.gz` archive on the server, or unpack one there. Nothing goes through your Mac.
-- [Select by pattern, compare folders, move, link](https://kleash.github.io/airscp/files/select-and-compare.html): Commands for many files at once, and for arranging files on a server.
+- [Select by pattern, compare files and folders, move, link](https://kleash.github.io/airscp/files/select-and-compare.html): Commands for many files at once, and for arranging files on a server.
 
 ## Transfers & queue
 - [Transfers & queue](https://kleash.github.io/airscp/transfers/): Every upload and download goes into the **Transfers** list at the bottom of the window. Transfers run in the background, so you keep browsing. Each host runs one transfer at a time; different hosts run at the same time.
@@ -100,9 +100,9 @@
 ## More topics
 - [Home](https://kleash.github.io/airscp/): AirSCP is a Mac app for your servers. You save your servers once. Then you click to connect, and you drag files between your Mac and the server. AirSCP also opens Windows desktops (Remote Desktop), shows what a Linux server is doing, and opens tunnels. You don't need to type commands. AirSCP is on iPhone and iPad too: see [iPhone and iPad](https://kleash.github.io/airscp/iphone-ipad/).
 - [Synchronize](https://kleash.github.io/airscp/synchronize.html): Make a folder on your Mac and a folder on a server the same. AirSCP compares them, with everything inside, and shows what it would copy. Nothing is copied until you click **Synchronize**.
-- [Disk Usage](https://kleash.github.io/airscp/disk-usage.html): Find the big folders and files below a folder, on a server or on this Mac, and delete what you don't need.
+- [Disk Usage](https://kleash.github.io/airscp/disk-usage.html): Disk Usage shows what takes the room below a folder: on a server, on S3 storage or on this Mac. It shows how full the disk is, the biggest folders and files, totals by file type, and what grew since the last time you looked.
 - [Find](https://kleash.github.io/airscp/find.html): Search for files by name in a server folder and in every folder below it.
-- [Monitor](https://kleash.github.io/airscp/monitor.html): The **Monitor** tab shows what a Linux server is doing: CPU, memory, disks, processes and the ports it listens on. You can also stop a process.
+- [Monitor](https://kleash.github.io/airscp/monitor.html): The **Monitor** tab shows what a Linux, Mac or Windows server is doing: CPU, memory, disks, processes and the ports it listens on. You can also stop a process.
 - [Tunnels](https://kleash.github.io/airscp/tunnels.html): A tunnel opens a port on your Mac that leads through the server: to the server itself, or to another machine only the server can reach, such as a database or an internal web page. Or the other way round. It goes through the host's connection, so nothing else needs to be open.
 - [Settings & appearance](https://kleash.github.io/airscp/settings.html): Choose light or dark mode, your terminal app, your downloads folder and a few defaults. Open **AirSCP ▸ Settings…** (<kbd>⌘,</kbd>). Every change applies at once.
 - [AI agents (MCP)](https://kleash.github.io/airscp/ai-agents.html): AI agents such as Claude Code, Codex CLI or Gemini CLI can drive AirSCP the way you do: the same menus, buttons and questions, and AirSCP's own screenshots. AirSCP is an MCP server for them. It is off until you turn it on.

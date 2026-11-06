@@ -43,11 +43,12 @@ enum MenuHelp {
         (#selector(FilePane.newFolder(_:)), "Make a folder in the pane that has the focus"),
         (#selector(FilePane.newFile(_:)), "Make an empty file in the server folder shown"),
         (#selector(FilePane.openItems(_:)), "Open the folder here, or the file in its app (a server file is downloaded first)"),
+        (#selector(FilePane.compareFiles(_:)), "Compare two files side by side: two selected in one pane, or one in each pane"),
         (#selector(FilePane.editItem(_:)), "Open the text file in AirSCP's own editor; ⌘S saves it back to the server"),
         (#selector(FilePane.quickLook(_:)), "Preview the selected files without opening them (Space does the same)"),
         (#selector(FilePane.getInfo(_:)), "Show the size, dates, owner and permissions of one server item"),
         (#selector(FilePane.findFiles(_:)), "Search names below the server folder shown, by name or a pattern like *.log"),
-        (#selector(FilePane.showDiskUsage(_:)), "See what takes the room below the folder shown, largest first, and delete what you don't need"),
+        (#selector(FilePane.showDiskUsage(_:)), "See what takes the room below the folder shown, in its own window, and free space"),
         (#selector(FilePane.copyToOtherPane(_:)), "Copy the selection into the folder the other pane shows (drag does the same)"),
         (#selector(FilePane.chooseUpload(_:)), "Choose files on this Mac to upload into the server folder shown"),
         (#selector(FilePane.downloadTo(_:)), "Download the selection into a folder you choose on this Mac"),
@@ -110,7 +111,7 @@ enum MenuHelp {
         (#selector(FilePane.removeFavourite(_:)), "Forget this favourite folder"),
         // Host
         (#selector(MainWindowController.connectHost(_:)), "Connect to the selected host or desktop and show its files or screen"),
-        (#selector(MainWindowController.openTerminal(_:)), "Open an ssh session to this host in Terminal (or iTerm, see Settings)"),
+        (#selector(MainWindowController.openTerminal(_:)), "Open an ssh session to this host in Terminal (or iTerm, see Settings), in the folder its Files tab shows"),
         (#selector(MainWindowController.disconnectHost(_:)), "Close the connection; asks first while transfers run"),
         (#selector(MainWindowController.runCommand(_:)), "Run one command on the host and read its output here (sudo and editors: Terminal)"),
         (#selector(MainWindowController.showTunnels(_:)), "Show the host's port forwards (its Tunnels tab)"),
@@ -444,7 +445,7 @@ enum AirSCPTips {
         Commands and monitoring
         • Host ▸ Run Command… runs one command and shows its output; Run in Terminal for sudo and editors.
         • Window ▸ Snippets keeps commands you run often, to run on any host.
-        • The Monitor tab shows CPU, memory, disks, processes and ports on Linux servers; Kill asks first.
+        • The Monitor tab shows CPU, memory, disks and processes on Linux and Mac servers (ports on Linux); Kill asks first.
         • The Tunnels tab opens ports through the connection: a database behind the server, an app on your Mac.
         • View ▸ Show Command Log shows every command AirSCP ran, as a line you can copy and run yourself.
 

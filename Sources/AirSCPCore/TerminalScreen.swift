@@ -800,6 +800,18 @@ public final class TerminalScreen {
     /// The cursor, as a place in `allLines`.
     public var cursorPosition: Position { Position(line: scrollback.count + cursorY, column: cursorX + (wrapPending ? 1 : 0)) }
 
+    /// The columns a double-click at `column` of line `line` (of `allLines`) selects: the word there (the cells up to
+    /// the spaces around it), or the spaces there, never a word next to them.
+    public func wordColumns(line: Int, column: Int) -> ClosedRange<Int>? {
+        let all = allLines
+        guard line < all.count, column < all[line].cells.count else { return nil }
+        let cells = all[line].cells, space = cells[column].character == " "
+        var start = column, end = column
+        while start > 0, (cells[start - 1].character == " ") == space { start -= 1 }
+        while end < cells.count - 1, (cells[end + 1].character == " ") == space { end += 1 }
+        return start...end
+    }
+
     /// The text from `start` up to (not including) `end`: wrapped lines joined, a line break after the others, each
     /// line's trailing blanks left out.
     public func text(from start: Position, to end: Position) -> String {
