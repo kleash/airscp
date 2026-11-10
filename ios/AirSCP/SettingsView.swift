@@ -22,6 +22,7 @@ struct SettingsView: View {
             Form {
                 keysSection
                 trustedSection
+                aboutSection
             }
             .navigationTitle("Settings")
             .toolbar {
@@ -159,6 +160,84 @@ struct SettingsView: View {
         }
     }
 
+    private var aboutSection: some View {
+        Section {
+            HStack(spacing: 14) {
+                if let icon = appIcon {
+                    Image(uiImage: icon)
+                        .resizable()
+                        .frame(width: 60, height: 60)
+                        .clipShape(RoundedRectangle(cornerRadius: 13, style: .continuous))
+                        .accessibilityHidden(true)
+                }
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("AirSCP").font(.title3.weight(.semibold))
+                    Text("Version \(info("CFBundleShortVersionString")) (\(info("CFBundleVersion")))")
+                        .foregroundStyle(.secondary)
+                    Text("Files, terminal and Remote Desktop for your servers")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
+            .accessibilityElement(children: .combine)
+            aboutLink("Source Code", detail: "Open source on GitHub · Apache 2.0",
+                      systemImage: "chevron.left.forwardslash.chevron.right", url: "https://github.com/kleash/airscp",
+                      help: "Open AirSCP's source code on GitHub")
+            aboutLink("Shubham Aggarwal (kleash)", detail: "Author · github.com/kleash", systemImage: "person",
+                      url: "https://github.com/kleash", help: "Open the author's page on GitHub")
+            aboutLink("Help and Documentation", systemImage: "book", url: "https://kleash.github.io/airscp/",
+                      help: "Open AirSCP's guide in Safari")
+            aboutLink("Report a Problem", systemImage: "exclamationmark.bubble",
+                      url: "https://github.com/kleash/airscp/issues", help: "Report a problem or ask for a feature on GitHub")
+            // A Hide My Email relay the author made to be public (not a personal address).
+            aboutLink("Email the Developer", detail: "strobes01sport@icloud.com", systemImage: "envelope",
+                      url: "mailto:strobes01sport@icloud.com?subject=AirSCP", help: "Write to the developer in Mail")
+            aboutLink("Rate on the App Store", systemImage: "star",
+                      url: "https://apps.apple.com/app/id6828032872?action=write-review",
+                      help: "Rate or review AirSCP on the App Store")
+            NavigationLink {
+                LicencesView()
+            } label: {
+                Label("Licences", systemImage: "doc.text")
+            }
+            .help("Read the licences of AirSCP and what it is built with")
+        } header: {
+            Text("About")
+        } footer: {
+            Text("AirSCP is free and open source, under the Apache License 2.0. No account, no tracking: your servers "
+                 + "and keys stay on this device. © 2026 Shubham Aggarwal")
+        }
+    }
+
+    /// A row that opens `url` (Safari, Mail or the App Store), with an arrow saying it leaves AirSCP.
+    private func aboutLink(_ title: String, detail: String? = nil, systemImage: String, url: String,
+                           help: String) -> some View {
+        Link(destination: URL(string: url)!) {
+            HStack {
+                Label {
+                    VStack(alignment: .leading, spacing: 1) {
+                        Text(title)
+                        if let detail { Text(detail).font(.caption).foregroundStyle(Color.secondary) }  // grey, not the tint
+                    }
+                } icon: {
+                    Image(systemName: systemImage)
+                }
+                Spacer()
+                Image(systemName: "arrow.up.right").font(.caption.weight(.semibold)).foregroundStyle(Color(.tertiaryLabel))
+            }
+        }
+        .help(help)
+    }
+
+    private func info(_ key: String) -> String { Bundle.main.object(forInfoDictionaryKey: key) as? String ?? "" }
+
+    /// The app's own icon: the asset catalog gives it no name to load, the Info.plist names its files.
+    private var appIcon: UIImage? {
+        let icons = Bundle.main.object(forInfoDictionaryKey: "CFBundleIcons") as? [String: Any]
+        let files = (icons?["CFBundlePrimaryIcon"] as? [String: Any])?["CFBundleIconFiles"] as? [String]
+        return files?.last.flatMap { UIImage(named: $0) }
+    }
+
     /// "iPhone key" (or "iPad key"), made free.
     private var suggestedName: String { freeName("\(UIDevice.current.model) key") }
 
@@ -206,5 +285,56 @@ struct SettingsView: View {
             failure = error.localizedDescription
         }
         trusted = KnownHosts.entries(knownHostsPath)
+    }
+}
+
+/// AirSCP's licence (on GitHub) and the full licence texts of what the app is built with (in the app).
+struct LicencesView: View {
+    private let libraries = [("libssh2", "SSH, SFTP and SCP · BSD 3-Clause", "libssh2-LICENSE"),
+                             ("OpenSSL", "Encryption · Apache License 2.0", "OpenSSL-LICENSE")]
+
+    var body: some View {
+        Form {
+            Section("AirSCP") {
+                Link(destination: URL(string: "https://github.com/kleash/airscp/blob/main/LICENSE")!) {
+                    row("AirSCP", "Apache License 2.0")
+                }
+                .help("Read AirSCP's licence on GitHub")
+            }
+            Section {
+                ForEach(libraries, id: \.0) { name, detail, file in
+                    NavigationLink {
+                        ScrollView {
+                            Text(text(file))
+                                .font(.caption.monospaced())
+                                .textSelection(.enabled)
+                                .padding()
+                        }
+                        .navigationTitle(name)
+                    } label: {
+                        row(name, detail)
+                    }
+                    .help("Read the licence of \(name)")
+                }
+            } header: {
+                Text("Built with")
+            } footer: {
+                Text("Tap one to read its full licence.")
+            }
+        }
+        .navigationTitle("Licences")
+        .navigationBarTitleDisplayMode(.inline)
+    }
+
+    private func row(_ name: String, _ detail: String) -> some View {
+        VStack(alignment: .leading, spacing: 1) {
+            Text(name)
+            Text(detail).font(.caption).foregroundStyle(.secondary)
+        }
+    }
+
+    private func text(_ file: String) -> String {
+        Bundle.main.url(forResource: file, withExtension: "txt").flatMap { try? String(contentsOf: $0, encoding: .utf8) }
+            ?? "The licence text is missing from this copy of AirSCP."
     }
 }
