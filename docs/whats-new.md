@@ -5,6 +5,12 @@ nav_order: 18
 
 # What's new
 
+## AirSCP 2.0.7
+
+- Remote Desktop uses FreeRDP 3.33.0, with its security fixes.
+- The App Store version no longer opens your Downloads folder without asking: it asks once, like any other folder.
+  A Windows computer's shared folder is now in AirSCP's own folder there ([Install](getting-started/install.md)).
+
 ## AirSCP 2.0.6
 
 - **Disk Usage opens in its own window**: keep browsing while it scans, and open several. It works on every server:

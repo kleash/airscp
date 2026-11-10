@@ -2,7 +2,7 @@ import Foundation
 
 /// Folders the App Store version may open. Its sandbox opens a folder of this Mac only when the person chose it (in an
 /// Open panel), and only until AirSCP quits: a security-scoped bookmark of each chosen folder opens it again at the next
-/// launch (`restore`). Its own container and the Downloads folder are always open. The Developer ID version needs none
+/// launch (`restore`). Only its own container is always open. The Developer ID version needs none
 /// of this.
 public enum FolderAccess {
     static let key = "allowedFolders"
@@ -25,8 +25,8 @@ public enum FolderAccess {
     public static let home = NSHomeDirectory()
     #endif
 
-    /// What the sandbox always opens: the app's container and (an entitlement) the Downloads folder.
-    public static var alwaysOpen: [String] { [NSHomeDirectory(), home + "/Downloads"] }
+    /// What the sandbox always opens: the app's container.
+    public static var alwaysOpen: [String] { [NSHomeDirectory()] }
 
     /// Keeps `url`, a folder the person just chose, for the next launches (one bookmark per folder). False when no
     /// bookmark could be made of it (the sandbox doesn't let AirSCP into it).

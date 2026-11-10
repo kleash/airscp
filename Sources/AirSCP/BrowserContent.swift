@@ -192,7 +192,7 @@ final class BrowserContentController: NSViewController {
 
     private var localStart: String {
         #if APPSTORE
-        // Only a folder the sandbox opens without asking; else Downloads, which it always opens.
+        // Only a folder the sandbox opens without asking; else Downloads, which the pane asks once to open.
         if let dir = (workspace?.host ?? session.host).lastLocalDir, FileList.isLocalFolder(dir), FolderAccess.covers(dir) { return dir }
         return FolderAccess.home + "/Downloads"
         #else
