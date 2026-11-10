@@ -12,7 +12,7 @@ cd "$(dirname "$0")/.."
 
 cmake_version=4.4.3
 openssl_version=3.5.9
-freerdp_version=3.32.2
+freerdp_version=3.33.0
 # name, URL, SHA-256
 downloads=(
     "cmake-$cmake_version-macos-universal.tar.gz"
@@ -23,7 +23,7 @@ downloads=(
     603f5602e2eef00d77fbd429d34dcd5822bb301757a1bc9cdb24c670f1eb859a
     "freerdp-$freerdp_version.tar.gz"
     "https://github.com/FreeRDP/FreeRDP/releases/download/$freerdp_version/freerdp-$freerdp_version.tar.gz"
-    e95a505c0057e4d06a3b120477c421028769deba4db9c639ef3465d050f0955c
+    80cbcf17a7de00909f2be805c7d93764596cd712046addc18c30594137c0b879
 )
 archs=(arm64 x86_64)
 deployment_target=13.0
@@ -111,7 +111,7 @@ for arch in "${archs[@]}"; do
         -DWITH_CLIENT_COMMON=ON -DWITH_CLIENT=OFF -DWITH_CLIENT_SDL=OFF -DWITH_CLIENT_MAC=OFF \
         -DWITH_SAMPLE=OFF -DWITH_SERVER=OFF -DWITH_X11=OFF -DWITH_WAYLAND=OFF \
         -DWITH_FFMPEG=OFF -DWITH_DSP_FFMPEG=OFF -DWITH_VIDEO_FFMPEG=OFF -DWITH_SWSCALE=OFF -DWITH_CAIRO=OFF \
-        -DWITH_OPENH264=OFF -DWITH_OPUS=OFF -DWITH_FDK_AAC=OFF -DWITH_FAAC=OFF -DWITH_FAAD2=OFF -DWITH_GSM=OFF \
+        -DWITH_OPENH264=OFF -DWITH_APPLE_VIDEOTOOLBOX=OFF -DWITH_OPUS=OFF -DWITH_FDK_AAC=OFF -DWITH_FAAC=OFF -DWITH_FAAD2=OFF -DWITH_GSM=OFF \
         -DWITH_LAME=OFF -DWITH_SOXR=OFF -DWITH_MACAUDIO=OFF \
         -DWITH_CUPS=OFF -DWITH_PULSE=OFF -DWITH_ALSA=OFF -DWITH_OSS=OFF \
         -DWITH_PCSC=OFF -DWITH_SMARTCARD_EMULATE=OFF -DWITH_PKCS11=OFF -DWITH_KRB5=OFF \
