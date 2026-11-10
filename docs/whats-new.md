@@ -10,6 +10,8 @@ nav_order: 18
 - Remote Desktop uses FreeRDP 3.33.0, with its security fixes.
 - The App Store version no longer opens your Downloads folder without asking: it asks once, like any other folder.
   A Windows computer's shared folder is now in AirSCP's own folder there ([Install](getting-started/install.md)).
+- iPhone and iPad: **Settings ▸ About** shows the version, the source code, the author, help, Email the Developer,
+  Rate on the App Store and the licences.
 
 ## AirSCP 2.0.6
 

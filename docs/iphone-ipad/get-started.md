@@ -73,6 +73,9 @@ one, Face ID (or Touch ID, or your passcode) unlocks it.
 - Keys don't go to another iPhone or iPad, not even with a backup. Keep a copy of the keys you import.
 - If you turn off the device's passcode, iOS deletes the keys.
 
+**About**, at the bottom of **Settings**, shows AirSCP's version and opens its source code, this guide, a problem
+report, an email to the developer, its App Store page and the licences of what it is built with.
+
 ## Add S3 storage
 
 1. In **Servers**, tap **+**, then choose **S3 storage** at the top.

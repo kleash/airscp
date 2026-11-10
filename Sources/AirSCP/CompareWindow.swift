@@ -130,7 +130,10 @@ final class CompareWindow: NSWindowController, NSWindowDelegate {
         sides[0].text = left
         sides[1].text = right
         saved = [sides[0].id: left, sides[1].id: right]
-        if !(window?.contentView is NSStackView) { window?.contentView = makeTextLayout() }
+        if !(window?.contentView is NSStackView) {
+            window?.contentView = makeTextLayout()
+            updateControls()  // tooltips (and why disabled) while the first comparison still runs
+        }
         recompare()
     }
 
