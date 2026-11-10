@@ -710,7 +710,16 @@ final class TerminalController: NSViewController, NSMenuDelegate, NSSearchFieldD
                 if case .local = left.source {
                     browser.transfer([item], from: browser.right.source, to: .local, into: dir, move: false)
                 } else {
-                    browser.transfer([item], from: browser.right.source, to: .local, into: workspace.model.data.settings.downloadFolder, move: false)
+                    let folder = workspace.model.data.settings.downloadFolder
+                    #if APPSTORE
+                    // The sandbox opens Downloads only once it was chosen; the default is a link to it.
+                    guard FolderAccess.covers(URL(fileURLWithPath: folder).resolvingSymlinksInPath().path) else {
+                        return showError(AirSCPError(.permissionDenied, "AirSCP from the App Store saves only into folders "
+                            + "you choose. Choose one in Settings ▸ Downloads folder ▸ Choose…, then download again."),
+                                         title: "Can't save into “\((folder as NSString).lastPathComponent)” yet", on: workspace.window)
+                    }
+                    #endif
+                    browser.transfer([item], from: browser.right.source, to: .local, into: folder, move: false)
                 }
             case .edit: browser.edit(item, on: workspace.session, from: browser.right)
             case .info: browser.showInfo(item, on: workspace.session, from: browser.right)

@@ -714,11 +714,16 @@ final class RDPWorkspaceController: NSViewController {
     }
 }
 
-/// ~/Downloads/AirSCP RDP: the shared folder unless the entry names another.
+/// ~/Downloads/AirSCP RDP (App Store version: AirSCP RDP in its own container, which the sandbox always opens): the
+/// shared folder unless the entry names another.
 func defaultSharedFolder() -> URL {
+    #if APPSTORE
+    return URL(fileURLWithPath: NSHomeDirectory()).appendingPathComponent("AirSCP RDP", isDirectory: true)
+    #else
     let downloads = FileManager.default.urls(for: .downloadsDirectory, in: .userDomainMask).first
         ?? URL(fileURLWithPath: NSHomeDirectory() + "/Downloads")
     return downloads.appendingPathComponent("AirSCP RDP", isDirectory: true)
+    #endif
 }
 
 // MARK: Certificate question (also used by Test Connection)

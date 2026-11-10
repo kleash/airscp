@@ -69,11 +69,11 @@ codesign --verify --deep --strict --verbose=2 "$app"
 
 # What App Store Connect and App Review look at.
 codesign -d --entitlements - --xml "$app" 2>/dev/null > "$work/signed.plist"
-for key in app-sandbox network.client network.server files.user-selected.read-write files.bookmarks.app-scope \
-           files.downloads.read-write; do
+for key in app-sandbox network.client network.server files.user-selected.read-write files.bookmarks.app-scope; do
     [ "$(/usr/libexec/PlistBuddy -c "Print :com.apple.security.$key" "$work/signed.plist" 2>/dev/null)" = true ] \
         || fail "The signature lacks com.apple.security.$key."
 done
+! grep -q files.downloads "$work/signed.plist" || fail "The signature has files.downloads: App Review rejected it (2.4.5(i))."
 ! grep -q temporary-exception "$work/signed.plist" || fail "The signature has a temporary exception: App Review rejects those."
 scripts/check-private-api.sh "$app"
 plist=$app/Contents/Info.plist

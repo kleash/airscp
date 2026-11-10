@@ -62,8 +62,8 @@ Developer ID exists.
 
 The App Store version is the same code built with `./build.sh --appstore`: Swift's `APPSTORE` condition picks its
 differences (users see them in `docs/getting-started/install.md`'s table), and `Resources/AirSCP-AppStore.entitlements`
-puts it in the App Sandbox (network client and server, folders the person chooses, their bookmarks, Downloads; no
-temporary exceptions). It comes out as `build/appstore/AirSCP.app` with `Resources/PrivacyInfo.xcprivacy`,
+puts it in the App Sandbox (network client and server, folders the person chooses, their bookmarks; not Downloads, which
+App Review rejected; no temporary exceptions). It comes out as `build/appstore/AirSCP.app` with `Resources/PrivacyInfo.xcprivacy`,
 no Apple Events and no `ITSAppUsesNonExemptEncryption`. `scripts/check-private-api.sh` (CI runs it) keeps private API out:
 the Developer ID version's AXEnhancedUserInterface and key-appearance calls aren't in it.
 

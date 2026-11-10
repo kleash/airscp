@@ -5,8 +5,7 @@
      Mac's ports.
      files.user-selected.read-write: folders and files the person picks in an Open panel or drags in (the SSH folder,
      Mac folders, imports). files.bookmarks.app-scope: AirSCP keeps those choices for the next launch.
-     files.downloads.read-write: downloads land in the Downloads folder by default, and the Remote Desktop's shared
-     folder is in it, so they work before anything is chosen.
+     No files.downloads.read-write (App Review, 2.4.5(i)): the Downloads folder too opens once the person allows it.
      ssh, scp, sftp and AirSCP's own helpers (askpass, the proxy helper, the agent bridge) run inside the same sandbox. -->
 <plist version="1.0">
 <dict>
@@ -19,8 +18,6 @@
 	<key>com.apple.security.files.user-selected.read-write</key>
 	<true/>
 	<key>com.apple.security.files.bookmarks.app-scope</key>
-	<true/>
-	<key>com.apple.security.files.downloads.read-write</key>
 	<true/>
 </dict>
 </plist>
