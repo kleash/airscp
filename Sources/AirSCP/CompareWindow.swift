@@ -36,7 +36,7 @@ final class CompareWindow: NSWindowController, NSWindowDelegate {
     /// The difference gone to (an index of `diff.blocks`).
     private var current: Int?
     /// The sides prettified, or why they can't be.
-    private var pretty: (texts: [String]?, problem: String) = (nil, "")
+    private var pretty: (texts: [String]?, problem: String) = (nil, "Still comparing the two files")
     private var generation = 0
     private var hashing: Task<Void, Never>?
 
