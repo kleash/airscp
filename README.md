@@ -5,7 +5,12 @@
 
 <h1 align="center"><img src="https://raw.githubusercontent.com/kleash/airscp/main/docs/assets/icon.png" width="40" alt=""> AirSCP</h1>
 
-<p align="center"><b>SCP/SFTP file transfer, SSH and Windows Remote Desktop in one native Mac app. Free and open source.</b></p>
+<p align="center"><b>SCP/SFTP file transfer, SSH and Windows Remote Desktop in one native Mac app, with AirSCP for
+iPhone and iPad to take your servers along. Free and open source.</b></p>
+
+<p align="center">
+  <a href="https://apps.apple.com/app/id6828032872"><img src="https://developer.apple.com/assets/elements/badges/download-on-the-app-store.svg" height="44" alt="Download on the App Store"></a>
+</p>
 
 <p align="center">
   <a href="https://github.com/kleash/airscp/actions/workflows/ci.yml?query=branch%3Amain"><img src="https://github.com/kleash/airscp/actions/workflows/ci.yml/badge.svg?branch=main" alt="CI"></a>
@@ -44,7 +49,23 @@
   </tr>
 </table>
 
-## Install
+## On iPhone and iPad
+
+AirSCP for iPhone and iPad keeps your servers in your pocket: copy files between a server and your device, type
+commands in a terminal, and see how a Linux server is doing. On an iPad, each open server gets a workspace with its
+files and a terminal side by side; on the iPhone Duo, the open screen works like an iPad. iOS 26 and iPadOS 26 or later,
+[from the App Store](https://apps.apple.com/app/id6828032872). What it does: [AirSCP Help ▸ iPhone and iPad](https://kleash.github.io/airscp/iphone-ipad/).
+
+<table>
+  <tr>
+    <td width="22%"><img src="https://raw.githubusercontent.com/kleash/airscp/main/docs/assets/shots/iphone-files-light.png" alt="AirSCP on iPhone: the Files tab showing a folder on a server"></td>
+    <td width="22%"><img src="https://raw.githubusercontent.com/kleash/airscp/main/docs/assets/shots/iphone-terminal-light.png" alt="AirSCP on iPhone: a terminal on a server, with a row of keys above the keyboard"></td>
+    <td width="22%"><img src="https://raw.githubusercontent.com/kleash/airscp/main/docs/assets/shots/iphone-monitor-light.png" alt="AirSCP on iPhone: a server's CPU, memory and disk, and its busiest processes"></td>
+    <td width="34%"><img src="https://raw.githubusercontent.com/kleash/airscp/main/docs/assets/shots/ipad-workspace-light.png" alt="AirSCP on iPad: a server's workspace with the server's files, the files on the iPad, a terminal and the Transfers list"></td>
+  </tr>
+</table>
+
+## Install on a Mac
 
 ```sh
 brew install --cask kleash/tap/airscp
