@@ -119,7 +119,7 @@ that come with macOS.
 
 ## The App Store version
 
-AirSCP also comes from the Mac App Store. It is the same app, but Apple's sandbox keeps it to what you allow, so a
+AirSCP also comes from the [Mac App Store](https://apps.apple.com/app/id6828032872). It is the same app, but Apple's sandbox keeps it to what you allow, so a
 few things work differently. Homebrew or the Releases page give you the version without these differences.
 
 (Picture: The App Store version's welcome sheet, with Give Access to Your SSH Folder…)
@@ -288,7 +288,7 @@ Source: https://kleash.github.io/airscp/iphone-ipad/
 
 AirSCP is on iPhone and iPad too. Save your servers, copy files between a server and your device, type commands in a
 terminal and see how a Linux server is doing, wherever you are. It needs iOS 26 or iPadOS 26, or later. Get it from the
-App Store.
+[App Store](https://apps.apple.com/app/id6828032872).
 
 <!-- picture: iphone-servers; iPhone, portrait; The Servers tab: two open servers with their CPU, memory and disk, and three saved servers below -->
 

@@ -9,7 +9,8 @@
 iPhone and iPad to take your servers along. Free and open source.</b></p>
 
 <p align="center">
-  <a href="https://apps.apple.com/app/id6828032872"><img src="https://developer.apple.com/assets/elements/badges/download-on-the-app-store.svg" height="44" alt="Download on the App Store"></a>
+  <a href="https://apps.apple.com/app/id6828032872"><img src="https://developer.apple.com/assets/elements/badges/download-on-the-app-store.svg" height="44" alt="Download on the App Store"></a><br>
+  <sub>Mac, iPhone and iPad</sub>
 </p>
 
 <p align="center">
@@ -74,6 +75,9 @@ brew install --cask kleash/tap/airscp
 Or download the zip from [Releases](https://github.com/kleash/airscp/releases).
 AirSCP is signed and notarized by Apple, so it opens like any app.
 Every file has its SHA-256, and the ones GitHub built have signed build provenance: [check a download](SECURITY.md#check-a-download).
+
+Or get it from the [Mac App Store](https://apps.apple.com/app/id6828032872): the same app in Apple's sandbox, so it
+asks before it opens your folders ([what differs](https://kleash.github.io/airscp/getting-started/install.html#the-app-store-version)).
 
 ## Use it from AI agents
 
