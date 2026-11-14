@@ -8,7 +8,7 @@ has_children: true
 
 AirSCP is on iPhone and iPad too. Save your servers, copy files between a server and your device, type commands in a
 terminal and see how a Linux server is doing, wherever you are. It needs iOS 26 or iPadOS 26, or later. Get it from the
-App Store.
+[App Store](https://apps.apple.com/app/id6828032872).
 
 <!-- picture: iphone-servers; iPhone, portrait; The Servers tab: two open servers with their CPU, memory and disk, and three saved servers below -->
 

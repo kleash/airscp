@@ -14,7 +14,7 @@
 - [Find your way around the window](https://kleash.github.io/airscp/getting-started/the-window.html): AirSCP has one main window. Here is what each part does.
 
 ## iPhone and iPad
-- [iPhone and iPad](https://kleash.github.io/airscp/iphone-ipad/): AirSCP is on iPhone and iPad too. Save your servers, copy files between a server and your device, type commands in a terminal and see how a Linux server is doing, wherever you are. It needs iOS 26 or iPadOS 26, or later. Get it from the App Store.
+- [iPhone and iPad](https://kleash.github.io/airscp/iphone-ipad/): AirSCP is on iPhone and iPad too. Save your servers, copy files between a server and your device, type commands in a terminal and see how a Linux server is doing, wherever you are. It needs iOS 26 or iPadOS 26, or later. Get it from the [App Store](https://apps.apple.com/app/id6828032872).
 - [Get started on iPhone and iPad](https://kleash.github.io/airscp/iphone-ipad/get-started.html): Save a server once, then tap it to connect. You need the server's address and your user name on it. Your server admin or hosting company gives you these.
 - [Files on iPhone and iPad](https://kleash.github.io/airscp/iphone-ipad/files.html): The **Files** tab has two sides: an open server, and **On iPhone** (on an iPad, **On iPad**), which is AirSCP's own folder on your device. You copy between them. An iPhone shows one side at a time; an iPad shows both, next to each other.
 - [Terminal on iPhone and iPad](https://kleash.github.io/airscp/iphone-ipad/terminal.html): The **Terminal** tab is a shell on an open server. It uses the server's connection, so there is no second login. Each open server has one.

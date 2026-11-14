@@ -32,7 +32,7 @@ that come with macOS.
 
 ## The App Store version
 
-AirSCP also comes from the Mac App Store. It is the same app, but Apple's sandbox keeps it to what you allow, so a
+AirSCP also comes from the [Mac App Store](https://apps.apple.com/app/id6828032872). It is the same app, but Apple's sandbox keeps it to what you allow, so a
 few things work differently. Homebrew or the Releases page give you the version without these differences.
 
 {% include shot.html name="welcome-appstore" alt="The App Store version's welcome sheet, with Give Access to Your SSH Folder…" %}
